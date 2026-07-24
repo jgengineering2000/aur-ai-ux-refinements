@@ -61,8 +61,12 @@ check, not merely absence-of-violation.
 Operationalises the P9 corollary: across the defined process roster, trace the
 real deployed process; flag per-item syscalls, incomplete calls, and latency
 outliers; capture with fork-following, buffers, and per-call latency/timestamps.
-Never start a session-fatal component to trace it. Full capture flags + roster
-discipline: the **audit-methodology skill**.
+Never start a session-fatal component to trace it. Run **both detection axes** —
+the statistical miner-scan at scale AND an exhaustive AI read of a deliberately
+tiny curated set (one work-item of each type, read 100% end-to-end across every
+logfile) for the emergent patterns a scanner can't encode; the scan alone is half
+the audit. Full capture flags + roster discipline + the two axes: the
+**audit-methodology skill**.
 
 ## 4. Every fix lands with a test that fails first
 

@@ -46,6 +46,29 @@ timestamps**. Crystallise this analysis into a tool (PROCESS §1) rather than
 re-reasoning it each run. Tracing an already-running process is read-only and safe;
 never *start* a session-fatal component to trace it — attach to the one already up.
 
+### Two co-equal detection axes — the tool-scan is only half the audit
+
+A crystallised miner encodes **known-shape** anomalies; it cannot flag the pattern
+no one thought to encode. So every trace/log/valgrind-mining audit runs **both**
+axes, weighted equally:
+
+- **Axis 1 — statistical scan at scale.** A large corpus through the miner
+  (`syscall_audit.py`, log/valgrind parsers) to catch known shapes at volume:
+  per-item repeats, latency tails, redundant opens, incomplete calls.
+- **Axis 2 — exhaustive AI read of a deliberately tiny curated set.** A set small
+  enough (e.g. one work-item of each type — valid / other-type / missing /
+  container) that the model reads **100% of every record end-to-end across every
+  logfile** (strace + ltrace + callgrind + the app-level timing log for the *same*
+  items), hunting the emergent / non-self-evident patterns and standout delays a
+  scanner can't encode. The smallness **is** the design: a set this size is fully
+  readable, and full reading — never sampling (§2: sampling gives false
+  confidence) — is the entire point.
+
+Neither substitutes for the other: Axis 1 finds what we already know to look for;
+Axis 2 finds what we don't — and any pattern it surfaces that the miner missed is
+folded back into the miner (§1). A syscall audit that ran only the scan is
+incomplete.
+
 ## Dev tests run through a committed teardown-and-guard harness, assistant-driven (§5)
 
 Until a project declares "production," the standard way to exercise the **real
