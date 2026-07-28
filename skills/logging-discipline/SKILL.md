@@ -172,14 +172,20 @@ Note the interaction with service managers: a process run under systemd whose un
 
 ```
 exe.log       →  exe.log.0        previous run, kept UNCOMPRESSED (opens instantly)
-exe.log.0     →  exe.log.1.gz     compressed on the way out
-exe.log.N.gz  →  exe.log.N+1.gz
-exe.log.9.gz  →  unlink
+exe.log.0     →  exe.log.1.xz     compressed on the way out
+exe.log.N.xz  →  exe.log.N+1.xz
+exe.log.9.xz  →  unlink
 ```
 
-**Compression is a background task.** The rename cascade is a handful of `rename(2)` calls and runs synchronously — microseconds, complete before the first log line is written. Compression is then handed to a detached, low-priority worker. Startup MUST NOT block on gzip: a large `.log.0` would otherwise stall initialisation for seconds on exactly the runs where something has gone wrong.
+**Compression is `xz -3 -T2`, in a forked background process.** Not gzip: `-3` buys roughly 3–4× gzip's ratio on log text, and `-T2` keeps the wall time short without taking the machine. Not a thread: a forked, reparented process outlives the component that spawned it, so a daemon that rotates and exits promptly still gets its predecessor compressed instead of stranding it. Startup MUST NOT block on compression — a large `.log.0` would otherwise stall initialisation for seconds on exactly the runs where something has gone wrong.
+
+**Aging and compression run in ONE worker, under one exclusive lock.** The tempting split — shift the numbered generations synchronously at startup, compress in the background — is a data-losing race: a compressor from the previous start is still writing `exe.log.1.xz` while this start renames `exe.log.1.xz` → `exe.log.2.xz`, so one generation lands in the slot the other just vacated and the other is lost. Startup does only the renames it cannot delegate (stage the previous generation under a name unique to this process, move the live file to `.0`); pruning, shifting, and compressing all happen inside the detached worker, serialised against every other worker by an `flock` on a lockfile beside the log.
+
+**Never lose a generation to a failed compression.** Compress to a temp sibling, rename into place, unlink the source — and on ANY failure (no compressor on the box, ENOSPC, a killed worker) drop the temp and move the source to the UNCOMPRESSED generation name. Data beats format: the cascade therefore ages `exe.log.N` and `exe.log.N.xz` alike. Correspondingly, a startup sweep must NOT delete in-flight `.part` temps — a live worker may own one, and deleting it strands the generation it was compressing. Stale temps are cleared by the worker itself, inside the lock, where every other worker is provably finished.
 
 **One implementation, shared.** Rotation lives in the sink layer, so every component inherits it identically. A component that hand-rolls its own rotation, or opts out, is the drift this rule exists to prevent.
+
+**Rotation cannot log where it happens.** It runs inside the sink's own initialisation, so a log call there re-enters that initialisation on the same thread and deadlocks. Queue the report — rotation performed, size, depth, interrupted-artifact findings — and drain it through the sink on the first line written, so it lands at the head of the new generation ahead of the component's startup block. Silently skipping the report instead violates "the instrument monitors itself".
 
 ## Level Control
 
