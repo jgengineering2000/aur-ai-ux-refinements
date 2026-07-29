@@ -155,9 +155,11 @@ notation for column positions, not an instruction to render in monospace** — t
 column positions are normative, the glyph pitch is not; (b) layout is designed
 against **the narrowest width the user can actually produce**, not the designer's
 window, and must degrade by reducing columns, never by truncating silently; (c)
-whitespace is scarce — pad to roughly one space before and two after the longest
-item in a column, and drop decorative indents and stretched full-width containers,
-which spread columns apart instead of packing them; (d) give each label group its
+whitespace is scarce — the default pairing is **label right-aligned, value
+left-aligned** about one character space apart (the classic colon column), a
+minimum of two spaces after the value, and **none anywhere else**: no left
+padding, no decorative indents, and no stretched full-width container, which
+spreads columns apart instead of packing them; (d) give each label group its
 **own** alignment context, so a long label in one group never sets the width of
 another.
 
