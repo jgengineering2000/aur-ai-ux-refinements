@@ -144,6 +144,23 @@ clarifies a requirement, update the spec doc itself — capturing it only in
 memory/chat leaves the gap hidden behind a confident memory. Reconcile
 clarification ⇄ spec ⇄ code three-ways periodically.
 
+**13. Presentation: never a fixed-pitch font; alignment is a formatting feature.**
+Do not reach for monospace to line up columns — column alignment is achieved with
+the toolkit's own alignment primitives (tab stops, grid/table columns, alignment
+attributes) plus tabular figures for numerals, and lands far more attractively in
+a good proportional face. Padding with spaces to fake a grid is the same defect as
+monospacing it: both encode layout in the content, so both break the moment a
+value changes width. Corollaries: (a) a **fixed-width ASCII mock in a spec is
+notation for column positions, not an instruction to render in monospace** — the
+column positions are normative, the glyph pitch is not; (b) layout is designed
+against **the narrowest width the user can actually produce**, not the designer's
+window, and must degrade by reducing columns, never by truncating silently; (c)
+whitespace is scarce — pad to roughly one space before and two after the longest
+item in a column, and drop decorative indents and stretched full-width containers,
+which spread columns apart instead of packing them; (d) give each label group its
+**own** alignment context, so a long label in one group never sets the width of
+another.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
