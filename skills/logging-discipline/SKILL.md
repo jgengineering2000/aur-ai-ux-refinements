@@ -239,6 +239,8 @@ The mechanism sections above define HOW to log. This section defines WHERE — w
 
 **Frequency determines category.** How often a site fires decides its type before any other consideration: per-item-in-a-loop is Trace, a scope boundary is Debug, a user-visible outcome is Info, a happy-path deviation is Error. This is not a stylistic preference — because enabling a type is not free (see Performance & Cost Gating), putting high-frequency content at an operator-facing type makes that level unusable and putting low-frequency context at Trace makes it unreachable without perturbing the system.
 
+**Frequency decides where a NEW site goes; it never silently drops an audience.** When an existing site is moved down for frequency, the information owed to its old audience is re-emitted, at that same type, just outside the hot path — see *Demotion preserves the category* under Trace. Reducing frequency is a rate change, not a licence to withdraw the operator's receipt.
+
 ### Info — User-Initiated Action Summary
 
 Every user-initiated action must emit **at least one Info-level log line** summarizing what happened. This is the action's receipt — if an operator runs with `LOGLEVEL=3` (Error+Info), they should see a chronological record of every action the system performed and its outcome.
@@ -303,13 +305,15 @@ Any point where the expected (happy) path cannot proceed must emit **at least on
 
 Trace is reserved for **hot paths** — code running per-item in a tight loop, per-frame, or per-event at high frequency (per-thumbnail serve, per-FUSE op, per-pixel decode). Anything firing at that frequency belongs at Trace and nowhere else.
 
-**Trace is a last resort, not a fallback.** Enabling it does not observe a hot path — it *deforms* it. A format, a throttle lock, and a write per event is a first-order cost on any latency-governed path; at a millisecond-scale budget and tens of events per second it changes the timings, the ordering, and sometimes the bug itself. **"Just turn on Trace" is therefore never a valid answer to a hot-path question**, and a design that depends on it has misplaced its instrumentation. The Debug scope boundary must stand on its own; Trace is what you reach for only when the boundary accumulators prove something is wrong and cannot say what.
+**Trace is a last resort, not a fallback.** Enabling it does not observe a hot path — it *deforms* it. A format, a throttle lock, and a write per event is a first-order cost on any latency-governed path; at a millisecond-scale budget and tens of events per second it changes the timings, the ordering, and sometimes the bug itself. **"Just turn on Trace" is therefore never a valid answer to a hot-path question**, and a design that depends on it has misplaced its instrumentation. The out-of-hot-path summaries must stand on their own — the Debug scope boundary for control-flow granularity, and an Info summary wherever an Info site was demoted; Trace is what you reach for only when those accumulators prove something is wrong and cannot say what.
 
 Consequences:
 - Trace lines are NEVER added speculatively — only for a demonstrated need (a proven bug, a regression, unexplained behaviour on that path).
 - A hot-path type is never on by default, and never left on after the investigation that justified it.
 - Whatever a Trace line would have summarised belongs in the enclosing scope's accumulators, where it costs an integer add instead of a write.
-- Demoting a site to Trace is only complete once the enclosing boundary carries the aggregate that site was informally providing. Demotion without that step trades spam for blindness.
+- **Demotion preserves the category.** Demoting a site to Trace is only complete once a corresponding aggregate is emitted **at the type the demoted site was using**, placed at the closest quiescent or post-hot-path context. This is the rule, always. Demoting an Info site and summarising it at Debug does not preserve the contract — it *deletes* the information for the operator, who was watching at Info and now has to enable a developer type to recover what they already had. Frequency is what changes; the audience does not. So an Info-per-item site becomes Trace-per-item **plus Info-per-batch**; a Debug-per-item site becomes Trace-per-item plus Debug-per-batch.
+- Demotion without that paired aggregate trades spam for blindness, and is a defect, not a partial fix.
+- This is the one case where frequency does **not** decide the type. The aggregate is not a new site being categorised by how often it fires — it is the continuation of the demoted site's obligation to its audience, so it inherits that site's type regardless of the boundary it sits on.
 
 **Placement**: Only inside loops, callbacks, or handlers firing at high frequency, where Debug logging would cause backpressure or log flooding.
 
