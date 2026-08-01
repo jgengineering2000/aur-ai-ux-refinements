@@ -87,7 +87,11 @@ state" holds identically for free-run, service, test, and production. Startup mu
 hung or was kill -9'd** — reap forcibly at the resource level (e.g. FUSE abort via
 `/sys/fs/fuse/connections/<minor>/abort` to free D-state waiters, then unmount;
 SIGKILL a stale process ignoring SIGTERM); never fight a genuinely-live healthy
-peer — stop with a clear message. Shutdown must release **every** owned resource
+peer — stop with a clear message. **Report before you reap** — log the
+predecessor's `state`/`wchan` alongside its identifiers *before* escalating:
+`state=R` (a shutdown path ignoring the signal) and `state=D wchan=<blocked-on>`
+(wedged in the kernel on a resource) are different defects with different fixes,
+and the evidence is unrecoverable once the process is gone. Shutdown must release **every** owned resource
 (primary and secondaries: shm, sockets, FIFOs, temp files, children) on **every**
 exit path — signal, normal, and panic (panic hook runs the same teardown),
 handlers installed first. Tests rely on the owner's self-protection; fix
@@ -162,6 +166,25 @@ padding, no decorative indents, and no stretched full-width container, which
 spreads columns apart instead of packing them; (d) give each label group its
 **own** alignment context, so a long label in one group never sets the width of
 another.
+
+**14. An unrecognised argument never runs anything — it prints help and exits
+non-zero.** Applies to every executable in every language: CLI, script, harness,
+test driver, one-off tool. The failure this prevents is not a typo, it is a
+*silent reinterpretation*: a driver that collects `set(sys.argv[1:])` and asks
+only "is my flag present?" treats `--tier-aa`, `--teir-a` and `--help` all as "no
+flag given" and falls through to its default — which for a test harness is the
+entire suite, minutes of machine time and a held lock, from a keystroke. The
+operator's evidence that they were understood is that the tool *refuses* what it
+did not understand; running is an assertion that it did. Requirements: validate
+before any side effect (never partially execute, then discover the bad flag);
+name the offending token — "unknown option `--teir-a`" is actionable where
+"usage:" alone is not; print the full accepted set, since the user is already
+demonstrably unsure of it; and exit non-zero so a caller can tell refusal from
+success. `--help` and `-h` are always accepted and always exit zero. Corollary —
+**a missing value is a bad argument**: a flag documented as taking one and given
+none is refused, never silently defaulted. Corollary — the accepted set is
+enumerated in ONE place per tool, so help text and validation cannot drift into
+disagreeing about what is legal.
 
 ## AI Work Priorities
 
