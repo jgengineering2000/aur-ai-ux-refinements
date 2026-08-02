@@ -231,6 +231,20 @@ added the first time one is.
   than a retry — destructive replacement without a staged swap, an operation
   that publishes, a change to a shared or session-scoped resource.
 
+Corollary — **every cross-boundary action needs a deterministic precedent and a
+deterministic completion.** Inside one process you get both free: a step runs
+because the previous one returned, and a failure propagates. Across a boundary —
+filesystem, window manager, IPC, another process, the network — neither end is
+free, and the model to borrow is the GANTT finish-to-start dependency: name what
+must be *confirmed finished* before this may start, and what will *confirm this
+finished*. Wherever a plausible gap exists between acting and observing,
+something else can occupy it, so **"I issued it" is not status and "it probably
+worked" is not confirmation** — poll the real state, wait on the signal the
+resource itself publishes, or read back what you wrote. An action that publishes
+no confirmable completion is under-instrumented, and that is the defect to fix
+before anything is built on top of it (P11's completion-signal corollary is this
+same rule for the specific case of a job you backgrounded).
+
 **Ground every one of these externally.** This is precisely the class where
 reasoning from memory produces confident, wrong diagnoses — twice, in this
 project's history, a mechanism was *argued* rather than checked and both
