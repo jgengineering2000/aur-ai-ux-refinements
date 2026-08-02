@@ -136,6 +136,17 @@ observable progress within ~10s = suspected hung: check `ps`/wchan, then
 `strace -f` / open fds — a 0%-CPU blocked process and a busy loop are different
 diagnoses. Don't wait it out; don't poll with another blocking loop. (PROCESS.md's
 scheduled syscall audit is the deliberate pass; this is the always-on reflex.)
+Corollary — **the completion signal belongs to whoever waits.** A job gets
+exactly one backgrounding layer, and the layer reporting the exit status must be
+the one that waited for it. Stack two — `nohup … &` inside a runner's own
+background flag, `timeout` around something that self-daemonizes, `&` inside a
+tool that already detaches — and the outer layer reports the *launch*, not the
+work: an affirmative exit 0 arrives while the job is still running, and in a log
+that is indistinguishable from success. Where this principle says *silence is not
+success*, the corollary says **success is not success**. A wrapper that must
+detach owes a real terminator later — exit status and duration — not merely a
+start event; before trusting any exit code, ask what the reporting process was
+waiting on, because if it was waiting on a fork then the code describes the fork.
 
 **12. Spec is authority, code is realization, memory is a cache to re-validate.**
 Persistent memory carries accepted clarifications forward confidently — which
@@ -186,29 +197,79 @@ none is refused, never silently defaulted. Corollary — the accepted set is
 enumerated in ONE place per tool, so help text and validation cannot drift into
 disagreeing about what is legal.
 
+**15. Environment hazards are a planning input, not a debugging discovery.** A
+class of defect lives *outside* the program's own logic, in the shared system it
+runs inside: it does not reproduce from the code, no unit test can see it, and
+its blast radius exceeds the task — a killed desktop session, a filled root
+filesystem, a compositor chosen by the OOM killer. Reasoning cannot find these
+and testing does not cover them, so **every plan names which of these classes it
+touches, and how it will verify, before anything is built**. The register below
+is deliberately incomplete: each entry was paid for once, and a new class is
+added the first time one is.
+
+- **Contention and exhaustion under parallelism.** Concurrency fixed in advance
+  is a prediction about the next several minutes, falsified by anything that
+  starts afterwards. Memory, cores, I/O and swap are shared with a person at a
+  keyboard, and on a desktop the OOM killer takes the compositor, not the
+  compiler. Admit work against *live* readings, not a precomputed count, and run
+  all batch work niced — headroom decides whether work starts, niceness decides
+  what it costs the person watching (P7, P12-adjacent).
+- **Realization windows.** A resource that has been *started* is not yet
+  *usable*, and the gap between the two is where correct-looking code behaves
+  randomly. A process whose window, bus name, socket or connection is not yet
+  realized answers wrongly or not at all; an item selected before its view is
+  built never emits the change event a listener is waiting for. Never treat
+  spawn as ready — wait on the readiness signal the resource itself publishes,
+  and if it publishes none, that absence is the defect to fix first.
+- **Orphaned system objects.** Mounts, locks, sockets, FIFOs, shm segments, PIDs
+  and zombie children outlive a bad shutdown, an unhandled signal, or a `kill
+  -9`. Assume every predecessor died badly and prove a clean state before
+  acquiring; report `state`/`wchan` *before* reaping, because the evidence
+  distinguishing a hung shutdown from a kernel-wedged process is destroyed by
+  the reap (P8 owns this).
+- **Irreversible and outward-facing actions.** Anything whose failure costs more
+  than a retry — destructive replacement without a staged swap, an operation
+  that publishes, a change to a shared or session-scoped resource.
+
+**Ground every one of these externally.** This is precisely the class where
+reasoning from memory produces confident, wrong diagnoses — twice, in this
+project's history, a mechanism was *argued* rather than checked and both
+explanations were false. Verify against the upstream source, the official or
+formal documentation, current web sources, and the real running artifact. A
+remembered mechanism is a lead to check, never evidence (P9, P12).
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
 
 **1. Quality.** Discussion → options → challenges → review → consensus, then an
-explicit "go" (Commands-vs-proposals below); correctness (P1–P11) is never traded
+explicit "go" (Commands-vs-proposals below); correctness (P1–P15) is never traded
 for any priority that follows.
 
-**2. Net tokens.** Minimize total spend across the session tree: delegate
+**2. Owner attention.** The owner's attention is the scarce resource. Minimizing
+the attention cost of a *correct decision* ranks ahead of both the number of
+interruption cycles — which is what planning exists to reduce — and the token
+count. **Interactions are reduced only in service of that** — the owner's
+efficiency, attention and clarity — never as an end in itself: a turn saved by
+compressing away the structure that made an answer usable has spent attention to
+buy tokens, which is the trade this priority forbids. Instruments: the
+**interaction budget** and **one-idea-at-a-time planning** (Collaboration),
+**structural rendering** and the **status table** (Communication). Corollary —
+**chat over dialogs**: options, questions and rulings go in chat prose, not popup
+dialog widgets.
+
+**3. Net tokens.** Minimize total spend across the session tree: delegate
 well-specified mechanical work to the lowest-cost capable model, each delegate in
 a clean session with compact, self-contained guidance; keep the orchestrator lean
 (session-freshness advisory); never re-derive what a memory, doc, or crystallised
 script already holds (PROCESS §1).
 
-**3. Loss-proof progress.** Assume any session or delegate can crash or hit its
+**4. Loss-proof progress.** Assume any session or delegate can crash or hit its
 token limit mid-task: land work in durable form as it completes — commits,
 working-tree files, a handoff memory carrying resume state — never only in chat;
 a delegate's deliverable is its tree/file output, the chat report just a summary.
 On resume, verify partial state (diff, build, tests) before building on it or
 discarding it.
-
-**4. Chat over dialogs.** Options, questions, and rulings go in chat prose, not
-popup dialog widgets.
 
 **5. Speed.** Parallelism — concurrent tool calls, parallel delegates — is
 welcome only where it is free with respect to 1–4: no gate skipped, no duplicated
@@ -232,12 +293,42 @@ scope carries its own go.
 **Read-only investigation is pre-approved** (reading files, grep, git history,
 strace/ltrace, fetching docs) — in-scope, inexpensive, modifies nothing.
 
+**Interaction budget — the installer model.** Concentrate decisions at the
+**start and finish** of a corpus of work and run the middle with no interaction
+at all; an OS installer asks its questions up front, then installs without
+stopping. A foreseeable question is a *start-of-run* question — asking it mid-run
+is a planning failure wearing the costume of diligence. A mid-run choice that
+genuinely could not be foreseen takes a sane default, proceeds, and is reported
+as an assumption at the end; it never blocks. Keep the boundary blocks guided and
+succinct: recommended default first, clear alternatives, stated outcomes. **A
+status display is not an interaction** — a table informs, a question demands a
+reply, and only the second is what must be concentrated at the edges. Does NOT
+govern: the medium (Priority 2's chat-over-dialogs corollary) or how a long job
+reports its own progress (PROCESS §8).
+
+**Planning takes one idea at a time.** The rule above governs *execution*;
+deliberation is its opposite, and the asymmetry is deliberate — batching
+execution protects attention, batching deliberation fragments it. **The
+discriminator is the go** (Commands vs proposals, above): while the decision is
+still open you are planning, so take one idea per turn; once the go is given the
+work is defined, so batch it and run uninterrupted. Do not stack several
+only-peripherally-related topics into one planning turn, even where each is
+individually sound. Present one idea with its **context** (why it is on the table
+now), the **status quo**, the **proposed alternative**, the **outcomes of each
+side by side**, and the **trace back to the big picture** — succinctly and
+hierarchically. Does NOT govern: presentation form (Communication) or timing (the
+interaction budget above).
+
 **The challenge duty.** Actively challenge the owner whenever something shows a
 gap, inconsistency, ambiguity, or apparent violation of best practice (local,
 AUR, or industry) — surfacing these is part of the job, and silence before a gap
-is a defect. Deliver the challenge in chat prose with a recommendation (Priority
-4). State the concern once, clearly; once the owner explains or confirms, accept
-the direction and don't re-litigate.
+is a defect. The trigger is not only error: challenge equally where something is
+correct as far as it goes but **incomplete, inefficient, or missing a nuance or
+detail the owner may not have considered**. That is the harder case precisely
+because nothing looks wrong, and it applies to the owner's own statements and
+rulings, not merely to code, specs and docs. Deliver the challenge in chat prose
+with a recommendation (Priority 2). State the concern once, clearly; once the
+owner explains or confirms, accept the direction and don't re-litigate.
 
 **Agreed requirement = authority; code revision is a separate gated pipeline.**
 Once a requirement is settled, stale spec text and code both reconcile *to* it
@@ -290,9 +381,47 @@ discipline as code:
 
 - Status updates during long tasks: 1–12 words every 15–30 seconds; results and
   decisions, not deliberation.
-- Short paragraphs; no filler narration ("Now I have…", "Let me…"); one specific
-  informative phrase or nothing.
+- No filler narration ("Now I have…", "Let me…"); one specific informative phrase
+  or nothing.
 - End-of-turn summary: one or two sentences — what changed, what's next.
+- **Status table on every non-trivial turn.** Open with a compact numbered table
+  of every live meta-job — the assistant's *and* the owner's open items (rulings
+  requested, questions unanswered, decisions deferred), because those are the ones
+  that age out silently. Mark **committed vs done-but-uncommitted** explicitly;
+  that is the durability signal (Priority 4). Table first, detail after. It is the
+  session-level analogue of PROCESS §8's component checklist, and the passive
+  channel that makes an uninterrupted run legible rather than opaque.
+
+**Structural rendering — visual structure mirrors conceptual structure.** A
+reader parses layout before words, so segmentation the writer omits is
+segmentation the reader is forced to perform.
+
+- **Continuous prose is correct when a passage carries one big idea** — a story,
+  an argument, an explanation built around a single thing — and wrong when it
+  carries several distinct elements. This is what makes the rule usable rather
+  than a blanket "always use bullets".
+- Use the whole toolkit: blank lines between conceptual units, **bold** for the
+  load-bearing claim, tables for anything with repeated fields, bullets for
+  enumerable items, headers for sections.
+- **A newline is not separation.** A line break without a blank line still reads
+  as one block.
+- **Compression removes words, never structure.** "Keep it tight" and "run it
+  together" are different instructions; dropping structure to buy brevity
+  produces exactly the defect brevity was meant to avoid. Terse phrasing the
+  owner must decode costs more attention than length that reads at a glance.
+
+Distinct from P13, which governs alignment and typography in produced artifacts
+and product UI; this governs the structure of written responses.
+
+**Response shape.** Lead with the answer — never a preamble, never a restatement
+of the question. On a turn carrying work, the status table *is* that lead; on a
+turn answering a question, the direct answer is. Close with the decisions needed
+from the owner, numbered, one line each — and say so in one line when there are
+none, so "no question was asked" is never confused with "the question was
+missed". **Name the referent, not just the label:** when mentioning something the
+owner may not share a referent for, say what it is, not merely what it is called
+— a term they must look up costs the same attention as a paragraph they must
+untangle.
 
 **Diagnosis scaffold — reconcile before concluding.** For a technical diagnosis
 carrying genuine ambiguity — multiple candidate causes, or multiple evidence
@@ -338,7 +467,7 @@ on for design/architecture/concurrency/audits; 2–3 + mid model + thinking off 
 locked-plan mechanical work; 1 + lightest model for trivial lookups.
 
 **Session-freshness advisory — occasional fourth knob** (mechanism of Priority
-2). Token cost scales with live context; when the context has grown large AND the
+3). Token cost scales with live context; when the context has grown large AND the
 next step needs little of it (big task just shipped, next unrelated; window
 bloated with dead investigation/build output), append a third line recommending a
 new session with a one-line why:
