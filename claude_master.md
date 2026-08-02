@@ -405,6 +405,15 @@ discipline as code:
   that is the durability signal (Priority 4). Table first, detail after. It is the
   session-level analogue of PROCESS §8's component checklist, and the passive
   channel that makes an uninterrupted run legible rather than opaque.
+- **In-flight work is part of that table, not separate from it.** Every
+  asynchronous thing currently running — a build, a test gate, a monitor, a
+  spawned agent, a sampler — appears with its **elapsed time against its expected
+  duration** and **what will confirm it finished**. Omitting it is the most common
+  way the table lies: the owner reads a list of settled items and cannot tell that
+  three jobs are running, which defeats the table's entire purpose, since making
+  an uninterrupted run legible is *why* the interaction budget can batch execution
+  at all. An in-flight row that cannot name its completion signal is P15's
+  under-instrumented action, and the fix is to instrument it, not to omit the row.
 
 **Structural rendering — visual structure mirrors conceptual structure.** A
 reader parses layout before words, so segmentation the writer omits is
