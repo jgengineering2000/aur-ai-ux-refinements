@@ -147,6 +147,20 @@ success*, the corollary says **success is not success**. A wrapper that must
 detach owes a real terminator later — exit status and duration — not merely a
 start event; before trusting any exit code, ask what the reporting process was
 waiting on, because if it was waiting on a fork then the code describes the fork.
+Corollary — **watch the machine, not only the job.** A job's own output answers
+"where is it"; it cannot answer "what is this doing to the system", and that is a
+separate defect class with its own failures — work running unniced, a priority
+knob saturated at its stop, memory draining toward the OOM killer's choice of
+victim, swap thrashing, a zombie nobody reaped. None of it appears in the job's
+log, because none of it is the job's business; it is P15's shared-system hazard
+observed while it happens rather than planned for in advance. So sample the
+machine on a cadence while any long job runs — load, `us/ni/id/wa`, free versus
+*available*, swap `si`/`so` **rate** (occupancy is a stale high-water mark and
+says nothing), and the top consumers **with their nice values**. Read it even
+when the job looks healthy: this class is invisible precisely when nothing is
+wrong with the work. The instrument is one crystallised sampler (PROCESS §1), not
+an incantation retyped per session — retyping it drifts the field set between
+samples, which is how a comparison across two readings quietly stops being one.
 
 **12. Spec is authority, code is realization, memory is a cache to re-validate.**
 Persistent memory carries accepted clarifications forward confidently — which
