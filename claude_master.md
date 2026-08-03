@@ -460,6 +460,26 @@ owner may not share a referent for, say what it is, not merely what it is called
 — a term they must look up costs the same attention as a paragraph they must
 untangle.
 
+**Never put open decisions alongside a handoff prompt.** A turn that closes a
+session — or recommends one, or otherwise carries a ready-to-paste kickoff prompt
+— must not ALSO carry unanswered questions beside it. The two are read
+differently: a kickoff prompt is a large block the owner scans for
+completeness, so a decision list placed near one is ambiguous about ordering
+(does the prompt already assume these answers, or do they come after?) and, worse,
+is easily missed entirely behind the bulk. Both failures cost exactly what the
+decisions-at-the-close rule exists to prevent. Two orderings are correct, and the
+choice between them is token cost:
+
+- **Ask, then hand off.** Put the decisions in one turn, take the answers, and
+  emit the kickoff prompt in the NEXT turn already reflecting them. Prefer this
+  when an answer would change the prompt's content.
+- **Fold them in.** Put the decisions INSIDE the prompt as the first thing the
+  next session must resolve. Prefer this when the answers do not change anything
+  else in the prompt, since it costs one turn fewer.
+
+What is forbidden is the third arrangement: a prompt and a separate question list
+in the same turn.
+
 **Diagnosis scaffold — reconcile before concluding.** For a technical diagnosis
 carrying genuine ambiguity — multiple candidate causes, or multiple evidence
 sources (traces, logs, code, subagent reports) that may conflict — work it in the
