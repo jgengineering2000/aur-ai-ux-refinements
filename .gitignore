@@ -8,3 +8,5 @@ __pycache__/
 dist/
 build/
 *.spec
+server/server.port
+tools/rule-tests/real-cases.json

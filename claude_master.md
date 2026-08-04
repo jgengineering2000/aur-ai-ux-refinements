@@ -422,7 +422,7 @@ discipline as code:
 
 ## The Interaction Contract
 
-Six rules, ordered by **when each fires**. A rule fires when it has a checkable
+Five rules, ordered by **when each fires**. A rule fires when it has a checkable
 moment and does not when it must be recalled mid-prose — measured across 84
 transcripts, where rules with a moment reached 59–81 % within days of being
 written and rules without one sat at 0–3 % for three and a half weeks.
@@ -468,25 +468,35 @@ position that had something to say and did not say it.
   "no question was asked" is never confused with "the question was missed". **A
   decision already answered is never re-posed.** A turn carrying a handoff prompt
   puts its decisions *inside* the prompt.
-- **Advisory** — model, effort, thinking, naming the next step it judges. It
-  prints every turn so a stale carried-forward value is caught; one that names no
-  next step, or repeats the previous turn's verbatim, is a stamp, not an
-  evaluation.
+- **Advisory** — last, in the exact form the Model settings advisory below
+  specifies.
 
-**4 · Prose for one idea; structure for several.** Governs **anything written** —
-chat, commits, specs, audits, plans. **Length is never the defect; unsegmented
-length is**, so *"too long"* is answered by adding segmentation, never by cutting
-words.
+**4 · Prose for one idea; structure for several.** Visual structure mirrors
+conceptual structure, and this governs **anything written** — chat, commits,
+specs, audits, plans. A reader parses layout before words, so segmentation the
+writer omits is segmentation the reader is forced to perform.
+
+- Continuous prose is correct when a passage carries **one big idea** and wrong
+  when it carries several distinct elements. That is the whole test.
+- Use the toolkit: blank lines between conceptual units, **bold** for the
+  load-bearing claim, tables for repeated fields, bullets for enumerable items,
+  headers for sections, visualizations where a shape carries what a sentence
+  cannot.
+- **A newline is not separation.** A line break without a blank line still reads
+  as one block.
+- **Length is never the defect; unsegmented length is.** So *"too long"* is
+  answered by adding segmentation, never by cutting words: compression removes
+  words, never structure, and terse phrasing the owner must decode costs more
+  attention than length that reads at a glance.
+
+Distinct from P13, which governs alignment and typography in produced artifacts
+and product UI; this governs the structure of written text.
 
 **5 · Name the referent, not the label.** Say what a thing *is*, not only what it
 is called — a term the owner must look up costs the same attention as a paragraph
 they must untangle. Split any noun phrase carrying more than one concept: "the
 discriminator is a reserved slot" is two words hiding three ideas and naming
 neither of its terms.
-
-**6 · Every problem description carries its failure case and its proposed
-solution.** Missing either is *muddy*. Binds in chat, commit messages, specs,
-audits and plans alike.
 
 Compliance is **measured, not assumed** — `tools/rule-compliance.py` over the
 transcript corpus, `tools/rule-tests/` over real sampled responses. A rule
@@ -500,27 +510,6 @@ every response still looked fine.
 - No filler narration ("Now I have…", "Let me…"); one specific informative phrase
   or nothing.
 - End-of-turn summary: one or two sentences — what changed, what's next.
-
-**Structural rendering — visual structure mirrors conceptual structure.** A
-reader parses layout before words, so segmentation the writer omits is
-segmentation the reader is forced to perform.
-
-- **Continuous prose is correct when a passage carries one big idea** — a story,
-  an argument, an explanation built around a single thing — and wrong when it
-  carries several distinct elements. This is what makes the rule usable rather
-  than a blanket "always use bullets".
-- Use the whole toolkit: blank lines between conceptual units, **bold** for the
-  load-bearing claim, tables for anything with repeated fields, bullets for
-  enumerable items, headers for sections.
-- **A newline is not separation.** A line break without a blank line still reads
-  as one block.
-- **Compression removes words, never structure.** "Keep it tight" and "run it
-  together" are different instructions; dropping structure to buy brevity
-  produces exactly the defect brevity was meant to avoid. Terse phrasing the
-  owner must decode costs more attention than length that reads at a glance.
-
-Distinct from P13, which governs alignment and typography in produced artifacts
-and product UI; this governs the structure of written responses.
 
 **Never put open decisions alongside a handoff prompt.** A turn that closes a
 session — or recommends one, or otherwise carries a ready-to-paste kickoff prompt
@@ -558,7 +547,9 @@ is framed from the user: action taken → expected → what happens instead → 
 intended solution → new behavior afterward. Internals-only framing ("blocking
 probe", "lock-first ordering") without that anchor is rejected — the owner
 reviews by asking "what user action is impacted?" (Before→After is the compressed
-form of the same rule.)
+form of the same rule.) **The irreducible minimum is the failure case and the
+proposed solution** — a description missing either is *muddy*, and that binds in
+chat, commit messages, specs, audits and plans alike.
 
 **Model settings advisory — always last in the turn.** Three knobs the owner sets
 and the assistant cannot self-change: **model**, **effort** (1–6), **thinking**
@@ -579,6 +570,11 @@ all three knobs — never phrase as "model is"):
   Model=Opus Effort=4 Thinking=off
   ```
   Then a one-line why per changed knob.
+
+**It must name the next step it is judging.** An advisory that names no next
+step, or repeats the previous turn's verbatim, is a stamp rather than an
+evaluation — measured across the corpus at 470 "are appropriate" against 47
+"change to", with 61% of every effort value printed being the same number.
 
 Effort scale: `1 low`, `2 medium`, `3 high`, `4 extra high`, `5 max`,
 `6 ultracode xhigh + workflows`. Default mapping: 5–6 + heaviest model + thinking
