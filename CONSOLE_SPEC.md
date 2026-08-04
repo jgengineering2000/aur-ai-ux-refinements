@@ -282,12 +282,33 @@ timing baselines.
 Colour is not the only carrier: an amber field also goes semibold, so the row
 survives a colour-blind reader.
 
-**`sy` is judged on its own bound, not on headroom.** Kernel time is overhead
-rather than work: a machine spending sustained double digits in the kernel is
-busy being busy, which no admission threshold has anything to say about.
-Sustained `sy` above **14 %** warrants attention whatever the headroom figures
-report. This is the one threshold not streamed from the sampler, because it is
-not an admission question.
+Which level each field is judged at:
+
+| Field | Blue at | Amber at |
+|---|---|---|
+| `us`, `ni` | the quiescent idle bound | the headroom idle bound |
+| `sy` | 14 % | 30 % |
+| `wa` | the quiescent iowait bound | the headroom iowait bound |
+| `mem`, `stor` | the quiescent free bound | the reserve |
+| `swp` | any upward move — see below | — |
+
+`us`, `ni` and `sy` are the three shares that **add up to system load**, so the
+level for `us` and `ni` is read off the aggregate — via idle, which is what the
+gates are specified on — and applied to the contributors. A reader seeing `us`
+amber is being told the machine is loaded, not that user time crossed a line of
+its own.
+
+**`sy` and `wa` are special cases, judged on their own bounds.** The OS is
+efficient with the CPU, so kernel time is overhead rather than work: if `sy` is
+high the machine is in trouble no matter how much headroom the gates believe
+they have. `wa` is the same argument for storage. These are the only thresholds
+not streamed from the sampler, because they are not admission questions.
+
+**`swp` latches.** A swap-in is an EVENT, not a level: by the time anyone looks,
+the figure has often settled back and the row would read clean for a machine
+that has just paged. So **any upward move turns it blue and it stays blue** until
+aggregate CPU load falls below **5 %** — while load is still up, whatever caused
+the paging has not finished.
 
 ### 4.3 Freshness
 

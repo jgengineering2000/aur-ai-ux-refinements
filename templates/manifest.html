@@ -1672,12 +1672,22 @@ body {
   // quiescent enough to MEASURE on. resources.rs is blunt about why that
   // matters — a benchmark on a contended box "does not produce a weak number,
   // it produces a wrong one", and a wrong one enters the timing baselines.
-  // Kernel-time bound. Unlike every other threshold in this row it is NOT
-  // streamed from the sampler, because it is not an admission question: the
+  // Kernel-time bounds. Unlike every other threshold in this row these are NOT
+  // streamed from the sampler, because they are not an admission question: the
   // gates decide whether the machine has room, and this says the machine is
-  // spending itself on overhead rather than on work. Sustained system time
-  // above this is worth a look whatever the headroom figures say.
-  const SY_ATTENTION_PCT = 14;
+  // spending itself on overhead rather than on work. The OS is efficient with
+  // the CPU, so a high system share means something is wrong regardless of how
+  // much headroom the gates think they have.
+  const SY_QUIET_PCT = 14;
+  const SY_HEADROOM_PCT = 30;
+
+  // Swap pressure is STICKY. A swap-in is not a level to compare against a
+  // threshold, it is an EVENT — by the time you look, the number has often
+  // settled back and the row would read clean for a machine that just paged.
+  // So any upward move latches, and only a genuinely idle machine clears it:
+  // if load is still up, whatever caused the paging has not finished.
+  const SWAP_CLEAR_LOAD_PCT = 5;
+  let swapPressure = false, lastSwapUsedMb = null;
 
   function renderSys(s) {
     const el = document.getElementById('sysline');
@@ -1700,6 +1710,23 @@ body {
     const memFreePct = (s.mem_avail_mb !== undefined && s.mem_total_mb)
       ? 100 * s.mem_avail_mb / s.mem_total_mb : undefined;
 
+    // `us`, `ni` and `sy` are the three shares that add up to system load, so
+    // the level is read off the aggregate — via idle, which is what the gates
+    // are actually specified on — and applied to the contributors. A reader
+    // seeing `us` amber is being told the machine is loaded, not that user time
+    // specifically crossed a line of its own.
+    const loadLvl = lvl(lt(s.id, s.min_idle_pct), lt(s.id, s.q_min_idle_pct));
+
+    // Swap: latch on any upward move, clear only once the machine is quiet.
+    const swapUsedMb = (s.sw_total_mb !== undefined && s.sw_avail_mb !== undefined)
+      ? s.sw_total_mb - s.sw_avail_mb : null;
+    if (swapUsedMb !== null) {
+      if (lastSwapUsedMb !== null && swapUsedMb > lastSwapUsedMb) swapPressure = true;
+      lastSwapUsedMb = swapUsedMb;
+    }
+    const loadPct = (s.us || 0) + (s.ni || 0) + (s.sy || 0);
+    if (swapPressure && loadPct < SWAP_CLEAR_LOAD_PCT) swapPressure = false;
+
     el.innerHTML =
       // `us` — top's USER share. This column briefly showed idle under an `lo`
       // label, which inverted its sense: a reader who learned "high means busy"
@@ -1707,15 +1734,14 @@ body {
       // `min_idle_pct` rather than against itself because idle is what the
       // admission gates are actually specified on — so the column shows who
       // took the CPU, and goes amber exactly when the gate would refuse work.
-        f(pc(s.us), 'us', lvl(lt(s.id, s.min_idle_pct), lt(s.id, s.q_min_idle_pct)))
-      + f(pc(s.ni), 'ni')
+        f(pc(s.us), 'us', loadLvl)
+      + f(pc(s.ni), 'ni', loadLvl)
       // `sy` sits AFTER `ni`, beside `wa`: system time and iowait are the pair
       // that move together when the machine is in trouble, and reading them
       // apart is what let a rising kernel share pass unnoticed. Kernel time is
-      // overhead, not work — sustained double digits means the machine is busy
-      // being busy, so it is judged on its own bound rather than against a
-      // headroom figure that has nothing to say about it.
-      + f(pc(s.sy), 'sy', gt(s.sy, SY_ATTENTION_PCT))
+      // overhead, not work, so it is judged on its own bounds rather than
+      // against a headroom figure that has nothing to say about it.
+      + f(pc(s.sy), 'sy', lvl(gt(s.sy, SY_HEADROOM_PCT), gt(s.sy, SY_QUIET_PCT)))
       + f(pc(s.wa), 'wa', lvl(gt(s.wa, s.max_iowait_pct), gt(s.wa, s.q_max_iowait_pct)))
       // AVAILABLE against total, not used — the number a scheduler admits on,
       // and the one that answers "can this machine take more work".
@@ -1727,7 +1753,8 @@ body {
       + f(`${g(mb(s.mem_avail_mb))}/${g(mb(s.mem_total_mb))}`, '',
           lvl(lt(s.mem_avail_mb, s.reserve_mb), lt(memFreePct, s.q_min_free_ram_pct)))
           .replace('<b>', '<i>mem</i> <b>')
-      + f(`${g(mb(s.sw_avail_mb))}/${g(mb(s.sw_total_mb))}`, '')
+      + f(`${g(mb(s.sw_avail_mb))}/${g(mb(s.sw_total_mb))}`, '',
+          swapPressure ? 'warn' : false)
           .replace('<b>', '<i>swp</i> <b>')
       + f(`${g(mb(s.st_free_mb))}/${g(mb(s.st_total_mb))}`, '',
           lt(s.st_free_mb, s.disk_reserve_mb))
