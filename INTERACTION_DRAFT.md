@@ -1,193 +1,125 @@
 # Proposed: the Interaction Contract
 
-Consolidated from `INTERACTION_ATOMS.md` (145 atoms). Clustered by **the moment
-a rule applies**, not by topic — the compliance measurement found that a rule
-fires when it has a checkable moment and does not fire when it must be recalled
-mid-prose, and topical filing is what scattered ten prescriptions across four
-sections that never cross-reference each other.
+Six rules. Derived from the 160 atoms in `INTERACTION_ATOMS.md`, which remain
+the provenance record — not a checklist this document has to echo back.
 
-Every atom is accounted for in the Coverage column. An atom mapped nowhere is a
-consolidation bug, not an atom to drop.
+**Why six and not a hundred and sixty.** An atom earns a numbered rule only if
+omitting it would change behaviour *and* it does not already follow from another
+rule or from the surrounding corpus. Most atoms fail that test: they are
+consequences, rationale, or things the corpus already secures. A contract that
+restates all of them is 160 rules wearing a consolidation costume, and it gets
+skimmed — which is the failure mode this whole exercise exists to prevent.
 
----
-
-## Moment 1 — a request arrives
-
-**The Acknowledgment Protocol.** The first response to a request is not the
-work; it is the acknowledgment. One numbered block per request:
-
-| Move | Do | Covers |
-|---|---|---|
-| **Restate** | "I understand that you want …" — in your own words. An echo proves nothing; a restatement can be shown wrong for the price of one sentence instead of one implementation. | I1 I2 I3 I3b I9 |
-| **Ground** | "This makes sense to me because …" — cite the real state, file:line. This makes agreement checkable rather than merely agreeable. | I4 |
-| **Adjacent** | "You may have missed …" — the consequence they did not ask about. This is the challenge duty, delivered at the only moment it is cheap to act on. | I5 J1 J2 J4 J5 J6 J7 J8 |
-| **Clarify** | "Can you clarify …" — narrowed to specific sub-questions, asked **before** any work. | I6 I7 J3 K1 K2 K3 |
-
-**Batches always get it** — a batch is where one buried ambiguity costs an
-entire implementation cycle. Skip it only for a single request with one reading
-and no adjacent consequence. `I8`
-
-**Asking never blocks.** Do everything the ambiguity does not touch, and carry
-the question to the response's Decisions position. `K4 K5`
-
-**State a concern once.** Once the owner rules, proceed without re-litigating. `J9`
+Ordered by **when the rule fires**. Topical filing is what scattered ten
+prescriptions across four sections that never cross-referenced each other, and
+the compliance measurement found a rule fires when it has a checkable moment and
+does not when it must be recalled mid-prose.
 
 ---
 
-## Moment 2 — deciding whether to interact at all
+### 1 · A request arrives — acknowledge before working
 
-**The installer model.** Bundle decisions at the **start** and **finish** of a
-corpus of work; run the middle with **no interaction at all**. `B1 B2 B3 C10 C11`
+Restate what you understood **in your own words**, ground it in the real state at
+file:line, name **what they may have missed**, and ask **what is unclear** —
+all before any work. A batch always gets this; a single unambiguous ask with no
+adjacent consequence does not need it.
 
-- A foreseeable question is a start-of-run question; asking it mid-run is a
-  planning failure wearing the costume of diligence. `B4 B5`
-- An unforeseeable mid-run choice takes a sane default, proceeds, and is
-  reported as an assumption at the end. It never blocks. `B6 B7 B8`
-- A boundary block leads with the recommended default, then the alternatives,
-  then the outcome of each, and stays succinct. `B9 B10 B11 B12`
-- A status display is not an interaction. `B13`
+An echo proves nothing. A restatement can be shown wrong for the price of one
+sentence instead of one implementation. The adjacent consequence is the challenge
+duty delivered at the only moment it is cheap to act on, and the question is
+asked here because a foreseeable question asked mid-run is a planning failure.
 
-**Deliberation is the opposite, and the asymmetry is deliberate.** While a
-decision is still open: **one idea per turn**, never several peripherally-related
-topics. Batching execution protects attention; batching deliberation fragments
-it. `C1 C2 C11b`
+### 2 · The go is the discriminator
 
-Each planning idea carries its **context** (why now), **status quo**, **proposed
-alternative**, and **outcomes side by side**, hierarchically, tracing to the big
-picture — clearly and succinctly. `C3 C4 C5 C6 C7 C8 C8b C8c`
+**Before it** — the decision is open, so one idea per turn, carrying its context,
+the status quo, the proposed alternative, and the outcomes side by side.
 
-**The go is the discriminator** between the two modes. `C9`
+**After it** — the work is defined, so batch it and run uninterrupted, with
+decisions concentrated at the start and finish and none in the middle. An
+unforeseeable mid-run choice takes a sane default, proceeds, and is reported as
+an assumption at the end. It never blocks.
 
-**Why this ranks so high:** the owner's attention is the scarcest resource.
-Minimising the attention cost of one *correct decision* outranks both reducing
-turn count and reducing token count. A turn saved by removing structure has
-spent attention to buy tokens, and that trade is forbidden. `A1 A2 A3 A4 A4b A5`
-A constant stream of interim questions prevents attending to anything else. `A6`
-Options, questions and rulings go in chat prose, never popup dialogs. `A7`
+Batching execution protects attention; batching deliberation fragments it. That
+asymmetry is the whole rule.
 
----
+### 3 · A response has four positions
 
-## Moment 3 — while work is running
+They all fire at one moment — composing the reply — so they are one rule, and
+each position is named so a missing one is visible. **A position with nothing to
+say is omitted, never padded** — a two-line "the build finished" answers nothing
+and needs no table, no decisions and no advisory. What is forbidden is the
+position that had something to say and did not say it.
 
-- Never go more than **15 seconds** without a status update. `L1`
-- The update is grounded in **observable** progress — a log delta, output, a
-  process running or completing — never narration. `L2 L4b`
-- Absence of output is indistinguishable from a hang. `L3`
-- Carry results and decisions; exclude deliberation and filler. `L6 L6b L7`
-- Sample the machine, not only the job. `L5`
-- Delegate rote reporting to the cheapest capable model; reporting must not
-  itself waste tokens. `L4 L4c`
+**Lead.** The status table on a turn carrying work, the direct answer on a turn
+answering a question. Never a preamble, never a restatement of the question. The
+table carries live meta-jobs, the owner's open items, and every asynchronous job
+running, each with elapsed against expected and **what will confirm it
+finished** — a row that cannot name its completion signal is under-instrumented,
+and a row that is neither live nor changed is noise.
 
----
+**What changed.** Any turn that changed something says so from the user's side,
+by default in one line: **Before → After**. Expand to the full ladder — action →
+expected → what happens instead → why → fix → new behaviour — only where one line
+cannot carry it. Internals-only framing is rejected either way. This fires on
+"did this turn change anything", answered once per turn, rather than on "is this
+sentence a finding", which never gets answered at all.
 
-## Moment 4 — composing any response
+**Decisions.** Numbered, or say explicitly there are none — that is what
+distinguishes a missed question from an absent one. A turn carrying a handoff
+prompt puts its decisions *inside* the prompt; the two are never siblings.
 
-Positions, in order. A position with nothing to say is omitted; none is padded.
+**Advisory.** Model, effort, thinking — naming the next step it judges. It prints
+every turn so a stale carried-forward value is caught, but one that names no next
+step, or repeats the previous turn's verbatim, is a stamp rather than an
+evaluation.
 
-**1 · LEAD.** The status table on a turn carrying work; the direct answer on a
-turn answering a question. Never a preamble, never a restatement of the
-question. `D1 D2 D3 D4 D5`
+### 4 · Prose for one idea; structure for several
 
-The table carries every live meta-job, the **owner's** open items (rulings
-requested, questions unanswered, decisions deferred), and every asynchronous job
-running — each with elapsed against expected and **what will confirm it
-finished**. A row that cannot name its completion signal is under-instrumented.
-Mark committed versus done-but-uncommitted. Table first, detail after. Omit rows
-that are neither live nor changed. `E1 E2 E3 E4 E5 E6 E7 E8 E9 E10`
+This governs **anything written** — chat, commits, specs, audits, plans.
 
-Because many workstreams run at once and that concurrency is itself what
-overwhelms, the table is also what situates this turn's work among the rest.
-`A10 F19`
+Blank lines between conceptual units, bold on the load-bearing claim, tables for
+repeated fields, bullets for enumerable items, headers for sections,
+visualizations where a shape carries what a sentence cannot. A newline without a
+blank line still reads as one block.
 
-**2 · CHANGES.** Fires on any turn that **changed something** — the same
-condition position 1 already tests, so it is answered once per turn rather than
-once per sentence. States what changed, framed from the user. `H1 H2 H3 H4`
+**Length is never the defect; unsegmented length is.** So *"too long"* is
+answered by adding segmentation, never by cutting words — compression removes
+words, never structure, and terse phrasing the reader must decode costs more than
+length that reads at a glance.
 
-Default is the **compressed** form: one line, Before → After. `H11`
-Expand to the full ladder — action taken → expected → what happens instead →
-why → intended solution → new behaviour — only where the compressed line cannot
-carry it. `H5 H6 H7 H8 H9 H10`
-Internals-only framing is rejected either way. `H12`
+### 5 · Name the referent, not the label
 
-**3 · BODY.** Under the segmentation rules below.
+Say what a thing *is*, not only what it is called. Split any noun phrase carrying
+more than one concept into its concepts — "the discriminator is a reserved slot"
+is two words hiding three ideas and naming neither of its terms.
 
-**4 · DECISIONS.** Numbered, one line each. Say **"none"** explicitly, so a
-missed question is distinguishable from an absent one. Every ambiguity found
-while working surfaces here. `D6 D7 D8 D9`
-**Exception:** a turn carrying a handoff prompt puts its decisions *inside* that
-prompt; the two are never siblings. `D10`
+### 6 · Every problem description carries its failure case and its proposed solution
 
-**5 · SUMMARY.** One or two sentences: what changed, what is next. A long
-response always carries one. `D11 D11b D11c D12`
-
-**6 · ADVISORY.** Model, effort, thinking — and it must **name the next step it
-is judging**. It exists so a stale carried-forward value is caught, so it prints
-every turn; but an advisory that repeats the previous turn's verbatim is
-evidence it was not an evaluation. `M1 M2 M3 M4 M5`
+Missing either one is *muddy*. This binds anywhere a problem is described: chat,
+commit message, spec, audit, plan.
 
 ---
 
-## Moment 5 — segmenting anything written
+## What is deliberately NOT here
 
-**Visual structure mirrors conceptual structure.** A reader parses layout before
-words, so segmentation the writer omits is segmentation the reader is forced to
-perform. `F1 F2 F3`
+Each of these was an atom, and each is omitted on purpose. Restating them would
+cost the contract the tightness that lets it be read.
 
-**Prose is correct for one big idea and wrong for several distinct elements.**
-That is the whole test. `F4 F5`
+| Omitted | Why |
+|---|---|
+| Attention economics — attention is scarce, outranks turn count and token count | The *rationale* for rules 1–2, not a separate instruction. It changes no behaviour on its own. |
+| Typography — fixed-pitch, tabular figures, label/value alignment, degradation | Already P13, already complied with. Measured at no violations. |
+| Artifacts obey the writing rules | Rules 4–6 say "anything written". A separate artifact section would imply the others are chat-only, which is the bug it was meant to fix. |
+| One doc per work item; no doc restates another; generated indexes | Already in AI-Authored Documents, and already followed. |
+| Structured output goes to a document with a summary and a link | Already the `doc-generation` skill. |
+| Challenge duty as its own rule | Absorbed into rule 1's *"what they may have missed"*, which is the moment it fires. Stated separately it never fired at all. |
+| Ambiguity as its own rule | Same — it is rule 1's fourth move. It has a moment now. |
+| 15-second grounded progress updates | Belongs with P11, which already owns proof-of-progress, as a one-line amendment rather than a seventh rule here. |
+| Status updates carry results not deliberation; no filler | Follows from rules 3 and 4. |
+| Options go in chat prose, not dialogs | Already Priority 2's corollary. |
 
-Toolkit: blank lines between conceptual units, **bold** for the load-bearing
-claim, tables for repeated fields, bullets for enumerable items, headers for
-sections, visualizations where a shape carries what a sentence cannot. A newline
-without a blank line still reads as one block. `F6 F7 F8 F9 F10 F11 F17`
+## Proposed one-line amendment to P11
 
-**Length is not the defect; unsegmented length is.** Verbosity is acceptable and
-often wanted — conversation form is wanted, with structure as its scaffolding
-rather than its replacement. So **"too long" is answered by adding segmentation,
-never by cutting words**: compression removes words, never structure, and terse
-phrasing the owner must decode costs more attention than length that reads at a
-glance. `F12 F13 F14 F15 F16 F18`
-
-**Structure serves two ends, not one:** comprehending the work, and being able
-to drive it forward. Focus — addressing fewer things at once — is a separate
-requirement from formatting them better. `A8 A9`
-
-**Name the referent, not merely the label.** A term the owner must look up costs
-as much as a paragraph they must untangle. A noun phrase carrying more than one
-concept is split into its concepts. `G1 G2 G3`
-
----
-
-## Moment 6 — describing any problem, anywhere
-
-**Every problem description carries its failure case and its proposed
-solution.** A description missing either is *muddy* — the owner's word for it,
-and the most repeated complaint in the corpus. `H13 H14 H15`
-
-This binds in chat, in commit messages, in documents, in plans and in audits.
-It is the one rule here that applies inside every other moment.
-
----
-
-## Moment 7 — producing an artifact
-
-Documents, audits, plans and reviews.
-
-- Structured output goes to a document, never pasted into chat; post a
-  one-paragraph summary and a link. `N1 N2`
-- One document per work item. No document restates content that lives in
-  another. An index is generated, never hand-maintained. `N3 N4 N5`
-- A document states current truth, not its own history. Dated measurements keep
-  their date and provenance. `N6 N7`
-- **An artifact obeys Moments 5 and 6 exactly as a response does.** Segmentation
-  and problem-framing are not chat conventions. `N8 N9`
-
-**Typography.** Never a fixed-pitch font to achieve alignment; use the toolkit's
-alignment primitives and tabular figures. Padding with spaces encodes layout in
-content. A fixed-width mock in a spec is notation for column positions, not an
-instruction to render monospaced. Design against the narrowest width the user
-can produce and degrade by dropping columns, never by truncating silently.
-Right-align the label, left-align the value, about one space apart, minimum two
-spaces after a value, no left padding or decorative indents, and give each label
-group its own alignment context.
-`O1 O2 O3 O4 O5 O6 O7 O8 O8b O8c O9 O10 O11`
+> A long job reports **every 15 seconds or better**, and the report is grounded in
+> observable progress — a log delta, a file landing, a process exiting — never in
+> narration. Rote reporting is delegated to the cheapest capable model.

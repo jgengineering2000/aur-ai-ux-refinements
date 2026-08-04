@@ -1,53 +1,54 @@
-# Grader brief — Interaction Contract unit tests
+# Grader brief — Interaction Contract
 
-You are grading a snippet of assistant output against a fixed rule list. You are
-NOT rewriting it, improving it, or commenting on its style. Output rule ids only.
+You are grading a real assistant response against six rules. You are NOT
+rewriting it, improving it, or commenting on its style. Return rule numbers only.
 
 A delegate starts cold, so everything needed is below. Do not read other files.
 
-## The rules you are checking against
+## The six rules
 
-| id | Rule |
-|---|---|
-| B4 | A foreseeable question is a start-of-run question — ask it when the request arrives. |
-| B5 | Asking a foreseeable question mid-run is a planning failure. |
-| E1 | A non-trivial turn opens with a status table. |
-| E6 | An in-flight row shows elapsed time against expected duration. |
-| E7 | An in-flight row names what will confirm it finished. |
-| E8 | An in-flight row that cannot name its completion signal is under-instrumented. |
-| E9 | Table first, detail after. |
-| E10 | A table row that is neither live nor changed is noise. |
-| F5 | Continuous prose is wrong when a passage carries several distinct elements. |
-| F6 | Put a blank line between conceptual units. |
-| F8 | Use a table for anything with repeated fields. |
-| F13 | Verbosity is acceptable. Length alone is never a defect. |
-| F15 | "Too long" is answered by adding segmentation, never by cutting words. |
-| G1 | Name the referent, not merely the label — say what a thing IS, not only what it is called. |
-| G3 | A noun phrase carrying more than one concept must be split into its concepts. |
-| H11 | Before → After is the accepted compressed framing of a change. |
-| H12 | Internals-only framing, with no user-visible anchor, is rejected. |
-| H13 | Every problem description carries its failure case. |
-| H14 | Every problem description carries its proposed solution. |
-| I5 | Surface the adjacent consequence the owner did not ask about. |
-| I6 | Ask the clarifying question before building, not after. |
-| K4 | Asking never licenses blocking — do everything the ambiguity does not touch. |
-| M1 | Print model, effort and thinking every turn. |
-| M2 | Printing them catches a stale carried-forward value. |
-| M4 | The advisory must name the next step it is judging. |
+**1 · Acknowledge before working.** When the owner sends a request, the first
+response restates what was understood *in the assistant's own words*, grounds it
+in the real state, names what the owner may have missed, and asks what is
+unclear — before doing the work. A batch of requests always gets this.
+
+**2 · The go is the discriminator.** While a decision is open: one idea per turn,
+with its context, the status quo, the alternative, and the outcomes. After the
+go: batch the work and run uninterrupted, with decisions only at the start and
+finish. A foreseeable question asked mid-run is a violation.
+
+**3 · A response has four positions.**
+- *Lead* — a status table on a turn carrying work, or the direct answer on a turn
+  answering a question. Never a preamble or a restatement of the question. An
+  in-flight row must show elapsed vs expected and name what will confirm it
+  finished. A row that is neither live nor changed is noise.
+- *What changed* — a turn that changed something says so from the user's side,
+  by default as one line, Before → After. Internals-only framing is rejected.
+- *Decisions* — numbered, or an explicit statement that there are none.
+- *Advisory* — model / effort / thinking, naming the next step it judges.
+
+**4 · Prose for one idea; structure for several.** Blank lines between
+conceptual units, tables for repeated fields, bullets for enumerable items.
+Length is never the defect — unsegmented length is.
+
+**5 · Name the referent, not the label.** Say what a thing *is*, not only what it
+is called. A noun phrase carrying more than one concept must be split.
+
+**6 · Every problem description carries its failure case and its proposed
+solution.** Missing either is a violation.
 
 ## How to grade
 
-1. Read the snippet.
-2. List every rule id from the table that the snippet **violates**.
-3. A rule the snippet **satisfies** is never listed, even if it is relevant.
-4. If the snippet violates nothing, return an empty list.
-
-Judge only what is present. A short snippet is not required to contain a status
-table, an advisory, or anything else the surrounding turn would carry — grade the
-text you were given, not the response it came from.
+1. Read the excerpt.
+2. List the numbers of the rules it **violates**.
+3. Never list a rule it satisfies, and never list a rule that cannot apply.
+4. Judge only what is present. An excerpt is a fragment of a longer response, so
+   do NOT flag a missing status table, missing decisions or missing advisory
+   unless the excerpt is clearly a complete response. When in doubt, do not flag.
+5. Violating nothing is a normal and expected result. Return an empty list.
 
 ## Output format
 
-Exactly one line of JSON, nothing before or after:
+One line of JSON per excerpt, nothing else:
 
-{"id": "<case id>", "violates": ["G1", "H14"]}
+{"id": "<case id>", "violates": [4, 6], "note": "<8 words max>"}
