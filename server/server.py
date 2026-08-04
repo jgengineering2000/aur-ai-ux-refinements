@@ -77,6 +77,9 @@ _CONFIG_DEFAULTS = {
     "ai_context_exclude": ["__pycache__"],
     # Documents pinned into the manifest header, as {"label", "href"} pairs.
     "header_links": [],
+    # Regexes pulling columns out of a one-shot report's own header, as
+    # {column: pattern}. The report format is the project's; the table is not.
+    "oneshot_fields": {},
 }
 
 
@@ -1346,6 +1349,155 @@ _LAST_LOAD = {}          # pid -> last measured %CPU, for non-sampling readers
 _cpu_lock = threading.Lock()
 
 
+# ── One-shot reports ────────────────────────────────────────────────────────
+#
+# A crash report is a one-shot artifact: written once by a tool that then exits,
+# never appended to. That is what makes it safe to cache forever on (mtime,
+# size) — the real directory holds ~495 of them totalling 121 MB, and reparsing
+# that on a ten-second poll would make the tab unusable.
+#
+# What can be read generically is the same for any project: name, size, age. The
+# useful columns — which process died and why — live inside the file in a
+# project-owned format, so the patterns come from `server.config.json` rather
+# than being baked in here. `ps` output is the one exception worth building in:
+# it is a standard format, not a project convention, so resolving a pid to its
+# command line through it is generic even though the report that embeds it
+# is not.
+
+_ONESHOT_CACHE = {}
+_oneshot_lock = threading.Lock()
+
+# A `ps` row: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND. Tree output
+# prefixes the command with drawing characters, which are stripped — they encode
+# a parent relationship the table does not show.
+# re.M is load-bearing: without it `^` anchors to the start of the whole file
+# and this never matches a single row, silently handing every lookup to the
+# apport fallback — which yields a bare binary path with no arguments and looks
+# like a working column.
+_RE_PS_ROW = re.compile(
+    r"^\S+\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+"
+    r"\S+\s+\S+\s+(.*)$", re.M)
+_RE_TREE_ART = re.compile(r"^[|\\_\s`-]+")
+
+
+def _command_for_pid(text: str, pid: str):
+    """The command line of `pid`, from any embedded `ps` output in `text`.
+
+    Ordered by trustworthiness rather than by position: a row whose own pid
+    field matches is the process itself, while an `apport` row merely mentions
+    it as an argument and encodes the path with `!` separators. The first is
+    evidence, the second is a fallback used only when the process was already
+    gone by the time the report ran.
+    """
+    for m in _RE_PS_ROW.finditer(text):
+        if m.group(1) == pid:
+            cmd = _RE_TREE_ART.sub("", m.group(2)).strip()
+            if cmd:
+                return cmd
+    m = re.search(r"apport\b[^\n]*?--\s+(\S+)", text)
+    if m:
+        return m.group(1).replace("!", "/")
+    return None
+
+
+def _parse_oneshot(path: str, st, fields):
+    """Header fields and the triggering command for one report."""
+    try:
+        with open(path, errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    out = {}
+    for name, pattern in fields.items():
+        try:
+            m = re.search(pattern, text, re.M)
+        except re.error:
+            continue
+        if m:
+            out[name] = (m.group(1) if m.groups() else m.group(0)).strip()
+    pid = out.get("pid")
+    if pid and pid.isdigit():
+        out["command"] = _command_for_pid(text, pid)
+    return out
+
+
+def console_oneshots(*, daemon_dir=None, now=None, **_ignored):
+    """Every one-shot report, newest first.
+
+    Never pruned automatically. These are the record of something going wrong,
+    and a table that quietly deletes them is worse than no table — deletion is
+    the reader's decision, taken per row.
+    """
+    r = _console_roots(daemon_dir=daemon_dir)
+    now = now or time.time()
+    fields = CONFIG.get("oneshot_fields") or {}
+    rows = []
+    if not CONSOLE_ONESHOT_PREFIXES:
+        return {"rows": [], "bytes": 0}
+    try:
+        names = sorted(r["daemon_dir"].glob("*.log"))
+    except OSError:
+        names = []
+    total = 0
+    for pth in names:
+        if not pth.name.startswith(CONSOLE_ONESHOT_PREFIXES):
+            continue
+        try:
+            st = pth.stat()
+        except OSError:
+            continue
+        total += st.st_size
+        key = str(pth)
+        with _oneshot_lock:
+            hit = _ONESHOT_CACHE.get(key)
+            if hit and hit[0] == st.st_mtime and hit[1] == st.st_size:
+                parsed = hit[2]
+            else:
+                parsed = _parse_oneshot(key, st, fields) or {}
+                _ONESHOT_CACHE[key] = (st.st_mtime, st.st_size, parsed)
+        rows.append({
+            "id": f"daemon:{pth.name}", "name": pth.name,
+            "size": st.st_size, "age_s": int(now - st.st_mtime),
+            "when": _local_stamp(None, st.st_mtime),
+            "pid": parsed.get("pid"), "reason": parsed.get("reason"),
+            "command": parsed.get("command"),
+        })
+    rows.sort(key=lambda x: -(x["age_s"] * -1))
+    rows.sort(key=lambda x: x["age_s"])
+    return {"rows": rows, "bytes": total}
+
+
+def console_delete_oneshots(names, *, daemon_dir=None):
+    """Delete named one-shot reports. Returns what actually went.
+
+    Every name is validated and the path CONSTRUCTED from the known root — the
+    same discipline as every other id here — and the prefix is re-checked at
+    delete time so this endpoint can never be talked into removing a daemon's
+    live log.
+    """
+    r = _console_roots(daemon_dir=daemon_dir)
+    gone, refused = [], []
+    for name in names or []:
+        if (not isinstance(name, str) or not _RE_NAME.match(name)
+                or not name.endswith(".log")
+                or not name.startswith(CONSOLE_ONESHOT_PREFIXES)):
+            refused.append(name)
+            continue
+        path = _contained(r["daemon_dir"] / name, r["daemon_dir"])
+        if path is None or not path.is_file():
+            refused.append(name)
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            refused.append(name)
+            continue
+        with _oneshot_lock:
+            _ONESHOT_CACHE.pop(str(path), None)
+        gone.append(name)
+    return {"deleted": gone, "refused": refused}
+
+
 def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
                       registry=None):
     """Just the numbers for the daemon rows, refreshed on top(1)'s cadence.
@@ -1942,6 +2094,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._serve_ai_context(parsed.path[len("/ai-context/"):])
         elif parsed.path == "/goto-aur":
             self._goto_aur()
+        elif parsed.path == "/oneshots":
+            self._json(console_oneshots())
         elif parsed.path == "/procstats":
             self._json(console_procstats())
         elif parsed.path == "/consoles":
@@ -2116,8 +2270,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path.startswith("/annotations/"):
             self._post_annotations(parsed.path[len("/annotations/"):])
+        elif parsed.path == "/oneshots/delete":
+            self._delete_oneshots()
         else:
             self.send_error(404)
+
+    def _delete_oneshots(self):
+        """Delete selected one-shot reports.
+
+        POST rather than GET because it destroys data, and a GET would be
+        followed by a link prefetcher. The response reports what actually went
+        and what was refused, per name — a bulk delete that answers only "ok"
+        cannot be checked, and this is the one operation here with no undo.
+        """
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            payload = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, OSError):
+            self.send_error(400, "bad JSON")
+            return
+        names = payload.get("names")
+        if not isinstance(names, list) or not names:
+            self.send_error(400, "expected a non-empty `names` list")
+            return
+        self._json(console_delete_oneshots(names))
 
     def do_OPTIONS(self):
         self.send_response(200)

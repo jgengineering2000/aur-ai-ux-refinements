@@ -343,6 +343,51 @@ body {
   color: var(--mu);
 }
 .dmn-head span:not(:first-child) { text-align: right; }
+/* One-shot report table. A grid rather than a <table> for the same reason the
+   daemon list is: independent column sizing, and the annotation system leaves
+   div grids alone. */
+.crash-grid {
+  display: grid;
+  grid-template-columns: 22px 1fr 62px 60px 108px 52px 44px;
+  gap: 1px 10px;
+  margin: 8px 0 4px;
+  overflow-x: auto;
+}
+.crash-head, .crash-row {
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1;
+  padding: 3px 8px; border: 1px solid transparent; border-radius: 5px;
+  align-items: baseline;
+}
+.crash-head { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--mu); }
+.crash-head span:not(:nth-child(2)) { text-align: right; }
+.crash-row:hover { background: rgba(56,189,248,.07); }
+.crash-row.sel { background: rgba(251,191,36,.10); border-color: var(--yl); }
+.crash-cmd {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; cursor: pointer;
+}
+.crash-cmd:hover { color: var(--ac); text-decoration: underline; }
+.crash-n {
+  text-align: right; color: var(--mu); font-size: 11px; white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums;
+}
+/* A signal name is a category, not a number — it reads left-aligned with the
+   command it belongs to rather than right-aligned with the figures. */
+.crash-why { text-align: left !important; color: var(--yl); }
+.crash-bar { display: flex; align-items: center; gap: 10px; padding: 2px 8px 10px; }
+.crash-del {
+  background: transparent; border: 1px solid var(--bd); border-radius: 5px;
+  color: var(--mu); cursor: pointer; font: inherit; font-size: 11px; padding: 3px 10px;
+}
+.crash-del:disabled { opacity: .4; cursor: default; }
+.crash-del.armed { border-color: var(--rd); color: var(--rd); }
+.crash-count { font-size: 11px; color: var(--mu); }
+.crash-toggle {
+  background: transparent; border: 1px solid var(--bd); border-radius: 4px;
+  color: var(--mu); cursor: pointer; font: inherit; font-size: 10px;
+  padding: 1px 7px;
+}
+.crash-toggle:hover { border-color: var(--ac); color: var(--ac); }
 .console-note { font-size: 11px; color: var(--mu); padding: 0 16px 12px; }
 .chip.open { border-color: var(--ac); color: var(--ac); background: rgba(56, 189, 248, 0.10); }
 
@@ -1052,9 +1097,13 @@ body {
       // "crash reports", not "crash dumps" — these are text diagnostics written
       // by our own crash handler, and calling them dumps sends a reader looking
       // for a core file to open in a debugger. There is none.
+      // The crash-report count is the way IN to the report table, not a
+      // footnote: 495 files and 69MB were reachable only through an archive
+      // toggle that gave no reason to look.
       const bits = [];
-      if (g.hidden_oneshot) bits.push(g.hidden_oneshot + ' crash reports');
       if (g.hidden_old) bits.push(g.hidden_old + ' older');
+      const crashBtn = (isDaemon && g.hidden_oneshot)
+        ? `<button class="crash-toggle" id="crash-toggle">${g.hidden_oneshot} crash reports</button>` : '';
       const hidden = (isDaemon && bits.length)
         ? `<span class="doc-date">${bits.join(' · ')}</span>` : '';
       const branch = g.branch ? `<span class="console-branch">${esc(g.branch)}</span>` : '';
@@ -1063,7 +1112,7 @@ body {
       const head = isDaemon
         ? `<div class="console-head">
              <span class="console-agent daemons">${esc(g.agent)}</span>
-             <span class="console-title">${esc(g.title)}</span>${hidden}
+             <span class="console-title">${esc(g.title)}</span>${hidden}${crashBtn}
            </div>`
         : `<div class="console-head">
              <span class="console-agent">${esc(g.agent)}</span>${branch}
@@ -1074,7 +1123,8 @@ body {
       // The machine reading sits under the daemon list, where the processes it
       // describes are. Rebuilt with the group, repopulated on the 3s beat.
       const sys = isDaemon
-        ? '<div id="sysline" class="sysline"></div>'
+        ? '<div id="crash-panel" hidden></div>'
+          + '<div id="sysline" class="sysline"></div>'
           + '<div id="spoolline" class="sysline"></div>' : '';
       return `
         <div class="console-group">
@@ -1796,6 +1846,98 @@ body {
           : '')
       + (bad ? `<span class="sf bad">over limit — capture continues</span>` : '');
   }
+
+  // ── One-shot report table ─────────────────────────────────────────────────
+  //
+  // Retention is MANUAL, always. These are the record of something going wrong,
+  // and a table that quietly deletes them is worse than no table — so nothing
+  // here expires, and every removal is a selection the reader made.
+  let crashRows = [], crashSel = new Set(), crashArmed = false;
+
+  function crashAge(s) {
+    if (s < 3600) return Math.round(s / 60) + 'm';
+    if (s < 86400) return Math.round(s / 3600) + 'h';
+    return Math.round(s / 86400) + 'd';
+  }
+
+  function renderCrashes() {
+    const el = document.getElementById('crash-panel');
+    if (!el) return;
+    if (!crashRows.length) { el.innerHTML = '<div class="empty">No reports.</div>'; return; }
+    const bytes = crashRows.reduce((a, r) => a + r.size, 0);
+    const head = '<div class="crash-head"><span></span><span>process</span>'
+      + '<span>pid</span><span class="crash-why">why</span><span>when</span>'
+      + '<span>size</span><span>age</span></div>';
+    // Built as elements, not interpolated markup: a command line is arbitrary
+    // program input and this page has been frozen once already by a string that
+    // arrived in an attribute.
+    el.innerHTML = `<div class="crash-bar">
+        <button class="crash-del" id="crash-del" disabled></button>
+        <span class="crash-count">${crashRows.length} reports · ${fmtBytes(bytes)} · never auto-deleted</span>
+      </div><div class="crash-grid">${head}</div>`;
+    const grid = el.querySelector('.crash-grid');
+    crashRows.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'crash-row' + (crashSel.has(r.name) ? ' sel' : '');
+      const box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = crashSel.has(r.name);
+      box.addEventListener('change', () => {
+        box.checked ? crashSel.add(r.name) : crashSel.delete(r.name);
+        crashArmed = false;
+        renderCrashes();
+      });
+      row.appendChild(box);
+      const cmd = document.createElement('span');
+      cmd.className = 'crash-cmd';
+      cmd.textContent = r.command || r.name;
+      cmd.title = (r.command || r.name) + '  —  click to open';
+      cmd.addEventListener('click', () => openPane(r.id, r.name));
+      row.appendChild(cmd);
+      [[r.pid, ''], [r.reason, ' crash-why'], [r.when, ''],
+       [fmtBytes(r.size), ''], [crashAge(r.age_s), '']].forEach(([v, extra]) => {
+        const c = document.createElement('span');
+        c.className = 'crash-n' + extra;
+        c.textContent = v == null ? '—' : v;
+        row.appendChild(c);
+      });
+      grid.appendChild(row);
+    });
+    const del = el.querySelector('#crash-del');
+    del.disabled = crashSel.size === 0;
+    del.className = 'crash-del' + (crashArmed ? ' armed' : '');
+    // Two clicks, not a modal: the first arms and says what will happen, the
+    // second does it. Irreversible, so it never happens on one click.
+    del.textContent = crashSel.size === 0 ? 'Delete selected'
+      : crashArmed ? `Really delete ${crashSel.size}? This cannot be undone`
+                   : `Delete ${crashSel.size} selected`;
+    del.onclick = () => {
+      if (!crashArmed) { crashArmed = true; renderCrashes(); return; }
+      const names = [...crashSel];
+      fetch('/oneshots/delete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({names})
+      }).then(r => r.json()).then(res => {
+        (res.deleted || []).forEach(n => crashSel.delete(n));
+        crashArmed = false;
+        loadCrashes();
+      }).catch(() => { crashArmed = false; renderCrashes(); });
+    };
+  }
+
+  function loadCrashes() {
+    fetch('/oneshots').then(r => r.json()).then(d => {
+      crashRows = d.rows || [];
+      renderCrashes();
+    }).catch(() => {});
+  }
+
+  document.getElementById('console-list').addEventListener('click', (e) => {
+    if (!e.target.closest('#crash-toggle')) return;
+    const el = document.getElementById('crash-panel');
+    if (!el) return;
+    el.hidden = !el.hidden;
+    if (!el.hidden && !crashRows.length) loadCrashes();
+  });
 
   function refreshProcStats() {
     const panel = document.getElementById('console-panel');
