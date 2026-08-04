@@ -91,7 +91,7 @@ binary on the SAME canonical resource under the chosen tool, driven by standard
 clients (P9); a trap that ALWAYS restores; mine output with the crystallised
 script. The harness is the method — ad-hoc hand sequences are how guardrails get
 skipped. Full stage detail: the **audit-methodology skill**. (MTI instances:
-`tests/dev_instrument.sh`, `tests/atspi_guard.sh`, `tests/syscall_audit.py`.)
+`tests/dev_instrument.sh`, `tests/syscall_audit.py`.)
 
 ## 6. Capture principles at the right altitude
 
@@ -107,7 +107,7 @@ change behavior in a session that never touches its topic?" — if no,
 always-loading it is Priority-2 waste. The skill's trigger lives in its
 description; where a missed trigger is costly, an always-loaded principle keeps
 a one-line "invoke the X skill before Y" anchor (P10→logging-discipline and
-MTI's atspi-safety are the pattern; a project's memory-recall corpus is the
+the doc-generation skill is the pattern; a project's memory-recall corpus is the
 same shape — consult the **memory-hygiene skill** when setting one up or once
 it starts feeling bloated, rather than re-deriving the fix each time it recurs).
 Reiterating a principle correctly in chat is NOT capturing
