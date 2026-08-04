@@ -65,8 +65,11 @@ cannot carry it. Internals-only framing is rejected either way. This fires on
 sentence a finding", which never gets answered at all.
 
 **Decisions.** Numbered, or say explicitly there are none — that is what
-distinguishes a missed question from an absent one. A turn carrying a handoff
-prompt puts its decisions *inside* the prompt; the two are never siblings.
+distinguishes a missed question from an absent one. **A decision the owner has
+already answered is never re-posed**; re-asking a settled question is friction
+wearing the costume of diligence, and it costs exactly what this position exists
+to save. A turn carrying a handoff prompt puts its decisions *inside* the
+prompt; the two are never siblings.
 
 **Advisory.** Model, effort, thinking — naming the next step it judges. It prints
 every turn so a stale carried-forward value is caught, but one that names no next
@@ -105,6 +108,12 @@ commit message, spec, audit, plan.
 Each of these was an atom, and each is omitted on purpose. Restating them would
 cost the contract the tightness that lets it be read.
 
+"Already in the corpus" only justifies omission where compliance is
+**measured and good**. Typography qualifies — measured at no violations. A rule
+that is present and still violated does not qualify, and re-posing a settled
+decision is the worked example: P5 forbids it, P5 is loaded every turn, and it
+was violated three times in three turns. That clause is now in rule 3.
+
 | Omitted | Why |
 |---|---|
 | Attention economics — attention is scarce, outranks turn count and token count | The *rationale* for rules 1–2, not a separate instruction. It changes no behaviour on its own. |
@@ -123,3 +132,69 @@ cost the contract the tightness that lets it be read.
 > A long job reports **every 15 seconds or better**, and the report is grounded in
 > observable progress — a log delta, a file landing, a process exiting — never in
 > narration. Rote reporting is delegated to the cheapest capable model.
+
+---
+
+## Housecleaning — what this replaces
+
+Merging without these deletions ADDS a seventh scattered location instead of
+replacing four. Each deletion was checked for who cites it.
+
+| Paragraph in `claude_master.md` | Verdict |
+|---|---|
+| *Response shape* | **Delete** — rule 3's Lead absorbs it, conditional lead included. |
+| *Status table* bullets (both) | **Delete** — rule 3's Lead, in-flight clause included. |
+| *Decisions at the close* | **Delete** — rule 3's Decisions. |
+| *User-scenario framing* | **KEEP** — the diagnosis scaffold cites it by name; rule 3 references it rather than replacing it. |
+| Handoff-prompt rule | **KEEP** — governs more than decisions; rule 3 defers to it. |
+| P13, interaction budget, diagnosis scaffold | **KEEP** — typography, timing and reasoning frame are different concerns. |
+
+Net effect on the always-loaded corpus: roughly −15 lines. Not a saving worth
+pursuing on its own, and not claimed as one.
+
+## The uncomfortable part — wording is probably not the mechanism
+
+The rules that stuck were written on 2026-08-02. They are also the rules the
+owner **actively corrected in conversation** across those same sessions. "Was
+written down" cannot be separated from "was enforced by someone watching", and
+the honest reading is that the second did more work — which is why three weeks
+of a correctly-worded rule produced zero adoption.
+
+If that is right, no revision of the text above is sufficient by itself, and the
+durable mechanism is measurement: `tools/rule-compliance.py` over the corpus,
+`tools/rule-tests/` over real sampled responses. Run them periodically; a number
+that is falling gets attention before it reaches zero. **This is the
+recommendation to keep if only one survives.**
+
+Baseline recorded 2026-08-04: status table 81 %, advisory 69 %, decisions 56 %,
+Before/After 12 %, user-scenario 0 %, ambiguity raised 6 %, structure 69 %.
+
+---
+
+# Two further proposals, unrelated to interaction
+
+Kept here only so they live in a tracked file rather than in an untracked HTML
+document. They belong to `claude_master.md`'s engineering sections, not to the
+contract above.
+
+## P15 register — a new hazard class
+
+> - **Privileged paths no configuration can open.** An agent's own configuration
+>   directory — settings, hooks, permission allow-lists — refuses unattended
+>   writes BY DESIGN, and cannot be made writable through the very config it
+>   protects. The failure is not the refusal but the diagnosis: it presents as a
+>   permissions bug, is "fixed" in settings, appears to work, and returns. Treat
+>   a prompt that survives a correct-looking config change as a boundary, not a
+>   bug, and move the work out rather than widening the permission.
+
+## Preamble extension — tooling is generic
+
+The split is already stated three times for the written corpus and never for
+code. An extension to the existing sentence rather than a sixteenth principle:
+
+> Applies to every project inheriting from AUR; project `CLAUDE.md` files add
+> specifics and must not duplicate this. **The same split governs code, not only
+> prose: a conceptual framework — the document system and its locations, the
+> build system's design and tools, the test harness, the console — is AUR's and
+> is inherited, while what a project DOES is the project's. A project-local fork
+> of AUR tooling is a debt to reconcile, never a variant to maintain.**
