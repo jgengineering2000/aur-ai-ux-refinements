@@ -1,7 +1,12 @@
 # Cross-Project Engineering Rules — AUR Master
 
 Applies to every project inheriting from AUR; project `CLAUDE.md` files add
-specifics and must not duplicate this. Distribution: `~/.claude/CLAUDE.md`,
+specifics and must not duplicate this. **The same split governs code, not
+only prose: a conceptual framework — the document system and its locations,
+the build system's design and tools, the test harness, the console — is
+AUR's and is inherited, while what a project DOES is the project's. A
+project-local fork of AUR tooling is a debt to reconcile, never a variant
+to maintain.** Distribution: `~/.claude/CLAUDE.md`,
 `~/.claude/git-ip-guard.sh`, and the AUR skills under `~/.claude/skills/`
 (audit-methodology, logging-discipline) are symlinks to this repo
 (`claude_master.md`, `hooks/`, `skills/`). Principles (what
@@ -131,7 +136,10 @@ from a file. Full field/injection/sink contract: the **logging-discipline skill*
 **11. Every non-trivial task carries a proof-of-progress; silence is not
 success.** Absence-of-output looks identical to a hang, so decide the liveness
 signal when you launch (exit code, log tail, verbose flag, counter) — a long job
-with no progress output is under-instrumented, which is itself a defect. No
+with no progress output is under-instrumented, which is itself a defect. A
+long job reports **every 15 seconds or better**, grounded in observable
+progress — a log delta, a file landing, a process exiting — never in
+narration; rote reporting is delegated to the cheapest capable model. No
 observable progress within ~10s = suspected hung: check `ps`/wchan, then
 `strace -f` / open fds — a 0%-CPU blocked process and a busy loop are different
 diagnoses. Don't wait it out; don't poll with another blocking loop. (PROCESS.md's
@@ -241,6 +249,13 @@ added the first time one is.
   acquiring; report `state`/`wchan` *before* reaping, because the evidence
   distinguishing a hung shutdown from a kernel-wedged process is destroyed by
   the reap (P8 owns this).
+- **Privileged paths no configuration can open.** An agent's own configuration
+  directory — settings, hooks, permission allow-lists — refuses unattended writes
+  BY DESIGN, and cannot be made writable through the very config it protects. The
+  failure is not the refusal but the diagnosis: it presents as a permissions bug,
+  is "fixed" in settings, appears to work, and returns. Treat a prompt that
+  survives a correct-looking config change as a boundary, not a bug, and move the
+  work out rather than widening the permission.
 - **Irreversible and outward-facing actions.** Anything whose failure costs more
   than a retry — destructive replacement without a staged swap, an operation
   that publishes, a change to a shared or session-scoped resource.
@@ -405,6 +420,79 @@ discipline as code:
   Direction is **code→spec only**: a doc never drives a code change; a divergence
   is flagged for human action, never auto-applied.
 
+## The Interaction Contract
+
+Six rules, ordered by **when each fires**. A rule fires when it has a checkable
+moment and does not when it must be recalled mid-prose — measured across 84
+transcripts, where rules with a moment reached 59–81 % within days of being
+written and rules without one sat at 0–3 % for three and a half weeks.
+
+**1 · A request arrives — acknowledge before working.** Restate what you
+understood **in your own words**, ground it in the real state at file:line, name
+**what they may have missed**, and ask **what is unclear** — all before any work.
+A batch always gets this; a single unambiguous ask with no adjacent consequence
+does not. An echo proves nothing; a restatement can be shown wrong for the price
+of one sentence instead of one implementation. The adjacent consequence is the
+challenge duty at the only moment it is cheap to act on, and the question is
+asked here because a foreseeable question asked mid-run is a planning failure.
+
+**2 · The go is the discriminator.** Before it, the decision is open: one idea
+per turn, carrying its context, the status quo, the proposed alternative and the
+outcomes side by side. After it, the work is defined: batch it and run
+uninterrupted, decisions at the start and finish and none in the middle. An
+unforeseeable mid-run choice takes a sane default, proceeds, and is reported as
+an assumption at the end; it never blocks. Batching execution protects attention,
+batching deliberation fragments it, and that asymmetry is the whole rule.
+
+**3 · A response has four positions.** They fire at one moment — composing the
+reply — so they are one rule, and each is named so a missing one is visible. **A
+position with nothing to say is omitted, never padded**; what is forbidden is the
+position that had something to say and did not say it.
+
+- **Lead** — the status table on a turn carrying work, the direct answer on a
+  turn answering a question. Never a preamble, never a restatement of the
+  question. The table carries every live meta-job, the owner's open items
+  (rulings requested, questions unanswered, decisions deferred), and every
+  asynchronous job running — each with **elapsed against expected** and **what
+  will confirm it finished**. Mark **committed vs done-but-uncommitted**; that is
+  the durability signal (Priority 4). A row that cannot name its completion
+  signal is P15's under-instrumented action — instrument it, never omit it. A row
+  that is neither live nor changed is noise.
+- **What changed** — any turn that changed something says so from the user's
+  side, by default in one line: **Before → After**. Expand to the full
+  User-scenario ladder only where one line cannot carry it. Internals-only
+  framing is rejected either way. This fires on "did this turn change anything",
+  answered once per turn, not on "is this sentence a finding", which never gets
+  answered at all.
+- **Decisions** — numbered, one line each, or say explicitly there are none, so
+  "no question was asked" is never confused with "the question was missed". **A
+  decision already answered is never re-posed.** A turn carrying a handoff prompt
+  puts its decisions *inside* the prompt.
+- **Advisory** — model, effort, thinking, naming the next step it judges. It
+  prints every turn so a stale carried-forward value is caught; one that names no
+  next step, or repeats the previous turn's verbatim, is a stamp, not an
+  evaluation.
+
+**4 · Prose for one idea; structure for several.** Governs **anything written** —
+chat, commits, specs, audits, plans. **Length is never the defect; unsegmented
+length is**, so *"too long"* is answered by adding segmentation, never by cutting
+words.
+
+**5 · Name the referent, not the label.** Say what a thing *is*, not only what it
+is called — a term the owner must look up costs the same attention as a paragraph
+they must untangle. Split any noun phrase carrying more than one concept: "the
+discriminator is a reserved slot" is two words hiding three ideas and naming
+neither of its terms.
+
+**6 · Every problem description carries its failure case and its proposed
+solution.** Missing either is *muddy*. Binds in chat, commit messages, specs,
+audits and plans alike.
+
+Compliance is **measured, not assumed** — `tools/rule-compliance.py` over the
+transcript corpus, `tools/rule-tests/` over real sampled responses. A rule
+written and never measured is how three of these sat at zero for weeks while
+every response still looked fine.
+
 ## Communication
 
 - Status updates during long tasks: 1–12 words every 15–30 seconds; results and
@@ -412,22 +500,6 @@ discipline as code:
 - No filler narration ("Now I have…", "Let me…"); one specific informative phrase
   or nothing.
 - End-of-turn summary: one or two sentences — what changed, what's next.
-- **Status table on every non-trivial turn.** Open with a compact numbered table
-  of every live meta-job — the assistant's *and* the owner's open items (rulings
-  requested, questions unanswered, decisions deferred), because those are the ones
-  that age out silently. Mark **committed vs done-but-uncommitted** explicitly;
-  that is the durability signal (Priority 4). Table first, detail after. It is the
-  session-level analogue of PROCESS §8's component checklist, and the passive
-  channel that makes an uninterrupted run legible rather than opaque.
-- **In-flight work is part of that table, not separate from it.** Every
-  asynchronous thing currently running — a build, a test gate, a monitor, a
-  spawned agent, a sampler — appears with its **elapsed time against its expected
-  duration** and **what will confirm it finished**. Omitting it is the most common
-  way the table lies: the owner reads a list of settled items and cannot tell that
-  three jobs are running, which defeats the table's entire purpose, since making
-  an uninterrupted run legible is *why* the interaction budget can batch execution
-  at all. An in-flight row that cannot name its completion signal is P15's
-  under-instrumented action, and the fix is to instrument it, not to omit the row.
 
 **Structural rendering — visual structure mirrors conceptual structure.** A
 reader parses layout before words, so segmentation the writer omits is
@@ -449,16 +521,6 @@ segmentation the reader is forced to perform.
 
 Distinct from P13, which governs alignment and typography in produced artifacts
 and product UI; this governs the structure of written responses.
-
-**Response shape.** Lead with the answer — never a preamble, never a restatement
-of the question. On a turn carrying work, the status table *is* that lead; on a
-turn answering a question, the direct answer is. Close with the decisions needed
-from the owner, numbered, one line each — and say so in one line when there are
-none, so "no question was asked" is never confused with "the question was
-missed". **Name the referent, not just the label:** when mentioning something the
-owner may not share a referent for, say what it is, not merely what it is called
-— a term they must look up costs the same attention as a paragraph they must
-untangle.
 
 **Never put open decisions alongside a handoff prompt.** A turn that closes a
 session — or recommends one, or otherwise carries a ready-to-paste kickoff prompt
