@@ -1,0 +1,86 @@
+{
+  "_comment": [
+    "Unit tests for the Interaction Contract (INTERACTION_DRAFT.md).",
+    "Each case is a snippet of assistant output plus the rule ids a correct",
+    "reviewer must flag, and ids it must NOT flag. The must_not list is what",
+    "keeps a grader honest: a reviewer that flags everything scores well on",
+    "must_flag alone and is useless. Positive controls carry an empty",
+    "must_flag for the same reason.",
+    "Graded by a cheap delegate; see grader-prompt.md."
+  ],
+  "cases": [
+    {
+      "id": "T1-reserved-slot",
+      "origin": "owner-supplied, 2026-08-04",
+      "text": "I claimed the discriminator is 'a reserved slot'.",
+      "must_flag": ["G1", "G3", "H12", "H13", "H14"],
+      "must_not_flag": ["F8", "E1"],
+      "why": "Unnamed referent (discriminator between what and what), a two-word noun phrase carrying three concepts, pure mechanism with no user anchor, and neither the failure case nor the proposed solution."
+    },
+    {
+      "id": "T2-wall-of-text",
+      "text": "The build now uses two profiles and the cache was moved under the target directory and clippy no longer re-runs on unchanged crates and the harness reads FEATURES from the Makefile so the gate and the tests agree and this also fixed the incremental rebuild that was evicting artifacts.",
+      "must_flag": ["F5", "F6"],
+      "must_not_flag": ["F13", "H13"],
+      "why": "Six distinct elements in one unsegmented paragraph. Length is NOT the defect and must not be flagged as one."
+    },
+    {
+      "id": "T3-cut-not-segment",
+      "text": "Shortened my explanation to save your time: the daemon rows changed.",
+      "must_flag": ["F15", "H14"],
+      "must_not_flag": ["F13"],
+      "why": "Answered 'too long' by cutting words rather than adding segmentation, and states a change with no Before/After or solution."
+    },
+    {
+      "id": "T4-stamped-advisory",
+      "text": "Model settings are appropriate @\nModel=Opus Effort=4 Thinking=off",
+      "must_flag": ["M4"],
+      "must_not_flag": ["M1", "M2"],
+      "why": "Printed, so M1 and M2 are satisfied. Names no next step, so it is a stamp rather than an evaluation."
+    },
+    {
+      "id": "T5-foreseeable-midrun",
+      "text": "I implemented the first nine items. Before I start the tenth: did you mean the blue threshold applies to every field, or only the ones with streamed bounds?",
+      "must_flag": ["B4", "B5"],
+      "must_not_flag": ["K4"],
+      "why": "The question was answerable from the original message and should have been asked at receipt. It did not block, so K4 is satisfied."
+    },
+    {
+      "id": "T6-stale-table-row",
+      "text": "| 4 | Pending insights | Deferred to last |\n| 5 | Crash report table | Not started |",
+      "must_flag": ["E10"],
+      "must_not_flag": ["E1", "E9"],
+      "why": "Rows neither live nor changed since the previous turn; the table exists and leads, so E1 and E9 hold."
+    },
+    {
+      "id": "T7-inflight-no-signal",
+      "text": "| 2 | Tier A gate | running in background |",
+      "must_flag": ["E6", "E7", "E8"],
+      "must_not_flag": ["E10"],
+      "why": "An in-flight row with no elapsed-vs-expected and nothing named that will confirm it finished. It IS live, so E10 does not apply."
+    },
+    {
+      "id": "T8-good-acknowledgment",
+      "origin": "positive control",
+      "text": "I understand that you want the console list to span 48 hours instead of 15 minutes. This makes sense to me because CONSOLE_LIVE_WINDOW_S is 900 at server.py:91, which shows 2 sessions where 48h shows 15. You may have missed that the spool has no retention policy at all — 27 directories, 7.9M, no prune anywhere. Can you clarify whether retention should be time-based or size-based?",
+      "must_flag": [],
+      "must_not_flag": ["G1", "H13", "H14", "F5", "I5", "I6"],
+      "why": "All four moves present, grounded at file:line, adjacent consequence surfaced, question asked before building. Nothing to flag."
+    },
+    {
+      "id": "T9-good-before-after",
+      "origin": "positive control",
+      "text": "Before: `mti-sidecar.log` and `mti_sidecar_err.log` appeared as two unrelated rows with no pid. After: one `mti-sidecar` row with out and log cells, each showing its own size and liveness.",
+      "must_flag": [],
+      "must_not_flag": ["H11", "H12", "H13", "H14"],
+      "why": "The compressed Before/After form, user-visible on both sides. Correct and complete as written."
+    },
+    {
+      "id": "T10-half-muddy",
+      "text": "The transcript attributed tool results to the user, which is wrong because tool results arrive inside user records.",
+      "must_flag": ["H14"],
+      "must_not_flag": ["H13", "G1"],
+      "why": "The failure case IS stated and the referent is named, so H13 and G1 hold. No proposed solution, so it is half-muddy."
+    }
+  ]
+}
