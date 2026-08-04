@@ -2,363 +2,1828 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Document Manifest — MTI .claude/</title>
+<title>Document Manifest</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#1e1e2e;--sf:#27273a;--bd:#3a3a55;--tx:#cdd6f4;--mu:#7f849c;
-  --ac:#89b4fa;--gn:#a6e3a1;--am:#f9e2af;--rd:#f38ba8;--pu:#cba6f7;
-  --cy:#89dceb;--cb:#181825;--de:#313244;}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:13px;line-height:1.6;background:var(--bg);color:var(--tx);
-  padding:32px;max-width:1100px;margin:0 auto}
-.bar{position:sticky;top:0;z-index:100;background:var(--cb);
-  border-bottom:1px solid var(--bd);padding:8px 16px;
-  display:flex;align-items:center;gap:12px;margin:-32px -32px 28px;
-  font-size:12px;color:var(--mu)}
-.bar strong{color:var(--ac);font-size:13px}
-h1{font-size:20px;font-weight:700;color:var(--ac);margin-bottom:4px;overflow-wrap:break-word}
-h2{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--mu);margin:28px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--bd)}
-.meta{font-size:12px;color:var(--mu);margin-bottom:20px}
-/* Tables */
-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
-thead tr{border-bottom:2px solid var(--bd)}
-th{background:var(--de);color:var(--mu);font-size:10px;font-weight:700;
-  letter-spacing:.07em;text-transform:uppercase;padding:7px 10px;
-  text-align:left;white-space:nowrap;user-select:none}
-th[data-col]{cursor:pointer}
-th[data-col]:hover{color:var(--ac)}
-th.sort-asc::after{content:" ↑"}
-th.sort-desc::after{content:" ↓"}
-td{padding:7px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
-tr:hover td{background:rgba(137,180,250,.04)}
-td.dt{font-family:"SF Mono","Fira Code",Consolas,monospace;font-size:11px;
-  color:var(--mu);white-space:nowrap}
-td.name a{color:var(--ac);text-decoration:none;font-weight:500}
-td.name a:hover{text-decoration:underline}
-td.name a.unread{color:#d4909f}
-td.desc{color:var(--mu);font-size:11px}
-/* Annotation badge */
-.ann-badge{display:inline-block;min-width:22px;text-align:center;
-  font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;
-  font-family:"SF Mono","Fira Code",Consolas,monospace;cursor:default}
-.ann-0{background:rgba(127,132,156,.12);color:var(--mu);border:1px solid rgba(127,132,156,.2)}
-.ann-lo{background:rgba(137,180,250,.15);color:var(--ac);border:1px solid rgba(137,180,250,.3);cursor:help}
-.ann-hi{background:rgba(203,166,247,.15);color:var(--pu);border:1px solid rgba(203,166,247,.3);cursor:help}
-/* Annotation popover */
-#ann-pop{position:fixed;display:none;z-index:200;max-width:380px;
-  background:var(--cb);border:1px solid var(--pu);border-radius:6px;
-  padding:10px 12px;font-size:11px;line-height:1.5;pointer-events:none;
-  box-shadow:0 4px 20px rgba(0,0,0,.5)}
-#ann-pop .pop-key{color:var(--pu);font-family:monospace;font-size:10px;margin-right:6px}
-#ann-pop .pop-val{color:var(--tx)}
-#ann-pop .pop-row{margin-bottom:5px;border-bottom:1px solid var(--bd);padding-bottom:5px}
-#ann-pop .pop-row:last-child{margin-bottom:0;border-bottom:none;padding-bottom:0}
-/* Spec table links */
-td.spec-name a{color:var(--cy);text-decoration:none;font-weight:500;font-family:monospace;font-size:11px}
-td.spec-name a:hover{color:var(--ac);text-decoration:underline}
-/* Refresh button */
-.refresh-btn{background:none;border:1px solid var(--bd);color:var(--mu);
-  font-size:11px;padding:2px 10px;border-radius:4px;cursor:pointer;font-family:inherit}
-.refresh-btn:hover{border-color:var(--ac);color:var(--ac)}
-#status{font-size:11px;color:var(--mu);margin-left:6px}
-/* Header row */
-.header-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:0}
-.header-row>div:first-child{flex:1;min-width:0}
-.header-row+h2{margin-top:4px}
-/* Prompt box */
-.prompt-box{background:var(--cb);border:1px solid var(--bd);border-radius:6px;
-  padding:10px 14px;min-width:200px;max-width:340px;flex-shrink:0}
-.prompt-box-title{font-size:10px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--mu);margin-bottom:8px}
-.prompt-chip{display:inline-block;background:var(--de);border:1px solid var(--bd);
-  color:var(--tx);font-size:11px;padding:3px 9px;border-radius:4px;cursor:pointer;
-  margin:2px 3px 2px 0;font-family:inherit;transition:border-color .12s,color .12s}
-.prompt-chip:hover{border-color:var(--ac);color:var(--ac)}
-.prompt-chip.copied{border-color:var(--gn);color:var(--gn)}
+:root {
+  --bg: #0f172a;
+  --sf: rgba(15, 23, 42, 0.95);
+  --card: #1e293b;
+  --bd: #334155;
+  --tx: #f0f0f0;
+  --mu: #94a3b8;
+  --ac: #38bdf8;
+  --ac2: #818cf8;
+  --gn: #34d399;
+  --yl: #fbbf24;
+  --rd: #f87171;
+  --cb: #0f172a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--tx);
+  min-height: 100vh;
+}
+/* Horizontal insets are named once so the console can cancel them exactly.
+   A pane that must reach the browser edge has to pull back out of EVERY
+   ancestor's padding, and hardcoding those numbers in the pane rule is how
+   they drift apart the first time one of them changes. */
+:root { --pad-x: 24px; --group-pad-x: 16px; }
+.container { max-width: 1100px; margin: 0 auto; padding: 32px var(--pad-x); }
+/* The Console tab drops the reading-width cap: a log line is 100+ characters
+   before its message even starts, so a column sized for prose wastes most of
+   the window on the one tab where width IS the content. Applied to the whole
+   panel rather than to the panes alone — a full-width pane under a 1100px chip
+   row reads as a layout fault. */
+.container.wide { max-width: none; }
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--ac), var(--ac2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header .subtitle {
+  font-size: 12px;
+  color: var(--mu);
+  margin-top: 2px;
+}
+.header .meta-right {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.header .badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.header .badge.docs {
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--ac);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.header .badge.specs {
+  background: rgba(129, 140, 248, 0.12);
+  color: var(--ac2);
+  border: 1px solid rgba(129, 140, 248, 0.25);
+}
+.header .badge.ai {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--gn);
+  border: 1px solid rgba(52, 211, 153, 0.25);
+}
+.group-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--mu);
+  padding: 16px 16px 4px;
+}
+.group-header:first-child { padding-top: 4px; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--bd);
+  margin-bottom: 24px;
+}
+.tab {
+  /* Horizontal padding is halved because it was doing two jobs and doing the
+     second one badly: it spaced the labels AND set the width of the active
+     underline, so a comfortable click target produced 40px of dead air between
+     every pair of tabs and an underline 40px wider than its word. Four tabs
+     wrapped "AI Context" in a narrow IDE panel. */
+  padding: 10px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mu);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--tx); }
+.tab.active {
+  color: var(--ac);
+  border-bottom-color: var(--ac);
+}
+/* Live streams sit apart from the three document tabs — they are an
+   instrument, not a corpus. Right-aligned rather than fourth-in-line. */
+.tab.right { margin-left: auto; }
+
+/* Console panel */
+.console-group { padding: 12px var(--group-pad-x) 14px; border-radius: 6px; }
+.console-group + .console-group { border-top: 1px solid rgba(51, 65, 85, 0.5); }
+.console-head { display: flex; align-items: baseline; gap: 10px; width: 100%; }
+.console-agent {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--ac);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.console-agent.daemons {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--gn);
+  border-color: rgba(52, 211, 153, 0.25);
+}
+.console-title {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.console-branch {
+  font-size: 11px;
+  color: var(--mu);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+/* Chips wrap at narrow widths — the layout loses columns, never content. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--tx);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.chip:hover { border-color: var(--ac); color: var(--ac); }
+.chip .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--gn);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.chip.stdout { border-color: rgba(56, 189, 248, 0.35); color: var(--ac); }
+.capture { font-size: 11px; opacity: .65; white-space: nowrap; }
+.capture.gap { color: #d9a441; opacity: .95; }
+
+/* One row, no box. A border on four sides would cost two characters of width on
+   each side and buy nothing the rule above does not already say; horizontal
+   space is the scarce resource in this panel. Figures are TABULAR so the
+   numbers hold their columns as they change — that is what stops the row
+   jittering, not a fixed-pitch font (AUR P13). */
+.sysline {
+  margin-top: 6px; padding-top: 5px;
+  border-top: 1px solid var(--bd);
+  font-size: 11.5px; line-height: 1.5;
+  /* Packed to the smallest width the fields allow, then CLIPPED. No wrapping
+     and no horizontal scrollbar: the gap is cut ~30% because the weight and
+     opacity contrast between label and value already does most of the
+     separating, and whatever runs past the viewport is simply out of sight. */
+  display: flex; flex-wrap: nowrap; gap: 0 10px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.sysline .sl { opacity: .55; letter-spacing: .04em; }
+.sysline .sf { white-space: nowrap; opacity: .8; }
+.sysline .sf b { font-weight: 600; opacity: 1; }
+.sysline .sf i { font-style: normal; opacity: .6; }
+/* Amber = the gate would refuse work on this axis. Blue = fine for work, not
+   quiescent enough to measure on. Colour is not the only carrier — the amber
+   field also goes semibold — so the row survives a colour-blind reader. */
+.sysline .sf.bad { color: #d9a441; opacity: 1; }
+.sysline .sf.bad b { font-weight: 700; }
+.sysline .sf.warn { color: #6ea8d8; opacity: .95; }
+.sysline .sf.gap { color: #d9a441; opacity: .95; }
+/* Transcript view. Turns are BLOCKS, not log lines: a conversation is read,
+   not scanned, so it wraps and breathes where a console clips and holds its
+   columns. */
+.tr-turn { padding: 7px 10px; border-left: 2px solid transparent; white-space: pre-wrap; word-break: break-word; }
+.tr-turn.user { border-left-color: var(--ac); background: rgba(56,189,248,.06); }
+.tr-turn.assistant { border-left-color: rgba(148,163,184,.35); }
+.tr-who { font-size: 10px; font-weight: 700; letter-spacing: .06em;
+          text-transform: uppercase; opacity: .5; margin-bottom: 3px; }
+.tr-turn.user .tr-who { color: var(--ac); opacity: .8; }
+/* A tool call is one line naming what it acted on. Four hundred of these are
+   the bulk of a transcript, so each costs one line and no more. */
+.tr-call { font-size: 11.5px; opacity: .7; margin: 2px 0 0 0; }
+.tr-call b { font-weight: 600; opacity: .9; }
+.tr-res { font-size: 11.5px; margin-top: 2px; }
+.tr-res > summary { cursor: pointer; opacity: .5; list-style: none; }
+.tr-res > summary::marker { content: ""; }
+.tr-res > summary:hover { opacity: .9; }
+.tr-res pre { margin: 3px 0 0 0; padding: 5px 7px; white-space: pre-wrap;
+              word-break: break-word; background: rgba(148,163,184,.08);
+              border-radius: 4px; max-height: 40vh; overflow: auto; }
+.chips .none { font-size: 12px; color: var(--mu); font-style: italic; }
+.console-title.session { font-size: 14px; margin-top: 2px; }
+
+/* The session id, quotable back to an assistant to recover or reference a
+   session. Dim because it is a lookup key, not something to read. */
+.sid {
+  font-size: 10.5px; color: var(--mu); opacity: .55;
+  font-variant-numeric: tabular-nums; margin-left: auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch;
+}
+.sid:hover { opacity: 1; }
+
+/* The one divider between the machine's daemons and the AI sessions. It states
+   the window and the capture constraint where the reader meets them BEFORE the
+   list, rather than in a footnote below everything it qualifies. */
+.section-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px var(--group-pad-x) 4px;
+  font-size: 12px; font-weight: 600; color: var(--tx);
+  border-top: 1px solid var(--bd); margin-top: 4px;
+}
+.section-head span {
+  font-size: 11px; font-weight: 400; color: var(--mu); font-style: italic;
+}
+
+/* Daemon rows: one process per line.
+   ONE grid holds the headings AND every row, each row a `subgrid` spanning all
+   tracks. That is the whole fix for two problems that kept recurring:
+
+   Separate grids cannot share a content-sized column — the heading measured
+   "PROCESS" while the rows measured "mti_sidecar_err", so any auto/fit-content
+   track resolved to two different widths and nothing lined up. That forced the
+   name column to a fixed width, and a fixed track is exactly what left a dead
+   gap as wide as the names themselves whenever a name was shorter. Under one
+   grid `max-content` measures all of it at once: the column is as wide as the
+   longest name and not a pixel wider.
+
+   Slack collects in the trailing 1fr, so the numbers sit against the name.
+
+   When the tracks genuinely do not fit the table SCROLLS rather than hiding
+   columns — hiding them meant scrolling right revealed nothing and the only
+   way to reach RSS was to widen the whole window.
+
+   Alignment is grid tracks plus tabular figures, never spaces padded into the
+   text: a padded column re-aligns itself every time a live number changes. */
+.dmn-grid {
+  display: grid;
+  grid-template-columns: max-content 52px 30px 48px 68px 46px 52px 52px 1fr;
+  gap: 1px 10px;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+.dmn-head, .dmn-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  text-align: left;
+}
+.dmn-row {
+  align-items: baseline;
+  background: transparent;
+  border-radius: 5px;
+  color: var(--tx);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dmn-row:hover { background: rgba(56, 189, 248, 0.07); border-color: var(--bd); }
+.dmn-row.open { border-color: var(--ac); color: var(--ac); background: rgba(56, 189, 248, 0.10); }
+.dmn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.dmn-name .dot[hidden] { display: inline-block; visibility: hidden; }
+.dmn-n {
+  text-align: right;
+  color: var(--mu);
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* The row is the DAEMON; the two trailing cells are its channels, and each is
+   independently openable — which is why the row is a div and the CHANNELS are
+   the buttons. A button cannot nest inside a button, and opening a 700MB
+   product log because the reader wanted the small captured stream is not a
+   choice worth forcing. Reset the UA button styling so a channel cell measures
+   and aligns exactly like the plain number cells beside it. */
+.dmn-open {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--mu);
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+.dmn-open:hover { border-color: var(--bd); color: var(--tx); }
+.dmn-open.open  { border-color: var(--ac); color: var(--ac); background: rgba(56, 189, 248, 0.10); }
+/* Liveness is per CHANNEL, not per row: a daemon can be writing its own log
+   long after the shell that captured its stderr exited. */
+.dmn-open.live  { color: var(--ac); }
+.dmn-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mu);
+}
+.dmn-head span:not(:first-child) { text-align: right; }
+.console-note { font-size: 11px; color: var(--mu); padding: 0 16px 12px; }
+.chip.open { border-color: var(--ac); color: var(--ac); background: rgba(56, 189, 248, 0.10); }
+
+/* Stream panes.
+   These render INSIDE the page rather than in a popped window: the manifest is
+   read through the IDE's Simple Browser, a sandboxed webview that drops
+   window.open without raising — so a popup-based viewer is a button that does
+   nothing. Stacking panes here also keeps several streams visible at once,
+   which is the whole point of having more than one. */
+/* Panes render directly beneath the chip row that opened them, inside their own
+   group — not hoisted into a separate stack, so a stream stays visually
+   attached to the chip it came from. */
+.group-panes, #console-orphans { display: flex; flex-direction: column; gap: 10px; }
+/* Panes reach the BROWSER edge, not merely the panel's content box. The chip
+   row is indented by the group's padding and the page's — right for chips,
+   wrong for a console — so the pane stack cancels both. Borders go with it:
+   a side border at the viewport edge is just a stray line. */
+.group-panes { margin-inline: calc(-1 * (var(--pad-x) + var(--group-pad-x))); }
+#console-orphans { margin-inline: calc(-1 * var(--pad-x)); }
+.group-panes .pane, #console-orphans .pane {
+  border-left: none;
+  border-right: none;
+  border-radius: 0;
+}
+.group-panes:not(:empty) { margin-top: 10px; }
+#console-orphans:not(:empty) { margin-top: 14px; }
+.pane {
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  background: var(--card);
+  overflow: hidden;
+}
+/* Horizontal space is the scarce resource in an IDE panel, so the pane's own
+   inset is the minimum that still reads as a margin rather than a clipped
+   edge. Named once: the body must match the head or the log text and the title
+   start on different columns. */
+:root { --pane-inset: 6px; }
+.pane-head { padding: 7px var(--pane-inset); border-bottom: 1px solid var(--bd); }
+/* Title bar: name, path, and the window controls LOCKED to the upper right.
+   The controls are a non-shrinking, non-wrapping flex item and the path is the
+   only element allowed to take or give up space, so the corner is fixed no
+   matter how long the path is or how narrow the pane gets. */
+.pane-titlebar { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; }
+.pane-label { font-size: 13px; font-weight: 600; color: var(--ac); flex: 0 0 auto; }
+/* The path truncates on the LEFT: the leading directories are what every stream
+   has in common, and the filename at the end is what identifies it.
+   `direction: rtl` moves the overflow — and so the ellipsis — to the inline
+   start. The text itself still renders left-to-right because a U+200E is
+   prepended when it is set (see setSrc): with an RTL base direction the leading
+   "/" is a neutral at the paragraph edge and would otherwise jump to the far
+   end, rendering "/home/x/y.log" as "home/x/y.log/".
+   `unicode-bidi: plaintext` looks like the tidier fix and is not one — it also
+   cancels the left-side overflow, putting the ellipsis back on the right. */
+.pane-src {
+  font-size: 10px;
+  color: var(--mu);
+  font-family: 'JetBrains Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;          /* without this a long path refuses to shrink */
+  direction: rtl;
+  text-align: left;
+}
+/* Mode toggles sit on their own row, so wrapping them can never displace the
+   window controls above. */
+.pane-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.pill {
+  font-size: 10px; font-weight: 600; padding: 2px 6px;
+  border-radius: 10px; border: 1px solid; white-space: nowrap;
+}
+.pill.live { color: var(--gn); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.12); }
+.pill.idle { color: var(--yl); border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.12); }
+.pill.dead { color: var(--rd); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.12); }
+.pane-btn {
+  background: var(--bg); border: 1px solid var(--bd); border-radius: 5px;
+  color: var(--mu); font-family: inherit; font-size: 10px; font-weight: 600;
+  padding: 3px 8px; cursor: pointer;
+}
+.pane-btn:hover { border-color: var(--ac); color: var(--ac); }
+.pane-btn.on { border-color: var(--ac); color: var(--ac); }
+.pane-body {
+  height: 260px;
+  overflow: auto;
+  padding: 8px var(--pane-inset);
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 8;
+  background: var(--cb);
+}
+.pane-body.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pane-body .sep { color: var(--yl); font-weight: 700; }
+/* Hide Headers. The text is still in the DOM — only its display is dropped —
+   so the toggle is reversible and works on already-rendered lines. */
+.pane-body.nohdr .hdr { display: none; }
+.pane-body .lvl { color: var(--mu); }
+/* Minimized: the body is hidden but NOT discarded, and its pane keeps polling,
+   so restoring shows everything that arrived while it was collapsed. */
+.pane.min .pane-body { display: none; }
+.pane.min .pane-head { border-bottom: none; }
+
+/* Window controls, upper right. */
+.win-ctl { display: flex; align-items: center; gap: 1px; flex: 0 0 auto; }
+.pane-titlebar .pill { flex: 0 0 auto; }
+.win-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--mu);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 5px;
+  cursor: pointer;
+}
+.win-btn:hover { background: rgba(148, 163, 184, 0.18); color: var(--tx); }
+.win-btn.on { color: var(--ac); }
+.win-btn.close:hover { background: var(--rd); color: #fff; }
+
+/* Maximize fills the HTML display area. The pane goes fixed over the page; the
+   browser window is not touched and the log's own metrics do not change — it is
+   the same view with more of it visible. */
+.pane.max {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  border-radius: 0;
+  border: none;
+}
+.pane.max .pane-body { height: auto; flex: 1; }
+.pane.max { display: flex; flex-direction: column; }
+.pane.max .pane-src { max-width: none; }
+
+/* Controls */
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+.search {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--tx);
+  font-size: 13px;
+  padding: 8px 12px;
+  font-family: inherit;
+}
+.search:focus { outline: none; border-color: var(--ac); }
+.sort-btn {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  color: var(--mu);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.sort-btn:hover { border-color: var(--ac); color: var(--ac); }
+/* Header badges that are LINKS. Previously each carried a style attribute
+   repeating eight declarations inline — which is why adding a second one
+   duplicated them rather than reusing them. */
+.badge.link-aur, .badge.link-pinned {
+  text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
+}
+.badge.link-aur {
+  background: rgba(129, 140, 248, 0.15); color: var(--ac2);
+  border: 1px solid rgba(129, 140, 248, 0.3);
+}
+.badge.link-pinned {
+  background: rgba(251, 191, 36, 0.15); color: var(--yl);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+/* Quick Prompts. Laid out on ONE line with the label, not as a titled block:
+   vertical space above the document list is the scarcest thing on this page,
+   and a heading on its own row spends a whole line to say one word. */
+.prompt-box {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 12px;
+}
+.prompt-box-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--mu); margin-right: 2px;
+}
+.prompt-chip {
+  background: var(--card); border: 1px solid var(--bd); border-radius: 5px;
+  color: var(--mu); cursor: pointer; font: inherit; font-size: 11px;
+  padding: 2px 8px;
+}
+.prompt-chip:hover  { border-color: var(--ac); color: var(--ac); }
+.prompt-chip.copied { border-color: var(--gn); color: var(--gn); }
+
+/* Document list */
+.doc-list { display: flex; flex-direction: column; gap: 2px; }
+.doc-row, .spec-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  text-decoration: none;
+  color: inherit;
+}
+.doc-row:hover { background: rgba(56, 189, 248, 0.05); }
+.spec-row:hover { background: rgba(129, 140, 248, 0.05); }
+
+.doc-line-1, .doc-line-2, .spec-line-1, .spec-line-2 {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.doc-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-filename {
+  font-size: 11px;
+  color: var(--mu);
+  font-family: 'JetBrains Mono', monospace;
+}
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--mu);
+  white-space: nowrap;
+  margin-left: auto;
+}
+.ann-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--yl);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+.doc-row.read .doc-title {
+  color: #c2cad4;
+}
+.doc-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--mu);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+/* Spec list */
+.spec-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ac2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.spec-desc {
+  font-size: 12px;
+  color: var(--mu);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--mu);
+  font-size: 14px;
+}
+
+/* Panel visibility */
+.panel { display: none; }
+.panel.active { display: block; }
 </style>
 </head>
 <body>
-
-<div class="bar">
-  <strong>Manifest</strong>
-  <span style="font-size:11px;color:var(--mu);opacity:.5">Alt+D</span>
-  <span id="bar-subtitle" style="color:var(--mu);font-size:11px"></span>
-  <span style="margin-left:auto;display:flex;align-items:center;gap:8px">
-    <span id="status" style="font-size:11px;color:var(--mu);opacity:.75"></span>
-    <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
-  </span>
-</div>
-
-<div id="ann-pop"></div>
-
-<div class="header-row">
-  <div>
-    <h1 id="page-title">Document Manifest</h1>
-    <div class="meta" id="doc-summary">Loading…</div>
+<div class="container">
+  <div class="header">
+    <div>
+      <h1 id="project-title">…</h1>
+      <div class="subtitle" id="project-subtitle">Loading…</div>
+    </div>
+    <div class="meta-right">
+      <a href="/goto-aur" class="badge docs link-aur" title="Open the AUR (cross-project) doc manifest — resolves AUR's live port automatically">🗂 AUR docs ↗</a>
+      <!-- Project-pinned documents, filled from /meta. Hard-coding one
+           project's report here is what forked this page. -->
+      <span id="header-links"></span>
+      <span class="badge docs" id="doc-count">–</span>
+      <span class="badge specs" id="spec-count">–</span>
+      <span class="badge ai" id="ai-count">–</span>
+    </div>
   </div>
-  <div class="prompt-box">
-    <div class="prompt-box-title">Quick Prompts</div>
-    <div id="prompt-chips"></div>
+
+  <div class="tabs">
+    <div class="tab active" data-panel="docs-panel">Documents</div>
+    <div class="tab" data-panel="specs-panel">Specs</div>
+    <div class="tab" data-panel="ai-panel">AI Context</div>
+    <div class="tab right" data-panel="console-panel">Console</div>
+  </div>
+
+  <!-- Documents Panel -->
+  <div id="docs-panel" class="panel active">
+    <div class="controls">
+      <input class="search" id="doc-search" placeholder="Filter documents…" autocomplete="off">
+      <button class="sort-btn" id="sort-toggle">Sort: Newest ↓</button>
+    </div>
+    <!-- Click to copy. The prompt names come from PROMPTS.md, and the chip is
+         the shortest path from "I want an audit" to a prompt in the clipboard. -->
+    <div class="prompt-box">
+      <span class="prompt-box-title">Quick Prompts</span>
+      <span id="prompt-chips"></span>
+    </div>
+    <div class="doc-list" id="doc-list"></div>
+  </div>
+
+  <!-- Specs Panel -->
+  <div id="specs-panel" class="panel">
+    <div class="controls">
+      <input class="search" id="spec-search" placeholder="Filter specs…" autocomplete="off">
+    </div>
+    <div class="doc-list" id="spec-list"></div>
+  </div>
+
+  <!-- AI Context Panel -->
+  <div id="ai-panel" class="panel">
+    <div class="controls">
+      <input class="search" id="ai-search" placeholder="Filter AI context (instructions, memory)…" autocomplete="off">
+    </div>
+    <div class="doc-list" id="ai-list"></div>
+  </div>
+
+  <!-- Console Panel — live streams, not documents -->
+  <div id="console-panel" class="panel">
+    <!-- The stream filter is GONE. It searched a stream's label, which was
+         useful when a session offered one chip per command; with a single
+         console per session there is nothing left to pick between, and its
+         other job — reaching archived daemon logs — belongs to the crash
+         report table, not to a text box with no results surface. -->
+    <div class="controls">
+      <button class="sort-btn" id="console-refresh">Refresh</button>
+    </div>
+    <div class="doc-list" id="console-list"></div>
+    <div id="console-orphans"></div>
   </div>
 </div>
-
-<h2>Development Documents</h2>
-<table>
-  <thead>
-    <tr>
-      <th data-col="datetime" class="sort-desc" style="width:155px">Date/Time</th>
-      <th data-col="name">Name</th>
-      <th data-col="annotation_count" style="width:100px;text-align:center">Annotations</th>
-      <th data-col="title">Description</th>
-    </tr>
-  </thead>
-  <tbody id="doc-tbody"></tbody>
-</table>
-
-<h2>Project Specifications</h2>
-<div id="spec-summary"></div>
-<table>
-  <thead>
-    <tr>
-      <th data-col="mtime" style="width:155px">Modified</th>
-      <th data-col="filename" style="width:240px">File</th>
-      <th data-col="description">Description</th>
-    </tr>
-  </thead>
-  <tbody id="spec-tbody"></tbody>
-</table>
 
 <script>
-// ── Utilities ────────────────────────────────────────────────────────────
-function fmtDatetime(dt) {
-  const [date, time] = dt.split(' ');
-  const [h, m] = time.split(':');
-  const hour = parseInt(h, 10);
-  const ampm = hour >= 12 ? 'pm' : 'am';
-  const h12 = hour % 12 || 12;
-  return `${date} ${h12}:${m}${ampm}`;
-}
-
-function cleanName(filename) {
-  return filename.replace(/\.html$/, '').replace(/-\d{4}-\d{2}-\d{2}(-\d{6})?$/, '') || filename;
-}
-
-function annBadge(n) {
-  const cls = n === 0 ? 'ann-0' : n < 10 ? 'ann-lo' : 'ann-hi';
-  return `<span class="ann-badge ${cls}" title="${n} annotation${n!==1?'s':''}">${n}</span>`;
-}
-
-// ── Annotation popover ───────────────────────────────────────────────────
-const pop = document.getElementById('ann-pop');
-const annCache = new Map();
-let hideTimer = null;
-
-function showPop(stem, badge) {
-  clearTimeout(hideTimer);
-  async function render(data) {
-    const entries = Object.entries(data).filter(([,v]) => v && v.trim());
-    if (!entries.length) return;
-    pop.innerHTML = entries.map(([k, v]) =>
-      `<div class="pop-row"><span class="pop-key">${k}</span><span class="pop-val">${v.trim().slice(0,120)}${v.length>120?'…':''}</span></div>`
-    ).join('');
-    const r = badge.getBoundingClientRect();
-    pop.style.left = Math.min(r.left, window.innerWidth - 400) + 'px';
-    pop.style.top  = (r.bottom + 6) + 'px';
-    pop.style.display = 'block';
-  }
-  if (annCache.has(stem)) {
-    render(annCache.get(stem));
-  } else {
-    fetch(`/annotations/${stem}`)
-      .then(r => r.json())
-      .then(data => { annCache.set(stem, data); render(data); })
-      .catch(() => {});
-  }
-}
-
-function hidePop() {
-  hideTimer = setTimeout(() => { pop.style.display = 'none'; }, 120);
-}
-
-// ── Document table ───────────────────────────────────────────────────────
-let docSortCol = 'datetime', docSortDir = -1;
-
-function isUnread(doc) {
-  if (!doc.last_read) return true;
-  return new Date(doc.last_read).getTime() / 1000 < doc.datetime_ts;
-}
-
-function renderDocRow(doc) {
-  const name = cleanName(doc.filename);
-  const stem = doc.filename.replace(/\.html$/, '');
-  const unread = isUnread(doc);
-  const tr = document.createElement('tr');
-  tr.dataset.datetime = doc.datetime;
-  tr.dataset.name = name.toLowerCase();
-  tr.dataset.annotation_count = doc.annotation_count;
-  tr.dataset.title = doc.title.toLowerCase();
-  tr.innerHTML =
-    `<td class="dt">${fmtDatetime(doc.datetime)}</td>` +
-    `<td class="name"><a href="/${doc.filename}"${unread ? ' class="unread"' : ''}>${name}</a></td>` +
-    `<td style="text-align:center">${annBadge(doc.annotation_count)}</td>` +
-    `<td class="desc">${doc.title}</td>`;
-
-  if (doc.annotation_count > 0) {
-    const badge = tr.querySelector('.ann-badge');
-    badge.addEventListener('mouseenter', () => showPop(stem, badge));
-    badge.addEventListener('mouseleave', hidePop);
-  }
-  return tr;
-}
-
-function sortDocTable() {
-  const tbody = document.getElementById('doc-tbody');
-  const rows = [...tbody.querySelectorAll('tr')];
-  rows.sort((a, b) => {
-    const av = a.dataset[docSortCol] || '', bv = b.dataset[docSortCol] || '';
-    const an = parseFloat(av), bn = parseFloat(bv);
-    if (!isNaN(an) && !isNaN(bn)) return (an - bn) * docSortDir;
-    return av.localeCompare(bv) * docSortDir;
-  });
-  rows.forEach(r => tbody.appendChild(r));
-  document.querySelectorAll('#doc-tbody').length; // noop
-  document.querySelectorAll('thead th[data-col]').forEach(th => {
-    // only reset headers in the doc table (first thead)
-  });
-  updateDocSortIndicators();
-}
-
-function updateDocSortIndicators() {
-  const docTable = document.getElementById('doc-tbody').closest('table');
-  docTable.querySelectorAll('th[data-col]').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (th.dataset.col === docSortCol)
-      th.classList.add(docSortDir > 0 ? 'sort-asc' : 'sort-desc');
-  });
-}
-
-document.getElementById('doc-tbody').closest('table').querySelectorAll('th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    if (th.dataset.col === docSortCol) docSortDir *= -1;
-    else { docSortCol = th.dataset.col; docSortDir = 1; }
-    sortDocTable();
-  });
-});
-
-// ── Spec table ──────────────────────────────────────────────────────────
-let specSortCol = 'mtime', specSortDir = -1;
-
-function renderSpecRow(spec) {
-  const tr = document.createElement('tr');
-  tr.dataset.mtime = spec.mtime;
-  tr.dataset.filename = spec.filename.toLowerCase();
-  tr.dataset.description = spec.description.toLowerCase();
-  tr.innerHTML =
-    `<td class="dt">${fmtDatetime(spec.mtime)}</td>` +
-    `<td class="spec-name"><a href="/spec/${spec.filename}">${spec.filename}</a></td>` +
-    `<td class="desc">${spec.description}</td>`;
-  return tr;
-}
-
-function sortSpecTable() {
-  const tbody = document.getElementById('spec-tbody');
-  const rows = [...tbody.querySelectorAll('tr')];
-  rows.sort((a, b) => {
-    const av = a.dataset[specSortCol] || '', bv = b.dataset[specSortCol] || '';
-    return av.localeCompare(bv) * specSortDir;
-  });
-  rows.forEach(r => tbody.appendChild(r));
-  document.getElementById('spec-tbody').closest('table').querySelectorAll('th[data-col]').forEach(th => {
-    th.classList.remove('sort-asc', 'sort-desc');
-    if (th.dataset.col === specSortCol)
-      th.classList.add(specSortDir > 0 ? 'sort-asc' : 'sort-desc');
-  });
-}
-
-document.getElementById('spec-tbody').closest('table').querySelectorAll('th[data-col]').forEach(th => {
-  th.addEventListener('click', () => {
-    if (th.dataset.col === specSortCol) specSortDir *= -1;
-    else { specSortCol = th.dataset.col; specSortDir = 1; }
-    sortSpecTable();
-  });
-});
-
-// ── Load ────────────────────────────────────────────────────────────────
-async function load() {
-  const status = document.getElementById('status');
-  const btn = document.getElementById('refresh-btn');
-  btn.textContent = '↻'; status.textContent = 'Fetching…';
-
-  const [docsRes, specsRes, metaRes] = await Promise.all([
-    fetch('/docs').then(r => r.json()).catch(() => []),
-    fetch('/spec/').then(r => r.json()).catch(() => []),
-    fetch('/meta').then(r => r.json()).catch(() => ({})),
-  ]);
-
-  if (metaRes.project) {
-    const title = document.getElementById('page-title');
-    title.textContent = `${metaRes.project} — Document Manifest`;
-    document.title = `${metaRes.project} — Document Manifest`;
-    if (metaRes.subtitle)
-      document.getElementById('bar-subtitle').textContent = metaRes.subtitle;
-  }
-
-  // Docs
-  const tbody = document.getElementById('doc-tbody');
-  tbody.innerHTML = '';
-  docsRes.forEach(d => tbody.appendChild(renderDocRow(d)));
-  docSortCol = 'datetime'; docSortDir = -1;
-  sortDocTable();
-  const totalAnn = docsRes.reduce((s, d) => s + d.annotation_count, 0);
-  document.getElementById('doc-summary').textContent =
-    `${docsRes.length} document${docsRes.length !== 1 ? 's' : ''} · ${totalAnn} annotation${totalAnn !== 1 ? 's' : ''}`;
-
-  // Specs
-  const stbody = document.getElementById('spec-tbody');
-  stbody.innerHTML = '';
-  specsRes.forEach(s => stbody.appendChild(renderSpecRow(s)));
-  specSortCol = 'filename'; specSortDir = 1;
-  sortSpecTable();
-  // spec-summary intentionally left blank
-
-  const now = new Date();
-  const h = now.getHours(), m = String(now.getMinutes()).padStart(2,'0');
-  const ds = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  status.textContent = `${ds} ${h%12||12}:${m}${h>=12?'pm':'am'}`;
-  btn.textContent = '↻ Refresh';
-}
-
-document.getElementById('refresh-btn').addEventListener('click', load);
-load();
-
-// ── Quick Prompts ────────────────────────────────────────────────────────
-const PROMPTS = [
-  'session close',
-  'bench plan',
-  'bench results',
-  'project audit',
-  'code quality',
-  'debug plan',
-  'debug results',
-  'push release',
-];
-
 (function() {
-  const container = document.getElementById('prompt-chips');
-  PROMPTS.forEach(function(p) {
-    const btn = document.createElement('button');
-    btn.className = 'prompt-chip';
-    btn.textContent = p;
-    btn.addEventListener('click', function() {
-      navigator.clipboard.writeText(p).then(function() {
-        btn.classList.add('copied');
-        setTimeout(function() { btn.classList.remove('copied'); }, 1200);
-      }).catch(function() {});
+  'use strict';
+
+  let docs = [];
+  let specs = [];
+  let sortAsc = false;
+
+  // --- Tabs ---
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.panel).classList.add('active');
+      // Explicit class toggle rather than a :has() selector — this is the one
+      // place that knows which panel is showing, and it needs no support
+      // caveat.
+      document.querySelector('.container')
+              .classList.toggle('wide', tab.dataset.panel === 'console-panel');
     });
-    container.appendChild(btn);
   });
-}());
+
+  // --- Fetch meta ---
+  fetch('/meta').then(r => r.json()).then(m => {
+    const name = m.project || 'Docs';
+    document.getElementById('project-title').textContent = name;
+    document.title = name + ' — Document Manifest';
+    document.getElementById('project-subtitle').textContent = m.subtitle || '';
+    // Project-pinned documents. Built as elements rather than interpolated
+    // markup: a label and an href are project-supplied strings, and the doc
+    // list has already had one hostile-input defect through exactly that path.
+    const links = document.getElementById('header-links');
+    (m.links || []).forEach(l => {
+      if (!l || !l.href) return;
+      const a = document.createElement('a');
+      a.className = 'badge docs link-pinned';
+      a.href = l.href;
+      a.textContent = l.label || l.href;
+      links.appendChild(a);
+    });
+  }).catch(() => {});
+
+  // --- Fetch docs ---
+  // Names of the prompt types in PROMPTS.md. Clicking copies the name; the
+  // agent expands it. Kept as a list rather than fetched, because the server
+  // has no endpoint for it and inventing one to render eight fixed strings
+  // would be machinery for its own sake.
+  const PROMPTS = ['session close', 'bench plan', 'bench results',
+                   'project audit', 'code quality', 'debug plan',
+                   'debug results', 'push release'];
+
+  (function () {
+    const container = document.getElementById('prompt-chips');
+    if (!container) return;
+    PROMPTS.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'prompt-chip';
+      btn.textContent = p;
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(p).then(() => {
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 1200);
+        }).catch(() => {});
+      });
+      container.appendChild(btn);
+    });
+  }());
+
+  function isUnread(doc) {
+    if (!doc.last_read) return true;
+    return new Date(doc.last_read).getTime() / 1000 < doc.datetime_ts;
+  }
+
+  function renderDocs(filter) {
+    const list = document.getElementById('doc-list');
+    const q = (filter || '').toLowerCase();
+    let filtered = docs.filter(d =>
+      !q || d.title.toLowerCase().includes(q) || d.filename.toLowerCase().includes(q)
+    );
+
+    if (sortAsc) {
+      filtered.sort((a, b) => a.datetime_ts - b.datetime_ts);
+    } else {
+      filtered.sort((a, b) => b.datetime_ts - a.datetime_ts);
+    }
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">No documents found.</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(d => {
+      // Read status compares the read stamp against the DOCUMENT'S OWN time,
+      // not merely "was this ever opened". A doc regenerated after you read it
+      // carries new content, and a row that still says read hides exactly the
+      // change you would want to see.
+      const readClass = isUnread(d) ? '' : ' read';
+      const annBadge = d.annotation_count > 0
+        ? `<span class="ann-badge">✎ ${d.annotation_count}</span>`
+        : '';
+      return `
+        <a class="doc-row${readClass}" href="${d.filename}">
+          <div class="doc-line-1">
+            <div class="doc-title">${esc(d.title)}</div>
+            <div class="doc-meta">${annBadge}</div>
+          </div>
+          <div class="doc-line-2">
+            <div class="doc-filename">${esc(d.filename)}</div>
+            <div class="doc-date">${esc(d.datetime)}</div>
+          </div>
+        </a>
+      `;
+    }).join('');
+  }
+
+  fetch('/docs').then(r => r.json()).then(d => {
+    docs = d;
+    document.getElementById('doc-count').textContent = docs.length + ' docs';
+    renderDocs();
+  }).catch(() => {
+    document.getElementById('doc-list').innerHTML = '<div class="empty">Failed to load documents.</div>';
+  });
+
+  document.getElementById('doc-search').addEventListener('input', (e) => {
+    renderDocs(e.target.value);
+  });
+
+  document.getElementById('sort-toggle').addEventListener('click', () => {
+    sortAsc = !sortAsc;
+    document.getElementById('sort-toggle').textContent = sortAsc ? 'Sort: Oldest ↑' : 'Sort: Newest ↓';
+    renderDocs(document.getElementById('doc-search').value);
+  });
+
+  // --- Fetch specs ---
+  function renderSpecs(filter) {
+    const list = document.getElementById('spec-list');
+    const q = (filter || '').toLowerCase();
+    let filtered = specs.filter(s =>
+      !q || s.filename.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q)
+    );
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">No specs found.</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(s => {
+      const href = s.url || ('/spec/' + s.filename);
+      const tag = s.source === 'AUR'
+        ? ' <span class="spec-src" style="font-size:10px;font-weight:700;color:var(--ac2);border:1px solid var(--ac2);border-radius:3px;padding:0 4px;margin-left:6px;vertical-align:middle">AUR</span>'
+        : '';
+      return `
+      <a class="spec-row" href="${href}">
+        <div class="spec-line-1">
+          <div class="spec-name">${esc(s.filename)}${tag}</div>
+        </div>
+        <div class="spec-line-2">
+          <div class="spec-desc">${esc(s.description || '')}</div>
+          <div class="doc-date">${esc(s.mtime)}</div>
+        </div>
+      </a>`;
+    }).join('');
+  }
+
+  fetch('/spec/').then(r => r.json()).then(s => {
+    specs = s;
+    document.getElementById('spec-count').textContent = specs.length + ' specs';
+    renderSpecs();
+  }).catch(() => {
+    document.getElementById('spec-list').innerHTML = '<div class="empty">Failed to load specs.</div>';
+  });
+
+  document.getElementById('spec-search').addEventListener('input', (e) => {
+    renderSpecs(e.target.value);
+  });
+
+  // --- Fetch AI context ---
+  let aiItems = [];
+  const AI_CATEGORY_ORDER = ['Instructions', 'Index', 'Project', 'Feedback', 'Checkpoints', 'Other'];
+
+  function renderAi(filter) {
+    const list = document.getElementById('ai-list');
+    const q = (filter || '').toLowerCase();
+    let filtered = aiItems.filter(s =>
+      !q || s.filename.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q)
+    );
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div class="empty">No AI context files found.</div>';
+      return;
+    }
+
+    let html = '';
+    for (const cat of AI_CATEGORY_ORDER) {
+      const group = filtered.filter(s => s.category === cat);
+      if (group.length === 0) continue;
+      html += `<div class="group-header">${esc(cat)}</div>`;
+      html += group.map(s => {
+        const href = s.url || ('/ai-context/' + s.filename);
+        const tag = s.source === 'AUR'
+          ? ' <span class="spec-src" style="font-size:10px;font-weight:700;color:var(--ac2);border:1px solid var(--ac2);border-radius:3px;padding:0 4px;margin-left:6px;vertical-align:middle">AUR</span>'
+          : '';
+        return `
+        <a class="spec-row" href="${href}">
+          <div class="spec-line-1">
+            <div class="spec-name">${esc(s.filename)}${tag}</div>
+          </div>
+          <div class="spec-line-2">
+            <div class="spec-desc">${esc(s.description || '')}</div>
+            <div class="doc-date">${esc(s.mtime)}</div>
+          </div>
+        </a>`;
+      }).join('');
+    }
+    list.innerHTML = html || '<div class="empty">No AI context files found.</div>';
+  }
+
+  fetch('/ai-context/').then(r => r.json()).then(s => {
+    aiItems = s;
+    document.getElementById('ai-count').textContent = aiItems.length + ' files';
+    renderAi();
+  }).catch(() => {
+    document.getElementById('ai-list').innerHTML = '<div class="empty">Failed to load AI context.</div>';
+  });
+
+  document.getElementById('ai-search').addEventListener('input', (e) => {
+    renderAi(e.target.value);
+  });
+
+  // --- Console: live streams ---
+  //
+  // Unlike every other panel here, this one is polled: sessions start and end
+  // while the page is open, so a list fetched once would go stale silently —
+  // which for a LIVE view is the whole defect it exists to avoid.
+  let consoleGroups = [];
+
+  // Structure only — never values. pid/load/rss change every 3s and are written
+  // into existing cells; if they entered this signature the list would rebuild
+  // on every stats tick, which is the very thing being avoided.
+  function structureSig(groups, q) {
+    return q + '\u0000' + groups.map(g =>
+      [g.kind, g.session_id || '', g.title, g.started || '', g.branch || '',
+       g.hidden_old || 0, g.hidden_oneshot || 0,
+       g.streams.map(x => x.id).join(',')].join('\u0001')).join('\u0002');
+  }
+  let lastSig = null;
+
+  function renderConsole(filter) {
+    const list = document.getElementById('console-list');
+    const q = (filter || '').toLowerCase();
+
+    // Nothing structural changed: leave the DOM alone. Rebuilding it detaches
+    // every open pane, replaces every chip node and collapses the document
+    // height — which reset the panes' scroll AND the outer window's, ten
+    // seconds at a time, whether or not anything had actually changed.
+    const sig = structureSig(consoleGroups, q);
+    if (sig === lastSig) return;
+    lastSig = sig;
+
+    // A rebuild really is needed. Capture BEFORE it: replacing innerHTML
+    // detaches every open pane, and a detached element reports 0 for both
+    // scroll axes — so reading a position afterwards saves nothing and
+    // silently restores the top-left corner.
+    const winY = window.scrollY, winX = window.scrollX;
+    panes.forEach(p => {
+      p.savedTop = p.body.scrollTop;
+      p.savedLeft = p.body.scrollLeft;
+    });
+    // The document shrinks to nothing while the list is empty, and the browser
+    // clamps the window scroll to the shorter page. Restored after reattach.
+    requestAnimationFrame(() => {
+      if (window.scrollY !== winY || window.scrollX !== winX) window.scrollTo(winX, winY);
+    });
+
+    const groups = consoleGroups.map(g => {
+      // While filtering, older logs held back from the default view are in
+      // scope — a search box that silently searched only the visible chips
+      // would report "no match" for a file that is right there on disk.
+      const pool = q ? g.streams.concat(g.archive || []) : g.streams;
+      const streams = pool.filter(s =>
+        !q || s.label.toLowerCase().includes(q) || (g.title || '').toLowerCase().includes(q)
+      );
+      return Object.assign({}, g, { streams });
+    }).filter(g => g.streams.length > 0 || !q);
+
+    if (groups.length === 0) {
+      list.innerHTML = '<div class="empty">No live streams.</div>';
+      reattachPanes();   // a filter matching nothing must not discard open panes
+      return;
+    }
+
+    list.innerHTML = groups.map(g => {
+      const isDaemon = g.kind === 'daemons';
+      let body;
+      if (!g.streams.length) {
+        body = '<div class="chips"><span class="none">no streams yet</span></div>';
+      } else if (isDaemon) {
+        // One DAEMON per row, carrying its two channels: `out` is whatever the
+        // launcher captured from stdout/stderr, `log` is the file the daemon
+        // opened for itself. Columns are a grid with fixed track widths and
+        // tabular figures, so a number changing width cannot shift the row —
+        // padding text to fake a grid is the defect this avoids.
+        body = '<div class="dmn-grid">'
+             + '<div class="dmn-head"><span>process</span><span>pid</span>'
+             + '<span>ni</span><span>load</span><span>cpu</span><span>rss</span>'
+             + '<span>out</span><span>log</span></div>'
+             + g.streams.map(s => {
+          const p = s.proc || {};
+          // A channel the daemon does not have still occupies its cell, as a
+          // dash: dropping the element would leave the row one column short of
+          // the heading and break the subgrid alignment for every row after it.
+          const chan = (ch, which) => ch
+            ? `<button class="dmn-open${ch.live ? ' live' : ''}" data-ch="${which}"`
+              + ` data-id="${esc(ch.id)}" data-label="${esc(ch.label)}"`
+              + ` title="${esc(ch.label)}">${fmtBytes(ch.size)}</button>`
+            : `<span class="dmn-n" data-ch="${which}">${DASH}</span>`;
+          return `<div class="dmn-row" data-id="${esc(s.id)}">`
+            + `<span class="dmn-name"><span class="dot"${s.live ? '' : ' hidden'}></span>${esc(s.name || s.label)}</span>`
+            + `<span class="dmn-n" data-f="pid">${cellPid(p)}</span>`
+            + `<span class="dmn-n" data-f="nice">${cellNice(p)}</span>`
+            + `<span class="dmn-n" data-f="load">${cellLoad(p)}</span>`
+            + `<span class="dmn-n" data-f="cputime">${cellCpu(p)}</span>`
+            + `<span class="dmn-n" data-f="rss">${cellRss(p)}</span>`
+            + chan(s.out, 'out') + chan(s.log, 'log')
+            + `</div>`;
+        }).join('') + '</div>';
+      } else {
+        body = '<div class="chips">' + g.streams.map(s =>
+          // A spooled command still linked from its task file is RUNNING; the
+          // accent marks that, because with no pid there is nothing else to ask.
+          `<button class="chip${s.live ? ' stdout' : ''}"`
+          + ` data-id="${esc(s.id)}" data-label="${esc(s.label)}"`
+          + ` title="${esc(s.carries ? s.carries + ' — ' + s.id : s.id)}">`
+          + `<span class="dot"></span>${esc(s.label)}</button>`).join('') + '</div>';
+      }
+
+      // Counted separately: "older" and "one-shot crash dump" are different
+      // reasons to be hidden, and most dumps are not old.
+      // "crash reports", not "crash dumps" — these are text diagnostics written
+      // by our own crash handler, and calling them dumps sends a reader looking
+      // for a core file to open in a debugger. There is none.
+      const bits = [];
+      if (g.hidden_oneshot) bits.push(g.hidden_oneshot + ' crash reports');
+      if (g.hidden_old) bits.push(g.hidden_old + ' older');
+      const hidden = (isDaemon && bits.length)
+        ? `<span class="doc-date">${bits.join(' · ')}</span>` : '';
+      const branch = g.branch ? `<span class="console-branch">${esc(g.branch)}</span>` : '';
+      // The session name gets its own line: it is the longest field and was
+      // competing with the badge, branch and date for the same row.
+      const head = isDaemon
+        ? `<div class="console-head">
+             <span class="console-agent daemons">${esc(g.agent)}</span>
+             <span class="console-title">${esc(g.title)}</span>${hidden}
+           </div>`
+        : `<div class="console-head">
+             <span class="console-agent">${esc(g.agent)}</span>${branch}
+             <span class="doc-date">${esc(g.started || '')}</span>${capture(g)}
+             <span class="sid" title="session id — quote this to reference or recover this session">${esc(g.session_id || '')}</span>
+           </div>
+           <div class="console-title session">${esc(g.title)}</div>`;
+      // The machine reading sits under the daemon list, where the processes it
+      // describes are. Rebuilt with the group, repopulated on the 3s beat.
+      const sys = isDaemon
+        ? '<div id="sysline" class="sysline"></div>'
+          + '<div id="spoolline" class="sysline"></div>' : '';
+      return `
+        <div class="console-group">
+          ${head}
+          ${body}
+          ${sys}
+          <div class="group-panes" data-gk="${esc(groupKey(g))}"></div>
+        </div>`;
+    }).join('');
+
+    // One header between the daemons and the sessions, stating the window and
+    // the capture constraint. It replaces a note that sat at the very BOTTOM of
+    // the panel, after everything it qualified — where the reader met the
+    // caveat only once they no longer needed it.
+    const firstSession = list.querySelector('.console-group:not(:first-child)');
+    const nSess = groups.filter(g => g.kind === 'session').length;
+    if (firstSession && nSess) {
+      const hdr = document.createElement('div');
+      hdr.className = 'section-head';
+      const wh = (consoleGroups.find(g => g.window_hours) || {}).window_hours || 48;
+      hdr.innerHTML = `AI sessions for the past ${wh} hours`
+        + `<span>logging &amp; consoles only monitored by live AUR server</span>`;
+      firstSession.parentNode.insertBefore(hdr, firstSession);
+    }
+    reattachPanes();
+  }
+
+  // A pane belongs to the group whose chip opened it, and renders directly
+  // beneath that chip row.
+  // Capture only runs while this server does, so a session that started before
+  // it has a hole at the front. Saying WHERE the hole ends is the whole point:
+  // an unstated gap reads as "nothing happened", which is the same lie the
+  // spool exists to stop telling.
+  function capture(g) {
+    if (!g.capture_since) return '';
+    const missed = g.capture_missed
+      ? ` · ${g.capture_missed} missed` : '';
+    return g.capture_gap
+      ? `<span class="capture gap" title="Commands that finished before ${esc(g.capture_since)} were not captured">from ${esc(g.capture_since)}${missed}</span>`
+      : `<span class="capture" title="This session was captured in full">captured${missed}</span>`;
+  }
+
+  function groupKey(g) { return g.kind === 'daemons' ? 'daemons' : g.session_id; }
+  function paneGroupKey(id) {
+    return id.startsWith('daemon:') ? 'daemons' : id.split(':')[1];
+  }
+
+  // renderConsole() rebuilds the list wholesale every poll, which would destroy
+  // any pane living inside it — buffer, scroll position and listeners with it.
+  // The pane ELEMENTS are owned by the panes Map, never by the list markup, so
+  // they are moved back into their group's container after each render.
+  // appendChild moves rather than copies, so nothing is rebuilt.
+  function reattachPanes() {
+    const list = document.getElementById('console-list');
+    panes.forEach(p => {
+      // A session that ages out of the live window takes its group with it. An
+      // open pane must not vanish with it mid-read, so it falls back to a stack
+      // below the list — its header already names the stream.
+      const group = list.querySelector(`.group-panes[data-gk="${paneGroupKey(p.id)}"]`);
+      // ...but a pane whose group is gone AND whose stream the server has
+      // RETIRED is not something anyone is still reading: it can never receive
+      // another byte, and it survived a server restart pointing at an id that
+      // now 404s. Keeping it left a chip and a pane on screen with no parent,
+      // which is what "it didn't go away when its parent did" looked like. The
+      // orphan stack is for streams that still HAVE content; this is neither.
+      if (!group && p.gone) { closePane(p.id); return; }
+      const host = group || document.getElementById('console-orphans');
+      if (p.el.parentNode === host) return;
+      // Re-attaching resets the scroll position of the pane's scrollable body.
+      // Left alone that yanked a held view back to the top on every 10-second
+      // render, which made the pane unusable for reading anything but the last
+      // line. renderConsole captured the position before it detached us.
+      host.appendChild(p.el);
+      if (p.savedTop != null) p.body.scrollTop = p.savedTop;
+      if (p.savedLeft != null) p.body.scrollLeft = p.savedLeft;
+    });
+  }
+
+  // `force` rebuilds even when nothing structural changed. The 10-second poll
+  // never forces — skipping an unchanged render is what stops it detaching
+  // every open pane and resetting the reader's scroll on every tick. But a
+  // person who presses Refresh has asked for something to happen, and a button
+  // that silently no-ops because a signature matched is indistinguishable from
+  // a button that is broken.
+  function loadConsoles(force) {
+    // Forced: rebuild NOW from what is already loaded, then fetch. A button
+    // whose only effect arrives after a network round-trip looks broken for the
+    // duration of that trip, and the reader presses it again. The fetch below
+    // still lands and re-renders if the data actually moved.
+    if (force) { lastSig = null; renderConsole(''); }
+    return fetch('/consoles').then(r => r.json()).then(g => {
+      consoleGroups = g;
+      renderConsole('');
+      markChips();   // the list was just rebuilt; re-mark which streams are open
+    }).catch(() => {
+      document.getElementById('console-list').innerHTML =
+        '<div class="empty">Failed to load console streams.</div>';
+    });
+  }
+
+  // --- Stream panes ---
+  //
+  // Opened in-page, not in a popped window: this manifest is read through the
+  // IDE's Simple Browser, a sandboxed webview that silently drops window.open,
+  // so a popup viewer is a chip that does nothing when clicked. Panes stack, so
+  // several streams stay visible at once.
+  const panes = new Map();   // id -> pane state
+
+  function openPane(id, label) {
+    if (panes.has(id)) { closePane(id); return; }
+
+    const el = document.createElement('div');
+    el.className = 'pane';
+    el.innerHTML = `
+      <div class="pane-head">
+        <div class="pane-titlebar">
+          <span class="pane-label"></span>
+          <span class="pane-src"></span>
+          <span class="pill idle">connecting</span>
+          <span class="win-ctl">
+            <button class="win-btn" data-act="min" title="Minimize">&#8722;</button>
+            <button class="win-btn" data-act="max" title="Maximize">&#9633;</button>
+            <button class="win-btn close" data-act="close" title="Close">&#10005;</button>
+          </span>
+        </div>
+        <div class="pane-tools">
+          <button class="pane-btn" data-act="hdr">Hide Headers</button>
+          <button class="pane-btn" data-act="hold">Hold Position</button>
+          <button class="pane-btn" data-act="wrap">Wrap</button>
+          <button class="pane-btn" data-act="clear">Clear</button>
+        </div>
+      </div>
+      <div class="pane-body"></div>`;
+    el.querySelector('.pane-label').textContent = label;
+
+    const p = {
+      id, el,
+      body: el.querySelector('.pane-body'),
+      pill: el.querySelector('.pill'),
+      src: el.querySelector('.pane-src'),
+      next: null, key: null, busy: false, lastData: Date.now(),
+      // Merged-history state: a byte offset per command, which commands have
+      // already been reported finished, and the last source rendered — that
+      // last one is what decides where a boundary marker gets drawn.
+      cursor: {}, ended: {}, lastSrc: undefined, gone: false,
+      hold: false,     // Hold Position: ON pins the view, OFF tails the end
+      min: false,      // minimized: body hidden, buffer and polling both kept
+      max: false,      // maximized: fills the page area, window untouched
+      due: 0, gap: 1   // adaptive poll pacing, in master ticks
+    };
+    panes.set(id, p);
+    // Placed by the same path that re-places it after every render, so opening
+    // and surviving a re-render cannot disagree about where a pane lives.
+    reattachPanes();
+
+    el.querySelector('.pane-head').addEventListener('click', (e) => {
+      const act = e.target.dataset.act;
+      if (act === 'close') return closePane(id);
+      if (act === 'wrap') {
+        p.body.classList.toggle('wrap');
+        e.target.classList.toggle('on');
+      }
+      if (act === 'hdr') {
+        p.body.classList.toggle('nohdr');
+        e.target.classList.toggle('on');
+        toEnd(p);
+      }
+      if (act === 'clear') {
+        // Only the display buffer. The byte offset is untouched, so clearing
+        // does not re-fetch history — it discards what has scrolled by.
+        p.body.textContent = '';
+      }
+      if (act === 'hold') {
+        p.hold = !p.hold;
+        e.target.classList.toggle('on', p.hold);
+        toEnd(p);        // releasing Hold snaps straight back to the end
+      }
+      if (act === 'max') {
+        // Fills the HTML display area, not the browser window — the pane goes
+        // fixed over the page and the window itself is untouched.
+        p.max = !p.max;
+        if (p.max) { p.min = false; p.el.classList.remove('min'); }
+        p.el.classList.toggle('max', p.max);
+        e.target.title = p.max ? 'Restore' : 'Maximize';
+        e.target.classList.toggle('on', p.max);
+        toEnd(p);
+      }
+      if (act === 'min') {
+        p.min = !p.min;
+        if (p.min) { p.max = false; p.el.classList.remove('max'); }
+        p.el.classList.toggle('min', p.min);
+        e.target.title = p.min ? 'Restore' : 'Minimize';
+        e.target.classList.toggle('on', p.min);
+        // Polling continues while minimized, so the buffer keeps filling and
+        // restoring shows everything that arrived — that is the whole point of
+        // minimize existing alongside close.
+        if (!p.min) toEnd(p);
+      }
+    });
+    // Dragging down to the last line is the ONLY thing that releases Hold.
+    // Scrolling anywhere else does nothing — in particular, scrolling up while
+    // Hold is off must not quietly stop the pane from tailing.
+    p.body.addEventListener('scroll', () => {
+      releaseHoldAtBottom(p, el.querySelector('[data-act="hold"]'));
+    });
+
+    markChips();
+    pollPane(p);
+  }
+
+  function closePane(id) {
+    const p = panes.get(id);
+    if (!p) return;
+    p.el.remove();
+    panes.delete(id);
+    markChips();
+  }
+
+  function markChips() {
+    // The openable node is the CHANNEL cell, not the daemon row — a row now
+    // carries two of them and they open independently.
+    document.querySelectorAll('#console-list .chip, #console-list .dmn-open')
+            .forEach(c => c.classList.toggle('open', panes.has(c.dataset.id)));
+  }
+
+  // Every MTI log line carries ~70 characters of `[ts] [Level] [PID:n]
+  // [Thread:x] [component] ` before the message, which on a narrow pane is most
+  // of the width. Hide Headers is a CSS toggle over per-line spans rather than a
+  // text transform: the raw text is never destroyed, so toggling is instant,
+  // reversible, and applies to lines that have ALREADY scrolled by — a
+  // transform at append time could do none of those.
+  const LEVEL_RE = /^(Error|Warn|Warning|Info|Debug|Status|Trace|Critical)$/i;
+  const PREFIX_RE = /^((?:\[[^\]]*\]\s*)+)/;
+
+  function buildLine(raw) {
+    const line = document.createElement('span');
+    line.className = 'ln';
+    const m = raw.match(PREFIX_RE);
+    if (!m) { line.textContent = raw; return line; }
+    for (const g of (m[1].match(/\[[^\]]*\]\s*/g) || [])) {
+      const inner = g.slice(g.indexOf('[') + 1, g.lastIndexOf(']')).trim();
+      const s = document.createElement('span');
+      // The LEVEL survives hiding. Losing Error/Warn would make a stripped view
+      // unable to answer the one question a log is usually read for.
+      s.className = LEVEL_RE.test(inner) ? 'lvl' : 'hdr';
+      s.textContent = g;
+      line.appendChild(s);
+    }
+    line.appendChild(document.createTextNode(raw.slice(m[1].length)));
+    return line;
+  }
+
+  // SCROLL CONTRACT — Hold Position is the only thing that governs scrolling.
+  //
+  //   Hold OFF  the view scrolls to the bottom whenever new input is read.
+  //             Scrolling up does NOT suspend that; the next line pulls the
+  //             view back down. Following is not something you fall out of by
+  //             accident, only by pressing the button.
+  //
+  //   Hold ON   the displayed buffer freezes exactly where it is and new input
+  //             does not move it. It stays frozen until the reader DRAGS DOWN
+  //             TO THE BOTTOM LINE, which releases Hold and resumes tailing —
+  //             so the button pops back out on its own, because the pane is no
+  //             longer holding.
+  //
+  // Pressing Hold while already parked on the last line still freezes: incoming
+  // lines extend the buffer below the view, so the reader is no longer at the
+  // bottom line and must drag down to it to resume, exactly as if they had
+  // scrolled up first.
+  const HOLD_RELEASE_PX = 4;   // "the bottom line", allowing for fractional scroll heights
+
+  function toEnd(p) {
+    if (!p.hold) p.body.scrollTop = p.body.scrollHeight;
+  }
+
+  function releaseHoldAtBottom(p, btn) {
+    if (!p.hold) return;
+    const gap = p.body.scrollHeight - p.body.scrollTop - p.body.clientHeight;
+    if (gap < HOLD_RELEASE_PX) {
+      p.hold = false;
+      btn.classList.remove('on');
+    }
+  }
+
+  function paneAppend(p, text, cls) {
+    const frag = document.createDocumentFragment();
+    if (cls) {
+      const node = document.createElement('span');
+      node.className = 'ln ' + cls;
+      node.textContent = text;
+      frag.appendChild(node);
+    } else {
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i] + (i < lines.length - 1 ? '\n' : '');
+        if (raw) frag.appendChild(buildLine(raw));
+      }
+    }
+    const left = p.body.scrollLeft;
+    p.body.appendChild(frag);
+    // A rolling buffer bounded in BYTES, not lines.
+    //
+    // A line cap cannot bound memory: the runaway case this guards against is a
+    // command emitting enormous single lines — an ltrace, a hexdump, a minified
+    // blob — where 2000 lines can be hundreds of megabytes and the browser dies
+    // holding them. Bytes are what the DOM actually costs, so bytes are what is
+    // capped. Oldest lines go first; the pane keeps the most recent 5MB.
+    p.bytes = (p.bytes || 0) + text.length;
+    while (p.bytes > PANE_BUFFER_BYTES && p.body.firstChild) {
+      p.bytes -= (p.body.firstChild.textContent || '').length;
+      p.body.removeChild(p.body.firstChild);
+    }
+    // New output NEVER moves the horizontal axis. Trimming can drop the widest
+    // retained line, which shrinks scrollWidth and clamps scrollLeft back
+    // toward column 0 — a reader parked mid-line loses their place for a reason
+    // that has nothing to do with what they were reading.
+    if (p.body.scrollLeft !== left) p.body.scrollLeft = left;
+    toEnd(p);
+  }
+
+  // Output goes to a pipe, not a tty, so colour is rare — but one stray escape
+  // sequence would render as visible garbage, so strip control sequences.
+  function stripAnsi(s) {
+    return s.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]/g, '')
+            .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+            .replace(/\r(?!\n)/g, '\n');
+  }
+
+  // The merged session console. Each poll brings whatever is new from every
+  // command at once, so a live build streams in without anyone first choosing
+  // which stream is the build — the failure that made per-command chips useless
+  // for the one job this tab exists to do.
+  function pollHistory(p) {
+    if (p.busy || p.gone) return;
+    p.busy = true;
+    const uuid = p.id.split(':')[1];
+    p.cursor = p.cursor || {};
+    fetch('/history/' + encodeURIComponent(uuid)
+          + '?cursor=' + encodeURIComponent(JSON.stringify(p.cursor)))
+      .then(r => {
+        if (r.status === 404) { p.gone = true; throw new Error('session no longer served'); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(d => {
+        p.cursor = d.cursor || p.cursor;
+        let got = 0;
+        (d.chunks || []).forEach(c => {
+          // The boundary is drawn where the SOURCE changes, not per chunk: a
+          // command writing steadily would otherwise get a banner every poll.
+          if (c.start && c.src !== p.lastSrc)
+            paneAppend(p, `\n▶ ${c.at}  ${c.label}\n`, 'sep');
+          else if (c.src !== p.lastSrc && p.lastSrc !== undefined)
+            paneAppend(p, `\n· ${c.label}\n`, 'sep');
+          if (c.text) { paneAppend(p, stripAnsi(c.text)); got += c.text.length; }
+          if (c.end && !p.ended[c.src]) {
+            p.ended[c.src] = 1;
+            // What the command COST, not merely that it stopped. Scrolling back
+            // through a night's work, "which of these took four minutes" is the
+            // question being asked, and a bare `■ ended` cannot answer it.
+            const cost = [];
+            if (c.dur_s !== undefined) cost.push(fmtSecs(c.dur_s));
+            if (c.size !== undefined) cost.push(fmtBytes(c.size));
+            paneAppend(p, `■ ended${cost.length ? ' · ' + cost.join(' · ') : ''}\n`, 'sep');
+          }
+          p.lastSrc = c.src;
+        });
+        if (got) { p.lastData = Date.now(); p.gap = 1; }
+        else p.gap = Math.min(p.gap * 2, POLL_IDLE_TICKS);
+        const idleSecs = (Date.now() - p.lastData) / 1000;
+        const n = Object.keys(p.cursor).length;
+        const bytes = Object.values(p.cursor).reduce((a, b) => a + b, 0);
+        setSrc(p, n + ' command' + (n === 1 ? '' : 's'));
+        if (idleSecs < 1.5) setPill(p, 'live', 'streaming · ' + fmtBytes(bytes));
+        else                setPill(p, 'idle', 'idle ' + fmtSecs(idleSecs) + ' · ' + fmtBytes(bytes));
+      }).catch(e => {
+        setPill(p, 'dead', String(e.message || e));
+      }).then(() => { p.busy = false; });
+  }
+
+  // The transcript pane. Built from DOM nodes with textContent throughout —
+  // never innerHTML — because every string here is arbitrary conversation and
+  // command output, and this page has already been frozen once by markup that
+  // arrived in a label.
+  function renderTurn(p, t) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tr-turn ' + (t.role === 'user' ? 'user' : 'assistant');
+    const who = document.createElement('div');
+    who.className = 'tr-who';
+    who.textContent = (t.role === 'user' ? 'You' : 'Claude')
+      + (t.at ? ' · ' + new Date(t.at).toLocaleTimeString() : '');
+    wrap.appendChild(who);
+    if (t.text) {
+      const body = document.createElement('div');
+      body.textContent = t.text;
+      wrap.appendChild(body);
+    }
+    (t.calls || []).forEach(c => {
+      const el = document.createElement('div');
+      el.className = 'tr-call';
+      const nm = document.createElement('b');
+      nm.textContent = '\u2699 ' + c.name;
+      el.appendChild(nm);
+      if (c.subject) el.appendChild(document.createTextNode('  ' + c.subject));
+      wrap.appendChild(el);
+    });
+    // Collapsed by DEFAULT. Bash results are the session console in another
+    // costume — the same bytes, better shown there — and the rest is bulk a
+    // reader wants only when they go looking for it.
+    (t.results || []).forEach(r => {
+      if (!r) return;
+      const d = document.createElement('details');
+      d.className = 'tr-res';
+      const sm = document.createElement('summary');
+      const n = r.split('\n').length;
+      sm.textContent = '\u25b8 result · ' + n + (n === 1 ? ' line' : ' lines');
+      const pre = document.createElement('pre');
+      pre.textContent = r;
+      d.appendChild(sm); d.appendChild(pre);
+      wrap.appendChild(d);
+    });
+    p.body.appendChild(wrap);
+    p.bytes = (p.bytes || 0) + (t.text || '').length + 64;
+    while (p.bytes > PANE_BUFFER_BYTES && p.body.firstChild) {
+      p.bytes -= (p.body.firstChild.textContent || '').length;
+      p.body.removeChild(p.body.firstChild);
+    }
+  }
+
+  function pollTranscript(p) {
+    if (p.busy || p.gone) return;
+    p.busy = true;
+    const uuid = p.id.split(':')[1];
+    p.after = p.after || 0;
+    fetch('/transcript/' + encodeURIComponent(uuid) + '?after=' + p.after)
+      .then(r => {
+        if (r.status === 404) { p.gone = true; throw new Error('session no longer served'); }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(d => {
+        const turns = d.turns || [];
+        turns.forEach(t => renderTurn(p, t));
+        // No progress and nothing new means the end of the file, not a stall:
+        // a closed session never grows again, and polling it forever would be a
+        // request per second against a transcript that is finished.
+        const advanced = d.next > p.after;
+        p.after = d.next || p.after;
+        if (turns.length) { p.lastData = Date.now(); p.gap = 1; }
+        else p.gap = Math.min(p.gap * 2, POLL_IDLE_TICKS);
+        setSrc(p, d.total + ' records');
+        setPill(p, advanced ? 'live' : 'idle',
+                (d.total ? Math.min(p.after, d.total) : 0) + '/' + d.total);
+      }).catch(e => {
+        setPill(p, 'dead', String(e.message || e));
+      }).then(() => { p.busy = false; });
+  }
+
+  function pollPane(p) {
+    if (p.id.endsWith(':history')) return pollHistory(p);
+    if (p.id.endsWith(':transcript')) return pollTranscript(p);
+    if (p.busy || p.gone) return;
+    p.busy = true;
+    const url = '/console/' + encodeURIComponent(p.id) + (p.next === null ? '' : '?from=' + p.next);
+    fetch(url).then(r => {
+      // 404 means the stream is GONE, not that the request failed: an id the
+      // server has retired, or a pane left open from a page loaded before a
+      // restart. Retrying it forever produces a request per second against a
+      // route that will never answer and a pane that lies about being live, so
+      // it is terminal — the pane says so and stops.
+      if (r.status === 404) { p.gone = true; throw new Error('stream no longer served'); }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(d => {
+      if (p.key !== null && d.stream_key !== p.key) {
+        paneAppend(p, '\n── new command: ' + d.stream_key + ' ──\n', 'sep');
+        p.next = null;              // the file changed; the old offset is meaningless
+      } else if (d.reset) {
+        paneAppend(p, '\n── file truncated or rotated — restarting ──\n', 'sep');
+      }
+      p.key = d.stream_key;
+      // Pace against the stream: a pane receiving output is polled every tick,
+      // one that has gone quiet backs off. A flat 1s tick made an active build
+      // feel laggy while still costing a request per second when nothing was
+      // happening — this is both faster when it matters and cheaper when it
+      // does not. The idle floor stays at the old 1s, so nothing regresses.
+      if (d.text) {
+        paneAppend(p, stripAnsi(d.text));
+        p.lastData = Date.now();
+        p.gap = 1;
+      } else {
+        p.gap = Math.min(p.gap * 2, POLL_IDLE_TICKS);
+      }
+      // Elapsed wall time, not a count of polls. Polls are 250ms-1s apart under
+      // adaptive pacing, so counting them stopped meaning seconds the moment
+      // that landed.
+      const idleSecs = (Date.now() - p.lastData) / 1000;
+      p.next = d.next;
+      setSrc(p, d.source || '');
+      const size = fmtBytes(d.size);
+      if (d.missing)                              setPill(p, 'dead', 'source gone');
+      else if (d.rc !== null && d.rc !== undefined) setPill(p, 'dead', 'exited rc=' + d.rc);
+      else if (d.alive === false)                 setPill(p, 'dead', 'ended · ' + size);
+      else if (idleSecs < 1.5)                    setPill(p, 'live', 'streaming · ' + size);
+      else                                        setPill(p, 'idle', 'idle ' + fmtSecs(idleSecs) + ' · ' + size);
+    }).catch(e => {
+      setPill(p, 'dead', String(e.message || e));
+    }).then(() => { p.busy = false; });
+  }
+
+  // U+200E (LEFT-TO-RIGHT MARK) anchors the path's bidi direction. The element
+  // is direction:rtl so that it truncates on the left, and without a strong LTR
+  // character in front the leading "/" resolves to the RTL base level and is
+  // laid out at the opposite end of the string. The mark is zero-width, sits at
+  // the logical start, and is therefore the first thing truncated away.
+  function setSrc(p, path) {
+    p.src.textContent = path ? '‎' + path : '';
+    p.src.title = path;
+  }
+
+  function setPill(p, cls, text) {
+    p.pill.className = 'pill ' + cls;
+    p.pill.textContent = text;
+  }
+
+  // The pill sits in the title bar next to the window controls, so it has to
+  // stay short — a raw byte count with thousands separators is the widest thing
+  // that was ever in it and the least readable.
+  function fmtBytes(n) {
+    n = n || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + 'K';
+    if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + 'M';
+    return (n / 1073741824).toFixed(1) + 'G';
+  }
+
+  // Nice is signed and its sign is the whole point — a batch job at +19 and a
+  // realtime-ish one at -5 must not read alike.
+  function fmtNice(n) { return (n > 0 ? '+' : '') + n; }
+
+  // TIME+ in top's own format: total MINUTES : seconds . hundredths. top does
+  // not roll over to hours, and matching it is the point — these numbers are
+  // meant to be checkable against `top` side by side.
+  function fmtCpu(s) {
+    const m = Math.floor(s / 60);
+    return m + ':' + (s - m * 60).toFixed(2).padStart(5, '0');
+  }
+
+  const DASH = '\u2014';
+  function cellPid(p)  { return p && p.pid != null ? p.pid : DASH; }
+  function cellNice(p) { return p && p.nice != null ? fmtNice(p.nice) : DASH; }
+  function cellLoad(p) { return p && p.load != null ? p.load.toFixed(1) + '%' : DASH; }
+  function cellCpu(p)  { return p && p.cputime != null ? fmtCpu(p.cputime) : DASH; }
+  function cellRss(p)  { return p && p.rss != null ? fmtBytes(p.rss) : DASH; }
+
+  // top(1) refreshes every 3.0s and reports %CPU as a per-CPU delta across that
+  // interval; both are matched so the columns can be checked against top side
+  // by side. This writes into the EXISTING cells rather than re-rendering the
+  // list — a 3-second rebuild would re-attach every open pane and fight the
+  // reader's scroll, which is why it is a separate, values-only endpoint.
+  const TOP_INTERVAL_MS = 3000;
+  // Capacity is normalized to G across the whole row so two numbers of the same
+  // kind can be read against each other without converting one of them.
+  function g(bytes) {
+    if (bytes === undefined || bytes === null) return '—';
+    return (bytes / 1073741824).toFixed(1) + 'G';
+  }
+  function pc(v) { return (v === undefined || v === null) ? '—' : v.toFixed(1) + '%'; }
+
+  // One machine reading under the daemon list. A job's own output says where it
+  // is; it cannot say what it is doing to the machine, and that is a separate
+  // class of failure with its own symptoms — work running unniced, memory
+  // draining toward the OOM killer, a disk filling.
+  // Highlighting is against the ADMISSION thresholds the build system actually
+  // applies, streamed down beside the readings — never a number typed here. A
+  // field goes amber exactly when it is the reason `rustc-gate` would hold a
+  // compile back, so the row answers "why is my build waiting" rather than
+  // offering an opinion of its own about what "low" means.
+  //
+  // `warn` is a second, quieter level: the machine is fine for work but not
+  // quiescent enough to MEASURE on. resources.rs is blunt about why that
+  // matters — a benchmark on a contended box "does not produce a weak number,
+  // it produces a wrong one", and a wrong one enters the timing baselines.
+  function renderSys(s) {
+    const el = document.getElementById('sysline');
+    if (!el) return;
+    if (!s || s.status === 'starting') { el.textContent = ''; return; }
+    if (s.status === 'unavailable') {
+      el.innerHTML = `<span class="sl">Sys</span>`
+        + `<span class="sf gap">unavailable — ${esc(s.error || 'no sampler')}</span>`;
+      return;
+    }
+    const mb = v => (v === undefined || v === null) ? null : v * 1048576;
+    // A field is judged only where the stream actually carried a threshold; a
+    // missing one means "not judged", never "fine".
+    const f = (v, l, bad) => `<span class="sf${bad === true ? ' bad' : bad === 'warn' ? ' warn' : ''}">`
+      + `<b>${v}</b> ${l}</span>`;
+    const lt = (v, t) => (v !== undefined && t !== undefined) ? v < t : undefined;
+    const gt = (v, t) => (v !== undefined && t !== undefined) ? v > t : undefined;
+    const lvl = (hard, soft) => hard === true ? true : (soft === true ? 'warn' : false);
+
+    const memFreePct = (s.mem_avail_mb !== undefined && s.mem_total_mb)
+      ? 100 * s.mem_avail_mb / s.mem_total_mb : undefined;
+
+    el.innerHTML =
+        `<span class="sl">Sys</span>`
+      + f(pc(s.sy), 'sy')
+      // `us` — top's USER share. This column briefly showed idle under an `lo`
+      // label, which inverted its sense: a reader who learned "high means busy"
+      // was being shown a number where high means free. It is judged against
+      // `min_idle_pct` rather than against itself because idle is what the
+      // admission gates are actually specified on — so the column shows who
+      // took the CPU, and goes amber exactly when the gate would refuse work.
+      + f(pc(s.us), 'us', lvl(lt(s.id, s.min_idle_pct), lt(s.id, s.q_min_idle_pct)))
+      + f(pc(s.ni), 'ni')
+      + f(pc(s.wa), 'wa', lvl(gt(s.wa, s.max_iowait_pct), gt(s.wa, s.q_max_iowait_pct)))
+      // AVAILABLE against total, not used — the number a scheduler admits on,
+      // and the one that answers "can this machine take more work".
+      // All three capacities read AVAILABLE / TOTAL, in that order and that
+      // sense. Available is the number that answers "can this machine take more
+      // work"; total is there for scale, so a reader can judge 13G against 30G
+      // rather than against nothing. Mixing in a `used` would make one of the
+      // three read backwards from its neighbours.
+      + f(`${g(mb(s.mem_avail_mb))}/${g(mb(s.mem_total_mb))}`, '',
+          lvl(lt(s.mem_avail_mb, s.reserve_mb), lt(memFreePct, s.q_min_free_ram_pct)))
+          .replace('<b>', '<i>mem</i> <b>')
+      + f(`${g(mb(s.sw_avail_mb))}/${g(mb(s.sw_total_mb))}`, '')
+          .replace('<b>', '<i>swp</i> <b>')
+      + f(`${g(mb(s.st_free_mb))}/${g(mb(s.st_total_mb))}`, '',
+          lt(s.st_free_mb, s.disk_reserve_mb))
+          .replace('<b>', '<i>sto</i> <b>')
+      + (s.status === 'stale'
+          ? `<span class="sf gap">stale ${s.age_s}s</span>` : '');
+  }
+
+  // The spool's own size, shown ALWAYS rather than only when breached.
+  //
+  // A limit that appears at the moment it is crossed teaches a reader nothing
+  // about where they normally sit, so the first time they see it they cannot
+  // tell "unusual" from "Tuesday". This exists to make a runaway command — an
+  // ltrace, a debug build with tracing left on — obvious WHILE it is still
+  // writing, which means the normal number has to have been visible all along.
+  //
+  // Nothing here caps anything. Capture continues past the threshold, because
+  // silently dropping output is the exact defect the spool was built to fix.
+  function renderSpool(sp) {
+    const el = document.getElementById('spoolline');
+    if (!el) return;
+    if (!sp) { el.textContent = ''; return; }
+    const bad = !!sp.over;
+    const f = (v, l, flag) => `<span class="sf${flag ? ' bad' : ''}">`
+      + `<i>${l}</i> <b>${v}</b></span>`;
+    el.innerHTML =
+        `<span class="sl">Spool</span>`
+      + f(`${fmtBytes(sp.bytes)}/${fmtBytes(sp.alert_total)}`, 'total',
+          sp.bytes > sp.alert_total)
+      + f(sp.files, 'files')
+      + (sp.biggest_name
+          ? f(`${fmtBytes(sp.biggest)}`, 'largest ' + esc(sp.biggest_name),
+              sp.biggest > sp.alert_single)
+          : '')
+      + (bad ? `<span class="sf bad">over limit — capture continues</span>` : '');
+  }
+
+  function refreshProcStats() {
+    const panel = document.getElementById('console-panel');
+    if (!panel || !panel.classList.contains('active')) return;
+    const rows = [...document.querySelectorAll('#console-list .dmn-row')];
+    fetch('/procstats').then(r => r.json()).then(resp => {
+      renderSys(resp.system);
+      renderSpool(resp.spool);
+      const m = resp.rows || {};
+      rows.forEach(row => {
+        const s = m[row.dataset.id];
+        if (!s) return;
+        const p = s.live ? s : null;
+        const put = (f, v) => {
+          const el = row.querySelector(`[data-f="${f}"]`);
+          if (el && el.textContent !== v) el.textContent = v;
+        };
+        put('pid', cellPid(p)); put('nice', cellNice(p)); put('load', cellLoad(p));
+        put('cputime', cellCpu(p)); put('rss', cellRss(p));
+        // Each channel carries its own size and its own liveness — a daemon
+        // writing its product log while its captured stream sits finished is
+        // the normal case, not an edge one.
+        ['out', 'log'].forEach(which => {
+          const el = row.querySelector(`[data-ch="${which}"]`);
+          const ch = (s.ch || {})[which];
+          if (!el || !ch) return;
+          const v = fmtBytes(ch.size);
+          if (el.textContent !== v) el.textContent = v;
+          el.classList.toggle('live', !!ch.live);
+        });
+        const dot = row.querySelector('.dot');
+        if (dot) dot.hidden = !s.live;
+      });
+    }).catch(() => {});
+  }
+  setInterval(refreshProcStats, TOP_INTERVAL_MS);
+
+  function fmtSecs(s) {
+    if (s < 60) return Math.round(s) + 's';
+    if (s < 3600) return Math.round(s / 60) + 'm';
+    return (s / 3600).toFixed(s < 36000 ? 1 : 0) + 'h';
+  }
+
+  // One timer for every pane rather than one per pane: the tick stays aligned
+  // and closing a pane cannot leave an orphan interval running. Panes pace
+  // themselves against this master tick by counting it down, so adaptive
+  // polling costs no extra timers.
+  const POLL_TICK_MS = 250;
+  const POLL_IDLE_TICKS = 4;          // quiet pane → one poll per second
+  // Retained scrollback per pane, in bytes. Bounded in bytes rather than lines
+  // because a single line can be megabytes and a line cap bounds nothing.
+  const PANE_BUFFER_BYTES = 5 * 1024 * 1024;
+  setInterval(() => {
+    panes.forEach(p => {
+      if (p.due > 0) { p.due -= 1; return; }
+      p.due = p.gap;
+      pollPane(p);
+    });
+  }, POLL_TICK_MS);
+
+  // One delegated handler rather than a listener per chip — the list is
+  // re-rendered on every poll, and per-node listeners would be rebound each time.
+  document.getElementById('console-list').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip, .dmn-open');
+    if (!chip) return;
+    openPane(chip.dataset.id, chip.dataset.label || chip.textContent.trim());
+  });
+
+  document.getElementById('console-refresh')
+    .addEventListener('click', () => loadConsoles(true));
+
+  loadConsoles();
+  setInterval(loadConsoles, 10000);
+
+  // Escapes for BOTH contexts this is used in — element text and quoted
+  // attributes. The textContent round-trip alone handles & < > and leaves " and
+  // ' untouched, which is invisible for as long as every value is a fixed
+  // string or a constrained name, and fatal the moment one carries arbitrary
+  // output: a chip label built from a log's first line closed its `data-label="`
+  // early and the rest of it parsed as markup, corrupting the DOM after the
+  // first chip. Callers must not have to know which context they are in, so the
+  // one escaper covers the union.
+  function esc(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+})();
 </script>
 </body>
 </html>
