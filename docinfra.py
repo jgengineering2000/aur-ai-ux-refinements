@@ -174,7 +174,7 @@ def _with_port(task, port):
     """Prefix CLAUDE_DOC_PORT onto a task command for a non-default port.
 
     The ensure-task needs it too: open-manifest.sh falls back to
-    $CLAUDE_DOC_PORT when .claude/server.port does not exist yet.
+    $CLAUDE_DOC_PORT when aur/server.port does not exist yet.
     """
     if port != 7432:
         task = dict(task)
@@ -224,14 +224,20 @@ def install_task(project_dir, port, log=print):
 def install_review_infra(project_dir, do_claude_md, log=print):
     project_dir = Path(project_dir)
     here = resource_root()
-    claude_dir = project_dir / ".claude"
+    # NOT `.claude/`. That directory is the agent's own configuration — its
+    # settings, hooks and permission allow-lists — and writes there require a
+    # human confirmation that no configuration can waive, by design: an agent
+    # able to write it unattended could grant itself any permission. Tooling
+    # parked inside it pays that toll on every edit, forever. `aur/` is the
+    # project's instance of AUR-provided infrastructure, and it is ordinary.
+    aur_dir = project_dir / "aur"
     docs_dir = project_dir / "claude-docs"
-    claude_dir.mkdir(exist_ok=True)
+    aur_dir.mkdir(exist_ok=True)
     docs_dir.mkdir(exist_ok=True)
 
     files = [
-        (here / "server" / "server.py",         claude_dir / "server.py"),
-        (here / "server" / "open-manifest.sh",  claude_dir / "open-manifest.sh"),
+        (here / "server" / "server.py",         aur_dir / "server.py"),
+        (here / "server" / "open-manifest.sh",  aur_dir / "open-manifest.sh"),
         (here / "server" / "manifest-link.js",  docs_dir / "manifest-link.js"),
         (here / "server" / "ann.css",           docs_dir / "ann.css"),
         (here / "server" / "ann.js",            docs_dir / "ann.js"),
@@ -243,7 +249,7 @@ def install_review_infra(project_dir, do_claude_md, log=print):
 
     # The ensure-task runs this via `bash`, but set the bit explicitly: a
     # PyInstaller extraction does not necessarily preserve source permissions.
-    script = claude_dir / "open-manifest.sh"
+    script = aur_dir / "open-manifest.sh"
     script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     if do_claude_md:

@@ -178,7 +178,7 @@ the browser (step 4), and it keeps that binding's URL pointed at the live port.
 **2. Start it:**
 
 ```bash
-python3 yourproject/.claude/server.py &
+python3 yourproject/aur/server.py &
 # Serves on http://localhost:7432/
 ```
 
@@ -211,7 +211,7 @@ if nothing is listening; phase 2 opens the manifest. Binding `simpleBrowser.show
 directly races the `folderOpen` auto-start task and shows connection-refused when
 the server has not bound yet.
 
-`open-manifest.sh` also rewrites this URL to match `.claude/server.port`, so the
+`open-manifest.sh` also rewrites this URL to match `aur/server.port`, so the
 binding follows the server if it scans past a busy 7432.
 
 **5. Add `CLAUDE.md` to your project:**

@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Jonathan George
 #
 # Ensure the AUR doc server is running, then keep the Alt+D keybinding pointed at
-# it. Installed into a project's .claude/ by install.py; invoked by the
+# it. Installed into a project's aur/ by install.py; invoked by the
 # "Ensure doc server" VSCode task, which Alt+D runs BEFORE opening the browser.
 #
 # Why the two-phase design: a keybinding that calls `simpleBrowser.show` directly
@@ -12,7 +12,7 @@
 # health-check first guarantees something is listening before the browser
 # connects.
 #
-#   1. Resolve the port (.claude/server.port, else $CLAUDE_DOC_PORT, else 7432).
+#   1. Resolve the port (aur/server.port, else $CLAUDE_DOC_PORT, else 7432).
 #   2. If nothing answers on that port, start server.py detached and wait for it.
 #   3. Sync the Alt+D keybinding's URL to the resolved port.
 #

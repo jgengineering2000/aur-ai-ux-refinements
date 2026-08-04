@@ -15,14 +15,14 @@ CLAUDE.md instructions
 claude-docs/<name>-<date>-<HHMMSS>.html
     │  static HTML document written by Claude
     ▼
-.claude/server.py  (running in background)
+aur/server.py  (running in background)
     │  serves claude-docs/ on localhost
     │  stores/retrieves annotations as JSON
     ▼
 Alt+D keybinding  (runCommands, two phases)
     │  1. task "Ensure doc server" → .claude/open-manifest.sh
     │       health-checks the port, starts server.py if nothing is listening,
-    │       and re-points this binding at .claude/server.port
+    │       and re-points this binding at aur/server.port
     │  2. simpleBrowser.show(http://localhost:PORT/manifest.html)
     │  single keystroke, and the server is guaranteed up before the browser
     │  connects — binding the browser directly races the folderOpen auto-start
@@ -62,9 +62,9 @@ claude-docs/<type>-<YYYY>-<MM>-<DD>-<HHMMSS>.html
 1. Check `CLAUDE_DOC_PORT` environment variable.
 2. If unset, try port 7432.
 3. If 7432 is taken, scan upward until a free port is found (limit: 100 ports).
-4. Write the bound port to `.claude/server.port`.
+4. Write the bound port to `aur/server.port`.
 
-CLAUDE.md and the installer read `.claude/server.port` to construct the correct
+CLAUDE.md and the installer read `aur/server.port` to construct the correct
 `http://localhost:PORT/…` URL. The Alt+D keybinding points to the manifest, not a
 specific document; the manifest listing is dynamic.
 
@@ -109,7 +109,7 @@ Projects using AUR infrastructure add the following to their CLAUDE.md:
 3. Post a one-paragraph summary + Alt+D reminder in chat after writing.
 4. Never repoint the Alt+D keybinding per document — it targets `manifest.html`,
    the stable entry point that lists every document by date. The only thing that
-   rewrites that URL is `open-manifest.sh`, tracking `.claude/server.port`.
+   rewrites that URL is `open-manifest.sh`, tracking `aur/server.port`.
 5. Every HTML document must include the annotation system CSS + JS verbatim.
 6. Every HTML document must include `<script src="/manifest-link.js"></script>`
    before `</body>` (except `manifest.html` itself).
@@ -137,7 +137,7 @@ The installer adds two VS Code tasks to `.vscode/tasks.json`:
 {
   "label": "Start Claude doc server",
   "type": "shell",
-  "command": "python3 '${workspaceFolder}/.claude/server.py'",
+  "command": "python3 '${workspaceFolder}/aur/server.py'",
   "runOptions": { "runOn": "folderOpen" }
 }
 ```
@@ -154,7 +154,7 @@ Starts the server automatically when the project folder is opened. Uses
 ```
 
 Run by Alt+D as phase 1, *before* the browser opens. It resolves the port from
-`.claude/server.port`, starts `server.py` detached if nothing answers, and waits
+`aur/server.port`, starts `server.py` detached if nothing answers, and waits
 for it to bind — closing the window where the folderOpen task has not finished
 (or the server has since died) and Simple Browser would show connection-refused.
 It also re-points the Alt+D binding at the resolved port.

@@ -4,7 +4,7 @@
     {
       "label": "Start Claude doc server",
       "type": "shell",
-      "command": "python3 '${workspaceFolder}/.claude/server.py'",
+      "command": "python3 '${workspaceFolder}/aur/server.py'",
       "isBackground": true,
       "runOptions": {
         "runOn": "folderOpen"
@@ -26,7 +26,7 @@
     {
       "label": "Ensure doc server",
       "type": "shell",
-      "command": "bash '${workspaceFolder}/.claude/open-manifest.sh'",
+      "command": "bash '${workspaceFolder}/aur/open-manifest.sh'",
       "presentation": { "reveal": "never", "panel": "dedicated", "close": true },
       "problemMatcher": []
     }
