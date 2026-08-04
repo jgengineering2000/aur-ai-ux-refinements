@@ -1964,37 +1964,83 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def _goto_aur(self):
-        """Redirect to the AUR doc manifest, resolving its LIVE port from AUR's
-        server.port file (ports are dynamic — find_free_port scans upward — so a
-        hardcoded port would silently break). If the AUR server is down, return a
-        small page explaining how to start it rather than a dead redirect."""
-        # AUR self-hosts from its CANONICAL `server/` rather than from an
-        # installed copy: a second copy of the doc server inside the repo that
-        # defines it was found two commits stale, serving its own manifest with
-        # a sort bug already fixed upstream.
+        """Redirect to the AUR doc manifest, STARTING that server if it is down.
+
+        Handing the reader a command to paste is not a fallback, it is the
+        failure: a doc server that has just established another doc server is
+        not running is in a strictly better position to start it than the person
+        who clicked a link. This is the same start-then-poll `open-manifest.sh`
+        already performs for this server's own port, and it works verbatim for
+        AUR's because AUR self-hosts from its canonical `server/` rather than
+        from an installed copy.
+
+        Ports are dynamic — `find_free_port` scans upward when the preferred one
+        is busy, which it will be here, since this very process holds it — so
+        the port file is re-read on every poll rather than once at the start.
+        """
+        server = _AUR_DIR / "server" / "server.py"
         port_file = _AUR_DIR / "server" / "server.port"
-        port = None
-        try:
-            port = int(port_file.read_text().strip())
-        except (OSError, ValueError):
-            port = None
-        if port is not None and already_running(port):
+
+        def live_port():
+            try:
+                p = int(port_file.read_text().strip())
+            except (OSError, ValueError):
+                return None
+            return p if already_running(p) else None
+
+        port = live_port()
+        started = False
+        if port is None and server.is_file():
+            try:
+                # Detached, so it outlives this request rather than dying with
+                # the handler thread that spawned it.
+                subprocess.Popen(
+                    [sys.executable, str(server)], cwd=str(server.parent),
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    start_new_session=True)
+                started = True
+            except OSError:
+                started = False
+            deadline = time.monotonic() + 5.0
+            while port is None and time.monotonic() < deadline:
+                time.sleep(0.1)
+                port = live_port()
+
+        if port is not None:
             self.send_response(302)
             self.send_header("Location", f"http://localhost:{port}/manifest.html")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
+        # Reached only when starting it FAILED. The page therefore reports what
+        # was attempted and why it did not work — a reader who is told "run
+        # this" after the server already tried to run it, and was not told that,
+        # will run it and watch it fail the same way.
+        if not server.is_file():
+            cause = (f"<p>No server found at <code>{server}</code>. The AUR "
+                     f"checkout may be missing or moved.</p>")
+        elif started:
+            cause = ("<p>It was started automatically, but did not bind a port "
+                     "within 5 seconds. Its own startup output is discarded, so "
+                     "run it in a terminal to see why:</p>"
+                     "<pre style='background:#f1f3f5;padding:.8rem;"
+                     "border-radius:6px'>python3 ~/develop/aur/server/server.py"
+                     "</pre>")
+        else:
+            cause = ("<p>It could not be launched at all. Run it in a terminal "
+                     "to see why:</p>"
+                     "<pre style='background:#f1f3f5;padding:.8rem;"
+                     "border-radius:6px'>python3 ~/develop/aur/server/server.py"
+                     "</pre>")
         body = (
             "<!DOCTYPE html><meta charset='utf-8'>"
-            "<title>AUR docs — not running</title>"
+            "<title>AUR docs — could not start</title>"
             "<body style='font-family:system-ui;max-width:640px;margin:3rem auto;"
             "padding:0 1rem;line-height:1.5'>"
-            "<h2>AUR doc server isn't running</h2>"
-            "<p>The AUR manifest is served by a separate doc server. Start it with:</p>"
-            "<pre style='background:#f1f3f5;padding:.8rem;border-radius:6px'>"
-            "python3 ~/develop/aur/server/server.py &amp;</pre>"
-            "<p>then reload this page (it resolves AUR's live port automatically).</p>"
-            "</body>"
+            "<h2>AUR doc server could not be started</h2>"
+            + cause +
+            "<p>Reload this page once it is up — the live port is resolved "
+            "automatically.</p></body>"
         ).encode("utf-8")
         self.send_response(503)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -2462,6 +2508,22 @@ if __name__ == "__main__":
     port = find_free_port(PREFERRED_PORT)
     PORT_FILE.write_text(str(port))
 
+    def _release_port_file():
+        """Remove the port file ONLY while it still names this instance.
+
+        A departing server must not delete a live one's pointer. The window is
+        real and was observed here: an instance signalled at T finishes its
+        teardown at T+n, by which time a successor has already bound a new port
+        and written the file — and the unconditional unlink erased it, leaving
+        a healthy server that nothing could find. The next visitor then starts
+        *another* server on another port, and they accumulate.
+        """
+        try:
+            if PORT_FILE.read_text().strip() == str(port):
+                PORT_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
+
     # Capture starts BEFORE the socket binds. A command running in the seconds
     # it takes to come up is still complete on disk, so the startup scan gets it
     # in full — but only if the scan happens before anything else can block.
@@ -2500,7 +2562,7 @@ if __name__ == "__main__":
         _SYSINFO_STREAM.stop()
         if _SPOOL is not None:
             _SPOOL.stop()
-        PORT_FILE.unlink(missing_ok=True)
+        _release_port_file()
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, _shutdown)
@@ -2522,4 +2584,4 @@ if __name__ == "__main__":
         _SYSINFO_STREAM.stop()
         if _SPOOL is not None:
             _SPOOL.stop()
-        PORT_FILE.unlink(missing_ok=True)
+        _release_port_file()
