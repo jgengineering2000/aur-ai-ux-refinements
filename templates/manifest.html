@@ -1096,7 +1096,7 @@ body {
       hdr.className = 'section-head';
       const wh = (consoleGroups.find(g => g.window_hours) || {}).window_hours || 48;
       hdr.innerHTML = `AI sessions for the past ${wh} hours`
-        + `<span>logging &amp; consoles only monitored by live AUR server</span>`;
+        + `<span>logging &amp; consoles only monitored with AUR server <em>live</em></span>`;
       firstSession.parentNode.insertBefore(hdr, firstSession);
     }
     reattachPanes();
@@ -1113,7 +1113,7 @@ body {
     const missed = g.capture_missed
       ? ` · ${g.capture_missed} missed` : '';
     return g.capture_gap
-      ? `<span class="capture gap" title="Commands that finished before ${esc(g.capture_since)} were not captured">from ${esc(g.capture_since)}${missed}</span>`
+      ? `<span class="capture gap" title="Commands that finished before ${esc(g.capture_since)} were not captured">started ${esc(g.capture_since)}${missed}</span>`
       : `<span class="capture" title="This session was captured in full">captured${missed}</span>`;
   }
 
@@ -1460,12 +1460,20 @@ body {
   // arrived in a label.
   function renderTurn(p, t) {
     const wrap = document.createElement('div');
-    wrap.className = 'tr-turn ' + (t.role === 'user' ? 'user' : 'assistant');
+    wrap.className = 'tr-turn ' + (t.role === 'user' ? 'user'
+                                 : t.role === 'tool' ? 'tool' : 'assistant');
     const who = document.createElement('div');
     who.className = 'tr-who';
-    who.textContent = (t.role === 'user' ? 'You' : 'Claude')
-      + (t.at ? ' · ' + new Date(t.at).toLocaleTimeString() : '');
-    wrap.appendChild(who);
+    const label = t.role === 'user' ? 'You' : t.role === 'tool' ? 'Tool' : 'Claude';
+    const whoText = label + (t.at ? ' · ' + fmtClock(t.at) : '');
+    // A result-only turn spends two lines saying one thing: who, then what.
+    // Its attribution, its time and its result count fold onto the summary, so
+    // the collapsed row IS the whole turn and the transcript stops being
+    // double-spaced by tool traffic.
+    const resultOnly = (t.results || []).length === 1
+                       && !t.text && !(t.calls || []).length;
+    if (!resultOnly) wrap.appendChild(who);
+    who.textContent = whoText;
     if (t.text) {
       const body = document.createElement('div');
       body.textContent = t.text;
@@ -1489,7 +1497,8 @@ body {
       d.className = 'tr-res';
       const sm = document.createElement('summary');
       const n = r.split('\n').length;
-      sm.textContent = '\u25b8 result · ' + n + (n === 1 ? ' line' : ' lines');
+      sm.textContent = (resultOnly ? whoText + ' · ' : '')
+        + '\u25b8 result · ' + n + (n === 1 ? ' line' : ' lines');
       const pre = document.createElement('pre');
       pre.textContent = r;
       d.appendChild(sm); d.appendChild(pre);
@@ -1516,6 +1525,13 @@ body {
       }).then(d => {
         const turns = d.turns || [];
         turns.forEach(t => renderTurn(p, t));
+        // A transcript is a log and behaves like one: it opens at the END and
+        // follows new turns as they arrive. It had been rendering top-anchored,
+        // which put the oldest turn of a thousand-record session in front of a
+        // reader who opened it to see what just happened. Once per batch rather
+        // than per turn, and through the same `toEnd` every other pane uses —
+        // so Hold Position governs it identically.
+        if (turns.length) toEnd(p);
         // No progress and nothing new means the end of the file, not a stall:
         // a closed session never grows again, and polling it forever would be a
         // request per second against a transcript that is finished.
@@ -1656,13 +1672,20 @@ body {
   // quiescent enough to MEASURE on. resources.rs is blunt about why that
   // matters — a benchmark on a contended box "does not produce a weak number,
   // it produces a wrong one", and a wrong one enters the timing baselines.
+  // Kernel-time bound. Unlike every other threshold in this row it is NOT
+  // streamed from the sampler, because it is not an admission question: the
+  // gates decide whether the machine has room, and this says the machine is
+  // spending itself on overhead rather than on work. Sustained system time
+  // above this is worth a look whatever the headroom figures say.
+  const SY_ATTENTION_PCT = 14;
+
   function renderSys(s) {
     const el = document.getElementById('sysline');
     if (!el) return;
     if (!s || s.status === 'starting') { el.textContent = ''; return; }
     if (s.status === 'unavailable') {
-      el.innerHTML = `<span class="sl">Sys</span>`
-        + `<span class="sf gap">unavailable — ${esc(s.error || 'no sampler')}</span>`;
+      el.innerHTML =
+        `<span class="sf gap">unavailable — ${esc(s.error || 'no sampler')}</span>`;
       return;
     }
     const mb = v => (v === undefined || v === null) ? null : v * 1048576;
@@ -1678,16 +1701,21 @@ body {
       ? 100 * s.mem_avail_mb / s.mem_total_mb : undefined;
 
     el.innerHTML =
-        `<span class="sl">Sys</span>`
-      + f(pc(s.sy), 'sy')
       // `us` — top's USER share. This column briefly showed idle under an `lo`
       // label, which inverted its sense: a reader who learned "high means busy"
       // was being shown a number where high means free. It is judged against
       // `min_idle_pct` rather than against itself because idle is what the
       // admission gates are actually specified on — so the column shows who
       // took the CPU, and goes amber exactly when the gate would refuse work.
-      + f(pc(s.us), 'us', lvl(lt(s.id, s.min_idle_pct), lt(s.id, s.q_min_idle_pct)))
+        f(pc(s.us), 'us', lvl(lt(s.id, s.min_idle_pct), lt(s.id, s.q_min_idle_pct)))
       + f(pc(s.ni), 'ni')
+      // `sy` sits AFTER `ni`, beside `wa`: system time and iowait are the pair
+      // that move together when the machine is in trouble, and reading them
+      // apart is what let a rising kernel share pass unnoticed. Kernel time is
+      // overhead, not work — sustained double digits means the machine is busy
+      // being busy, so it is judged on its own bound rather than against a
+      // headroom figure that has nothing to say about it.
+      + f(pc(s.sy), 'sy', gt(s.sy, SY_ATTENTION_PCT))
       + f(pc(s.wa), 'wa', lvl(gt(s.wa, s.max_iowait_pct), gt(s.wa, s.q_max_iowait_pct)))
       // AVAILABLE against total, not used — the number a scheduler admits on,
       // and the one that answers "can this machine take more work".
@@ -1703,7 +1731,7 @@ body {
           .replace('<b>', '<i>swp</i> <b>')
       + f(`${g(mb(s.st_free_mb))}/${g(mb(s.st_total_mb))}`, '',
           lt(s.st_free_mb, s.disk_reserve_mb))
-          .replace('<b>', '<i>sto</i> <b>')
+          .replace('<b>', '<i>stor</i> <b>')
       + (s.status === 'stale'
           ? `<span class="sf gap">stale ${s.age_s}s</span>` : '');
   }
@@ -1729,10 +1757,15 @@ body {
         `<span class="sl">Spool</span>`
       + f(`${fmtBytes(sp.bytes)}/${fmtBytes(sp.alert_total)}`, 'total',
           sp.bytes > sp.alert_total)
-      + f(sp.files, 'files')
-      + (sp.biggest_name
-          ? f(`${fmtBytes(sp.biggest)}`, 'largest ' + esc(sp.biggest_name),
-              sp.biggest > sp.alert_single)
+      // One file per foreground command inside the retention window — so this
+      // counts COMMANDS, not sessions, which is why it runs to the hundreds on
+      // an ordinary week without meaning anything is wrong.
+      + f(sp.files, 'cmds')
+      // Ping-style, because a lone maximum cannot say whether it is an outlier:
+      // 185K reads alarming beside nothing and unremarkable beside a 7K mean.
+      + (sp.files
+          ? f(`${fmtBytes(sp.min)}/${fmtBytes(sp.avg)}/${fmtBytes(sp.max)}`,
+              'min/avg/max', sp.max > sp.alert_single)
           : '')
       + (bad ? `<span class="sf bad">over limit — capture continues</span>` : '');
   }
@@ -1772,6 +1805,18 @@ body {
     }).catch(() => {});
   }
   setInterval(refreshProcStats, TOP_INTERVAL_MS);
+
+  // ONE clock for the whole page: local, 24-hour, zero-padded. `toLocaleTime‐
+  // String()` follows the browser's locale, which on this machine renders
+  // 12-hour with am/pm — so the transcript disagreed with the server's own
+  // stamps, the log lines and every other time on the page. A reader comparing
+  // a transcript turn against a log line should not have to convert.
+  function fmtClock(v) {
+    const d = (v instanceof Date) ? v : new Date(v);
+    if (isNaN(d)) return '';
+    const p = n => String(n).padStart(2, '0');
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
 
   function fmtSecs(s) {
     if (s < 60) return Math.round(s) + 's';

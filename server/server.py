@@ -589,7 +589,7 @@ def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
     because losing output silently is the defect the spool was built to fix;
     the row goes amber, names the command responsible, and the operator decides.
     """
-    total, biggest, biggest_name, files = 0, 0, None, 0
+    sizes = []
     try:
         sessions = list(Path(registry).iterdir())
     except OSError:
@@ -601,18 +601,24 @@ def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
             continue
         for f in entries:
             try:
-                sz = f.stat().st_size
+                sizes.append(f.stat().st_size)
             except OSError:
                 continue
-            total += sz
-            files += 1
-            if sz > biggest:
-                biggest, biggest_name = sz, f.stem
+    total = sum(sizes)
+    biggest = max(sizes, default=0)
     return {
         "bytes": total,
-        "files": files,
-        "biggest": biggest,
-        "biggest_name": biggest_name,
+        "files": len(sizes),
+        # min/avg/max rather than the single largest and its name. One number
+        # cannot say whether it is an outlier: a 185K maximum reads alarming
+        # beside nothing and unremarkable beside a 7K mean. The distribution is
+        # what makes a runaway command obvious WHILE it is still writing, which
+        # is the whole point of showing this continuously. The filename is
+        # dropped — it identified a command the reader cannot act on from here,
+        # and cost the width the three figures now use.
+        "min": min(sizes, default=0),
+        "avg": (total // len(sizes)) if sizes else 0,
+        "max": biggest,
         "alert_total": alert_total,
         "alert_single": alert_single,
         "over": total > alert_total or biggest > alert_single,
@@ -839,9 +845,19 @@ def console_transcript(projects: Path, uuid: str, after=0, cap=400):
                     results.append(_result_text(b.get("content"))[:4000])
             if not (text or calls or results):
                 continue
+            # The role is what the record CARRIES, not the envelope it arrived
+            # in. Tool results come back inside `user` records — that is the
+            # API's turn structure, not a claim about who spoke — so reading the
+            # envelope labelled them "You". On a real transcript that was 857
+            # records against 378 the person actually wrote: more than two
+            # thirds of everything attributed to the reader was a tool
+            # answering.
+            role = rec.get("type")
+            if role == "user" and results and not text:
+                role = "tool"
             out.append({
                 "i": idx,
-                "role": rec.get("type"),
+                "role": role,
                 "text": "\n".join(text),
                 "calls": calls,
                 "results": results,
