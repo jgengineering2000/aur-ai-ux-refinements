@@ -27,8 +27,8 @@ codebase":
   is a lead, the source is the proof.
 
 Independent subsystems audit in parallel; only spawn sub-agents when the owner has
-asked for the fan-out, and give each the safety constraints for its area (an
-AT-SPI/session-fatal component is *read-only, never run*).
+asked for the fan-out, and give each the safety constraints for its area (a
+component holding a shared session resource is *read-only, never run* — AUR P15).
 
 ## Differential syscall-tracing is a standard audit pass (§3)
 
@@ -93,7 +93,7 @@ stages:
 
 The harness *is* the method; "a few commands by hand" is how a guardrail gets
 skipped and a run strands a resource. MTI instances: `tests/dev_instrument.sh`,
-`tests/atspi_guard.sh`, `tests/syscall_audit.py`.
+`tests/sidecar_harness.sh`, `tests/syscall_audit.py`.
 
 ## ptrace gotchas (MTI-learned)
 
