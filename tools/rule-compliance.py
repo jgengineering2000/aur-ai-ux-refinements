@@ -26,12 +26,14 @@ Usage:
 
 import argparse
 import glob
-import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from transcript import turns  # noqa: E402
 
 def default_project_dir():
     """Infer the active repository's Claude transcript directory from cwd."""
@@ -66,34 +68,48 @@ MARKERS = [
      lambda t: re.search(r"^\s*(#{2,}\s|\s*[-*]\s|\d+\.\s)", t, re.M) is not None),
 ]
 
+# Rules 1 and 2 are owed only where the owner actually said something, so they
+# get their own denominator. Scored against every assistant turn they are
+# uninterpretable: most substantive turns resume after a tool call, no request
+# arrived, and nothing was owed — which silently caps the achievable rate at
+# whatever fraction of turns happen to follow an owner message. The markers
+# above keep the all-turns denominator so their series stays comparable with
+# the 84-transcript baseline.
+ASK_MARKERS = [
+    ("understand", "restates the ask",
+     lambda t: re.search(r"(?i)\bI understand that\b", t) is not None),
+    ("ground",     "agrees on the ground",
+     lambda t: re.search(r"(?i)\bI (agree|disagree) that\b", t) is not None),
+    ("recommend",  "recommends, naming the alternative",
+     lambda t: re.search(r"(?i)\bI recommend\b", t) is not None
+     and re.search(r"(?i)\balternative\b", t) is not None),
+]
+
 EFFORT_RE = re.compile(r"Effort\s*=\s*(\d)")
 VERDICT_RE = re.compile(r"Model settings (are appropriate|change to)")
 
 
 def session_rows(path):
-    """(started, sid, texts) for one transcript, assistant text only."""
-    started, texts = None, []
-    try:
-        fh = open(path, errors="replace")
-    except OSError:
-        return None
-    with fh:
-        for line in fh:
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if started is None and rec.get("timestamp"):
-                started = rec["timestamp"][:10]
-            if rec.get("type") != "assistant":
-                continue
-            content = (rec.get("message") or {}).get("content")
-            if not isinstance(content, list):
-                continue
-            for b in content:
-                if isinstance(b, dict) and b.get("type") == "text" and b.get("text"):
-                    texts.append(b["text"])
-    return started or "?", Path(path).stem[:8], texts
+    """(started, sid, texts, answers) for one transcript.
+
+    `texts` is every assistant text block; `answers` is the subset that was the
+    first reply to an owner message which was not pure assent — the only turns
+    on which rules 1 and 2 are owed.
+    """
+    started, texts, answers = None, [], []
+    confirmations = set()
+    for turn in turns(path):
+        if started is None and turn["at"]:
+            started = turn["at"][:10]
+        if turn["kind"] == "ask":
+            if turn["confirmation"]:
+                confirmations.add(turn["text"])
+            continue
+        texts.append(turn["text"])
+        ask = turn["answers"]
+        if ask is not None and ask not in confirmations:
+            answers.append(turn["text"])
+    return started or "?", Path(path).stem[:8], texts, answers
 
 
 def analyse(files, since):
@@ -102,15 +118,19 @@ def analyse(files, since):
         row = session_rows(f)
         if not row:
             continue
-        started, sid, texts = row
+        started, sid, texts, answers = row
         if since and started < since:
             continue
         big = [t for t in texts if len(t) >= SUBSTANTIVE_CHARS]
         if not big:
             continue
-        rec = {"started": started, "sid": sid, "turns": len(big)}
+        replies = [t for t in answers if len(t) >= SUBSTANTIVE_CHARS]
+        rec = {"started": started, "sid": sid, "turns": len(big),
+               "asks": len(replies)}
         for key, _label, test in MARKERS:
             rec[key] = sum(1 for t in big if test(t))
+        for key, _label, test in ASK_MARKERS:
+            rec[key] = sum(1 for t in replies if test(t))
         efforts, verdicts = [], []
         for t in texts:
             efforts += EFFORT_RE.findall(t)
@@ -164,6 +184,30 @@ def main(argv):
     tot = sum(r["turns"] for r in rows)
     cells = "".join(f"{100 * sum(r[k] for r in rows) / tot:>10.0f}%" for k in keys)
     print(f"{'ALL':<11}{'':<10}{tot:>6}  {cells}")
+
+    # Rules 1-2 against their own denominator. Reported apart from the table
+    # above rather than as extra columns in it, because a percentage is only
+    # readable next to the population it was taken over.
+    akeys = [k for k, _l, _t in ASK_MARKERS]
+    print("\nrules 1-2 — scored only on substantive replies to a real request "
+          "(pure assent exempt)")
+    ahdr = f"{'started':<11}{'session':<10}{'asks':>6}  " + "".join(
+        f"{k:>12}" for k in akeys)
+    print(ahdr)
+    print("-" * len(ahdr))
+    for r in rows:
+        if not r["asks"]:
+            print(f"{r['started']:<11}{r['sid']:<10}{0:>6}  "
+                  + "".join(f"{'—':>12}" for _ in akeys))
+            continue
+        cells = "".join(f"{100 * r[k] / r['asks']:>11.0f}%" for k in akeys)
+        print(f"{r['started']:<11}{r['sid']:<10}{r['asks']:>6}  {cells}")
+    print("-" * len(ahdr))
+    atot = sum(r["asks"] for r in rows)
+    if atot:
+        cells = "".join(
+            f"{100 * sum(r[k] for r in rows) / atot:>11.0f}%" for k in akeys)
+        print(f"{'ALL':<11}{'':<10}{atot:>6}  {cells}")
 
     # The advisory is the one rule that can be present and still not be
     # followed: printing it every turn satisfies the marker while saying
