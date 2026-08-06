@@ -137,10 +137,21 @@ body {
   color: var(--ac);
   border: 1px solid rgba(56, 189, 248, 0.25);
 }
+/* The daemons group gets a section LABEL, not a chip. A pill with a border and
+   a background is the page's affordance for something selectable, and it was
+   advertising one where there is nothing to select: the session badges name
+   which agent among several, while there is exactly one daemons group and it is
+   always shown. It keeps the green that separates the machine from the sessions
+   and adopts the uppercase tracking the column headings below it already use. */
 .console-agent.daemons {
-  background: rgba(52, 211, 153, 0.12);
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 2px 0;
   color: var(--gn);
-  border-color: rgba(52, 211, 153, 0.25);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .console-title {
   font-size: 14px;
@@ -189,14 +200,20 @@ body {
    jittering, not a fixed-pitch font (AUR P13). */
 .sysline {
   margin-top: 6px; padding-top: 5px;
+  /* Reaches the viewport edge like the daemon grid above it, its own 8px
+     holding the text off. */
+  margin-inline: calc(-1 * (var(--pad-x) + var(--group-pad-x)));
+  padding-inline: 8px;
   border-top: 1px solid var(--bd);
   font-size: 11.5px; line-height: 1.5;
-  /* Packed to the smallest width the fields allow, then CLIPPED. No wrapping
-     and no horizontal scrollbar: the gap is cut ~30% because the weight and
-     opacity contrast between label and value already does most of the
-     separating, and whatever runs past the viewport is simply out of sight. */
-  display: flex; flex-wrap: nowrap; gap: 0 10px;
-  overflow: hidden;
+  /* Packed to the smallest width the fields allow, then WRAPPED. The gap is
+     small because the weight and opacity contrast between label and value
+     already does most of the separating. This is where the machine row parts
+     company with the daemon grid: a daemon row is a record whose columns must
+     stay in register, so it clips, while this row is a set of independent
+     readings and a reading pushed out of sight is a reading not taken. It
+     wraps at the viewport edge instead. */
+  display: flex; flex-wrap: wrap; gap: 2px 5px;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
@@ -270,18 +287,29 @@ body {
 
    Slack collects in the trailing 1fr, so the numbers sit against the name.
 
-   When the tracks genuinely do not fit the table SCROLLS rather than hiding
-   columns — hiding them meant scrolling right revealed nothing and the only
-   way to reach RSS was to widen the whole window.
+   Every track is max-content, so a column is exactly as wide as the widest
+   thing in it — heading or value — and not a pixel wider. The fixed pixel
+   widths this replaced were sized for the worst case a field could ever hold,
+   which meant a seven-digit pid's allowance was charged to every three-digit
+   one; that unspent allowance IS the inter-column whitespace, and no gap
+   setting can give it back.
 
-   Alignment is grid tracks plus tabular figures, never spaces padded into the
-   text: a padded column re-aligns itself every time a live number changes. */
+   When the packed tracks still exceed the viewport the row is CLIPPED at the
+   edge — no scrollbar, and no truncation logic, ellipsis or tooltip either.
+   Whatever sits past the right edge is simply out of sight, which is the same
+   contract the machine row above it honours.
+
+   The grid cancels the page and group padding so it reaches the viewport edge;
+   the row's own 8px keeps the text off it. Alignment is grid tracks plus
+   tabular figures, never spaces padded into the text: a padded column
+   re-aligns itself every time a live number changes. */
 .dmn-grid {
   display: grid;
-  grid-template-columns: max-content 52px 30px 48px 68px 46px 52px 52px 1fr;
-  gap: 1px 10px;
+  grid-template-columns: repeat(8, max-content) 1fr;
+  gap: 1px 5px;
   margin-top: 8px;
-  overflow-x: auto;
+  margin-inline: calc(-1 * (var(--pad-x) + var(--group-pad-x)));
+  overflow: hidden;
 }
 .dmn-head, .dmn-row {
   display: grid;
