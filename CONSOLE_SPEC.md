@@ -370,7 +370,100 @@ built to fix. The operator decides.
 
 ---
 
-## 6. Scheduling
+## 6. The pane
+
+**Normative.** Every stream on this page opens into the same pane — a session
+console, a transcript, a daemon's log, its stderr, its crash channel. The pane's
+behaviour is therefore one contract, not five: a reader who has learned to
+search one of them has learned to search all of them.
+
+### 6.1 The buffer is bounded in bytes, not lines
+
+A line cap bounds nothing. The runaway case is a command emitting enormous
+single lines — an `ltrace`, a hexdump, a minified blob — where two thousand
+lines is hundreds of megabytes and the tab dies holding them. Bytes are what
+the DOM actually costs, so bytes are what is capped.
+
+| Pane state | Retained |
+|---|---|
+| Live tail — streaming, not held, not searching | 2 MB |
+| Held, searching, or quiet | 5 MB |
+
+The tighter cap is **conditional rather than absolute** because trimming is
+irreversible: a buffer that shrank because a stream briefly went live would
+destroy exactly what the reader had scrolled back to. The moment a reader
+holds position or opens a search they *are* reading the history, and the full
+cap applies.
+
+**The window states its own edge.** Capture never drops a byte — the file keeps
+everything — but a pane is a window onto that file, and a reader who scrolls to
+the top and finds their output gone reads it as data loss. The boundary says so
+in the pane, for the same reason §1.4 states a capture gap: an unstated
+boundary reads as "nothing happened".
+
+### 6.2 Search highlights; it never hides
+
+A search over a log must not remove the lines around a hit. The surrounding
+lines are most of why the hit was worth finding — a filter that hides them
+answers "where does this string occur" while destroying "what was happening
+when it did". So every match in the buffer is marked, the current one is marked
+differently, and nothing is removed.
+
+**Defaults are regex and upward**, because a console is searched for something
+that has *already gone past*. A fresh search therefore opens on the **last**
+match rather than the first.
+
+**Opening a search turns Hold on**, and closing it does not turn Hold off. A
+tailing pane would scroll the hit out from under the reader on the next line of
+output; and having spent a search to reach a position, the reader does not lose
+it by closing the box. Hold is released by the Hold button, or by dragging down
+to the last line, and by nothing else.
+
+| Control | Behaviour |
+|---|---|
+| `Search` | Opens the find row, focuses the field, latches Hold |
+| `(regex)` / `(plain)` | Mode. Plain escapes the query; the label states which is live |
+| `▲` / `▼` | Direction. Governs what "next" means for every repeat control |
+| Count | `position/total`, `no match`, or `bad pattern` — tabular figures, so advancing the position never reflows the row |
+
+**A rejected pattern is reported as a rejected pattern.** A half-typed regex is
+the normal state while someone is typing one, so it marks the field rather than
+raising an error — but it must never render as `no match`, which is a *wrong*
+answer to the question asked rather than a vaguer one.
+
+**Repeats.** `Enter` steps in the shown direction and `Shift+Enter` against it,
+without leaving the field. `n` and `N` do the same when focus is elsewhere in
+the pane. Stepping wraps rather than stopping at the end.
+
+**Keystrokes are a convenience, never the only route.** `Ctrl+F` opens in plain
+mode; `/` and `?` open in regex mode searching down and up respectively. A pane
+becomes the keystroke target by being clicked. The host that embeds this page
+may claim any of these before they reach the document — `Ctrl+F` is a binding
+in most editors — so **every keystroke has a control in the find row that does
+the same thing**. A swallowed key costs convenience and never capability.
+
+### 6.3 Cost
+
+Search is bounded so that a query cannot cost more than the buffer it runs
+over. The hit list is built once per query and then navigated, rather than
+re-scanned per step; typing is debounced, so a five-character query walks the
+buffer once and not five times; and the number of marks is capped, with the
+count reporting `+` when it truncates. A one-character query over a full buffer
+matches hundreds of thousands of times, and it is the marks, not the matching,
+that would kill the tab.
+
+Matches are **wrapped, never rewritten**: the text of a line is preserved
+exactly, so the byte accounting stays true and Hide Headers keeps working on a
+line that contains a hit.
+
+*Open:* output arriving after a hit list is built is not in it. `Enter`
+rebuilds; `n`/`N` deliberately do not, since a list that rebuilt underneath a
+reader stepping through it would move their place. Whether a live pane should
+re-mark on arrival is not ruled.
+
+---
+
+## 7. Scheduling
 
 **Normative.** Interactive paths get out of the way of live users. The ladder is
 set by *whether someone is actively waiting on the result*, not by what the work
@@ -385,7 +478,7 @@ project that defines the components, not here.
 
 ---
 
-## 7. What a project supplies
+## 8. What a project supplies
 
 **Normative.** The console is AUR infrastructure — one implementation, inherited.
 A project does not fork it to change a path or a title; it declares what differs,
@@ -411,10 +504,13 @@ consumer has no second opinion to keep it honest.
 
 ---
 
-## 8. Open — owner to author
+## 9. Open — owner to author
 
-- Filtering semantics for the merged history (scope, syntax, whether a filter
-  hides or merely highlights).
+- Filtering semantics for the merged history (scope, syntax). The
+  hides-or-highlights half is **no longer open**: §6.2 rules that a search
+  highlights and never removes, and a filter that contradicted its own pane's
+  search would be two vocabularies for one gesture. What remains open is
+  whether the merged history wants a *filter* at all now that it has a search.
 - **The one-shot artifact table.** §3.4 keeps crash reports out of the daemon
   list and reachable through the archive, which is correct but not a home: on a
   real directory that is ~495 files and 121 MB behind one archive toggle. The

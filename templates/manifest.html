@@ -572,6 +572,57 @@ body {
 .pane.min .pane-body { display: none; }
 .pane.min .pane-head { border-bottom: none; }
 
+/* The window states its own edge. Capture never drops a byte, but the PANE is
+   a window onto the file, and a reader who scrolls to the top and finds their
+   output gone reads that as data loss unless the boundary says otherwise. */
+.buf-edge {
+  display: block;
+  font-size: 10px;
+  font-style: italic;
+  color: var(--mu);
+  border-bottom: 1px dashed var(--bd);
+  padding-bottom: 3px;
+  margin-bottom: 4px;
+}
+
+/* Find row. It gets its OWN row beneath the tools for the same reason the
+   tools have one: opening it must never displace the window controls. The
+   mode and direction buttons carry min-widths because "(regex)"/"(plain)" and
+   the two arrow glyphs are different widths in a proportional face, and the
+   input would otherwise jump sideways every time the mode is toggled. */
+.pane-find { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.pane-find[hidden] { display: none; }
+.find-mode, .find-dir {
+  background: var(--bg); border: 1px solid var(--bd); border-radius: 5px;
+  color: var(--mu); font-family: inherit; font-size: 10px; font-weight: 600;
+  padding: 3px 6px; cursor: pointer; flex: 0 0 auto;
+}
+.find-mode { min-width: 56px; }
+.find-dir { min-width: 28px; }
+.find-mode:hover, .find-dir:hover { border-color: var(--ac); color: var(--ac); }
+.find-mode.on { border-color: var(--ac); color: var(--ac); }
+.find-q {
+  flex: 1 1 auto; min-width: 0;
+  background: var(--cb); border: 1px solid var(--bd); border-radius: 5px;
+  color: var(--tx); font-family: inherit; font-size: 11px; padding: 3px 7px;
+}
+.find-q:focus { outline: none; border-color: var(--ac); }
+/* An unparsable regex is reported on the field itself. The alternative — a
+   silent zero-match — is indistinguishable from "not in the buffer", which is
+   the one answer the reader must not be given wrongly. */
+.find-q.bad { border-color: var(--rd); color: var(--rd); }
+/* Tabular figures: "9/128" must not reflow the row into "10/128". */
+.find-count {
+  flex: 0 0 auto; font-size: 10px; color: var(--mu);
+  font-variant-numeric: tabular-nums; min-width: 56px; text-align: right;
+  white-space: nowrap;
+}
+.find-count.none { color: var(--rd); }
+.pane-body mark.find-hit {
+  background: rgba(251, 191, 36, .28); color: inherit; border-radius: 2px;
+}
+.pane-body mark.find-hit.cur { background: var(--yl); color: #000; }
+
 /* Window controls, upper right. */
 .win-ctl { display: flex; align-items: center; gap: 1px; flex: 0 0 auto; }
 .pane-titlebar .pill { flex: 0 0 auto; }
@@ -1374,7 +1425,15 @@ body {
       hold: false,     // Hold Position: ON pins the view, OFF tails the end
       min: false,      // minimized: body hidden, buffer and polling both kept
       max: false,      // maximized: fills the page area, window untouched
-      due: 0, gap: 1   // adaptive poll pacing, in master ticks
+      due: 0, gap: 1,  // adaptive poll pacing, in master ticks
+      // Find state. `search` is read by paneCap and trimBuffer, which already
+      // treat a searching pane as one whose history is being READ — it keeps
+      // the full 5MB and compensates scroll when the top is trimmed.
+      // Defaults are regex and upward, because a console is searched for
+      // something that has already gone past.
+      search: false, findRe: true, findUp: true,
+      findKey: null,   // the query+mode the current hit list was built from
+      hits: [], hitIdx: -1
     };
     panes.set(id, p);
     // Placed by the same path that re-places it after every render, so opening
@@ -1402,6 +1461,16 @@ body {
         p.hold = !p.hold;
         e.target.classList.toggle('on', p.hold);
         toEnd(p);        // releasing Hold snaps straight back to the end
+      }
+      if (act === 'search') openFind(p, p.findRe);
+      if (act === 'mode') {
+        p.findRe = !p.findRe;
+        syncFindChrome(p);
+        runFind(p, 0);   // the same query means something else now — re-run
+      }
+      if (act === 'dir') {
+        p.findUp = !p.findUp;
+        syncFindChrome(p);
       }
       if (act === 'max') {
         // Fills the HTML display area, not the browser window — the pane goes
@@ -1432,6 +1501,39 @@ body {
       releaseHoldAtBottom(p, el.querySelector('[data-act="hold"]'));
     });
 
+    // The find chrome, resolved once. Every find path reads it, and querying
+    // the DOM per keystroke over a 5MB pane is the kind of cost that only
+    // shows up on the pane you most need to search.
+    p.find = {
+      row:   el.querySelector('.pane-find'),
+      q:     el.querySelector('.find-q'),
+      mode:  el.querySelector('.find-mode'),
+      dir:   el.querySelector('.find-dir'),
+      count: el.querySelector('.find-count'),
+      btn:   el.querySelector('[data-act="search"]')
+    };
+    syncFindChrome(p);
+    // Clicking anywhere in the pane makes it the active one — that is what the
+    // document-level keystrokes are routed to. `mousedown` rather than `click`
+    // so the pane is already active by the time the key lands.
+    el.addEventListener('mousedown', () => { activePane = p.id; });
+    p.find.q.addEventListener('input', () => {
+      // Debounced: a rebuild walks every text node in the buffer, and doing
+      // that on each keystroke of a five-character query is four wasted walks.
+      clearTimeout(p.findTimer);
+      p.findTimer = setTimeout(() => runFind(p), FIND_DEBOUNCE_MS);
+    });
+    p.find.q.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        clearTimeout(p.findTimer);
+        stepFind(p, ev.shiftKey ? -1 : 1);
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        closeFind(p);
+      }
+    });
+
     markChips();
     pollPane(p);
   }
@@ -1439,10 +1541,264 @@ body {
   function closePane(id) {
     const p = panes.get(id);
     if (!p) return;
+    clearTimeout(p.findTimer);   // the pane owns its own timer on every exit path
+    if (activePane === id) activePane = null;
     p.el.remove();
     panes.delete(id);
     markChips();
   }
+
+  // ---- Find in pane -------------------------------------------------------
+  //
+  // The buffer is up to 5MB of live-appending DOM, so the hit list is built
+  // ONCE per query and then navigated, rather than re-scanned per step.
+  //
+  // Matches are WRAPPED in <mark>, never rewritten: textContent is preserved
+  // exactly, so the byte accounting in paneAppend/trimBuffer stays true and
+  // Hide Headers keeps working on a line that contains a hit.
+  //
+  // Bound worth stating: output arriving AFTER a list is built is not in it.
+  // Enter picks that up (it rebuilds when the buffer has grown); n/N navigate
+  // what is already there. That split is deliberate — a list that silently
+  // rebuilt under n/N would move the reader's place while they were stepping
+  // through it, which is the one thing a search must not do.
+
+  let activePane = null;         // the pane document-level keystrokes route to
+  const FIND_DEBOUNCE_MS = 140;
+  // A one-character query over a full buffer can match hundreds of thousands
+  // of times, and a <mark> per match is what kills the tab. The cap is on the
+  // DOM cost, not on the answer: the count says "5000+" so the reader knows
+  // the list is a prefix and can narrow the query.
+  const FIND_MAX_HITS = 5000;
+
+  function findKeyOf(p) {
+    return (p.findRe ? 're ' : 'pl ') + p.find.q.value;
+  }
+
+  function syncFindChrome(p) {
+    p.find.mode.textContent = p.findRe ? '(regex)' : '(plain)';
+    p.find.mode.classList.toggle('on', p.findRe);
+    p.find.dir.innerHTML = p.findUp ? '&#9650;' : '&#9660;';
+    p.find.dir.title = p.findUp ? 'Searching up — click to search down'
+                                : 'Searching down — click to search up';
+  }
+
+  function openFind(p, regex) {
+    if (p.search) { p.find.q.focus(); p.find.q.select(); return; }
+    p.search = true;
+    p.findRe = regex;
+    p.find.row.hidden = false;
+    p.find.btn.classList.add('on');
+    // Hold goes ON for the duration. A search IS a read of the history, and a
+    // tailing pane would scroll the hit out from under the reader on the very
+    // next line of output. This is also what widens the buffer cap back to the
+    // full 5MB — see paneCap, which reads `p.search` for exactly this reason.
+    if (!p.hold) {
+      p.hold = true;
+      p.el.querySelector('[data-act="hold"]').classList.add('on');
+    }
+    syncFindChrome(p);
+    p.find.q.focus();
+    p.find.q.select();
+    activePane = p.id;
+    if (p.find.q.value) runFind(p);
+  }
+
+  function closeFind(p) {
+    clearTimeout(p.findTimer);
+    p.search = false;
+    p.find.row.hidden = true;
+    p.find.btn.classList.remove('on');
+    clearHits(p);
+    p.findKey = null;
+    p.findBad = false;
+    p.find.count.textContent = '';
+    p.find.count.classList.remove('none');
+    p.find.q.classList.remove('bad');
+    // Hold is deliberately NOT released. The reader spent a search getting to
+    // this position; resuming the tail would throw it away the moment they
+    // closed the box. The Hold button releases Hold.
+  }
+
+  function clearHits(p) {
+    for (const m of p.body.querySelectorAll('mark.find-hit'))
+      m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+    p.body.normalize();          // re-merge, or the next search splits at old seams
+    p.hits = [];
+    p.hitIdx = -1;
+  }
+
+  function buildHits(p) {
+    clearHits(p);
+    p.findKey = findKeyOf(p);
+    p.findBytes = p.bytes || 0;
+    p.findBad = false;
+    p.find.q.classList.remove('bad');
+    p.find.count.classList.remove('none');
+    const raw = p.find.q.value;
+    if (!raw) { p.find.count.textContent = ''; return; }
+    let re;
+    try {
+      re = new RegExp(
+        p.findRe ? raw : raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    } catch (err) {
+      // A half-typed regex is the NORMAL state while someone is typing one, so
+      // this is a state on the field rather than an error. It must never be
+      // rendered as "no match" — that is a wrong answer to the question asked.
+      p.findBad = true;
+      p.find.q.classList.add('bad');
+      p.find.count.classList.add('none');
+      p.find.count.textContent = 'bad pattern';
+      return;
+    }
+    // Collect the text nodes BEFORE wrapping any of them: wrapping mutates the
+    // tree, and a live TreeWalker over a tree being rewritten skips nodes.
+    const walker = document.createTreeWalker(p.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => n.parentNode && n.parentNode.closest('.buf-edge')
+        ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+    });
+    const nodes = [];
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
+
+    for (const n of nodes) {
+      if (p.hits.length >= FIND_MAX_HITS) break;
+      const text = n.nodeValue;
+      let m, at = 0, frag = null;
+      re.lastIndex = 0;
+      while ((m = re.exec(text))) {
+        // A zero-width pattern ("^", "x*") matches without consuming, so
+        // lastIndex never advances and exec loops forever. Step it by hand.
+        if (m[0] === '') { re.lastIndex++; continue; }
+        frag = frag || document.createDocumentFragment();
+        if (m.index > at)
+          frag.appendChild(document.createTextNode(text.slice(at, m.index)));
+        const mark = document.createElement('mark');
+        mark.className = 'find-hit';
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        p.hits.push(mark);
+        at = m.index + m[0].length;
+        if (p.hits.length >= FIND_MAX_HITS) break;
+      }
+      if (frag) {
+        if (at < text.length)
+          frag.appendChild(document.createTextNode(text.slice(at)));
+        n.parentNode.replaceChild(frag, n);
+      }
+    }
+    setFindCount(p);
+  }
+
+  function setFindCount(p) {
+    const n = p.hits.length;
+    // A rejected pattern has already said so, and every other path through
+    // here would land on "no match" — which is a WRONG answer, not a vaguer
+    // one. The guard lives here rather than at each caller so no navigation
+    // path can reach the count without it.
+    if (p.findBad) return;
+    if (!p.find.q.value) { p.find.count.textContent = ''; return; }
+    if (!n) {
+      p.find.count.classList.add('none');
+      p.find.count.textContent = 'no match';
+      return;
+    }
+    p.find.count.classList.remove('none');
+    p.find.count.textContent =
+      (p.hitIdx >= 0 ? p.hitIdx + 1 : 0) + '/' + n +
+      (n >= FIND_MAX_HITS ? '+' : '');
+  }
+
+  // Two things invalidate a built list: the query or mode changing, and the
+  // trimmer dropping a marked line off the top. Both are checked here rather
+  // than at each call site, so no navigation path can miss one.
+  function freshHits(p) {
+    if (p.findKey !== findKeyOf(p)) { buildHits(p); return; }
+    if (p.hits.some(m => !m.isConnected)) {
+      const cur = p.hits[p.hitIdx];
+      p.hits = p.hits.filter(m => m.isConnected);
+      p.hitIdx = cur && cur.isConnected
+        ? p.hits.indexOf(cur)
+        : Math.min(p.hitIdx, p.hits.length - 1);
+    }
+  }
+
+  function runFind(p) {
+    buildHits(p);
+    if (p.hits.length) stepFind(p, 1);
+    else setFindCount(p);
+  }
+
+  // sense: +1 follows the direction button, -1 goes against it. A fresh list
+  // has hitIdx -1 and lands on the END when searching up, which is what a
+  // console wants — the thing being looked for has already gone past.
+  function stepFind(p, sense) {
+    // Enter is the one path that picks up output which arrived since the build.
+    if (p.search && (p.bytes || 0) !== p.findBytes && p.findKey === findKeyOf(p)) {
+      const keep = p.hitIdx;
+      buildHits(p);
+      p.hitIdx = Math.min(keep, p.hits.length - 1);
+    }
+    freshHits(p);
+    const n = p.hits.length;
+    if (!n) { setFindCount(p); return; }
+    const back = p.findUp ? sense > 0 : sense < 0;
+    if (p.hitIdx < 0) p.hitIdx = back ? n - 1 : 0;
+    else p.hitIdx = (p.hitIdx + (back ? -1 : 1) + n) % n;
+    showHit(p);
+  }
+
+  function showHit(p) {
+    p.hits.forEach((m, i) => m.classList.toggle('cur', i === p.hitIdx));
+    const m = p.hits[p.hitIdx];
+    if (m) {
+      // Scroll the PANE, not the page. scrollIntoView walks every scrollable
+      // ancestor, so on a maximized pane it drags the document with it.
+      const br = p.body.getBoundingClientRect();
+      const mr = m.getBoundingClientRect();
+      p.body.scrollTop +=
+        (mr.top - br.top) - (p.body.clientHeight / 2) + (mr.height / 2);
+      // Horizontally, move only if the hit is actually off to the side — these
+      // lines are long, and re-centering one that is already visible would
+      // throw away the column the reader is on.
+      if (mr.left < br.left || mr.right > br.right)
+        p.body.scrollLeft += (mr.left - br.left) - (p.body.clientWidth / 3);
+    }
+    setFindCount(p);
+  }
+
+  // Keystrokes. The webview host may claim some of these before they reach the
+  // document — Ctrl+F is a host binding in VSCode. Every one of them has a
+  // button equivalent in the find row, so a swallowed key costs convenience
+  // and never capability; that is why they are wired this way rather than
+  // being the only route to the feature.
+  function typingInField(t) {
+    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'
+                   || t.isContentEditable);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const p = activePane && panes.get(activePane);
+    if (!p) return;
+    // The find field claims its own Enter and Escape in its own listener.
+    if (typingInField(e.target)) return;
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault();
+      openFind(p, false);           // Ctrl+F opens in PLAIN mode
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '/' || e.key === '?') {
+      e.preventDefault();
+      p.findUp = (e.key === '?');   // vi's convention: / down, ? up
+      if (p.search) syncFindChrome(p);
+      openFind(p, true);            // both open in REGEX mode
+      return;
+    }
+    if (!p.search) return;
+    if (e.key === 'n') { e.preventDefault(); stepFind(p, 1); }
+    else if (e.key === 'N') { e.preventDefault(); stepFind(p, -1); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeFind(p); }
+  });
 
   function markChips() {
     // The openable node is the CHANNEL cell, not the daemon row — a row now
