@@ -1348,6 +1348,14 @@ body {
           <button class="pane-btn" data-act="hold">Hold Position</button>
           <button class="pane-btn" data-act="wrap">Wrap</button>
           <button class="pane-btn" data-act="clear">Clear</button>
+          <button class="pane-btn srch-btn" data-act="search">Search</button>
+        </div>
+        <div class="pane-find" hidden>
+          <button class="find-mode" data-act="mode" title="Toggle regular expressions">(regex)</button>
+          <input class="find-q" type="text" placeholder="search for..."
+                 spellcheck="false" autocomplete="off">
+          <button class="find-dir" data-act="dir" title="Toggle search direction">&#9650;</button>
+          <span class="find-count"></span>
         </div>
       </div>
       <div class="pane-body"></div>`;
@@ -1524,12 +1532,9 @@ body {
     // command emitting enormous single lines — an ltrace, a hexdump, a minified
     // blob — where 2000 lines can be hundreds of megabytes and the browser dies
     // holding them. Bytes are what the DOM actually costs, so bytes are what is
-    // capped. Oldest lines go first; the pane keeps the most recent 5MB.
+    // capped. Oldest lines go first; `trimBuffer` owns the cap and the edge.
     p.bytes = (p.bytes || 0) + text.length;
-    while (p.bytes > PANE_BUFFER_BYTES && p.body.firstChild) {
-      p.bytes -= (p.body.firstChild.textContent || '').length;
-      p.body.removeChild(p.body.firstChild);
-    }
+    trimBuffer(p);
     // New output NEVER moves the horizontal axis. Trimming can drop the widest
     // retained line, which shrinks scrollWidth and clamps scrollLeft back
     // toward column 0 — a reader parked mid-line loses their place for a reason
@@ -1649,10 +1654,7 @@ body {
     });
     p.body.appendChild(wrap);
     p.bytes = (p.bytes || 0) + (t.text || '').length + 64;
-    while (p.bytes > PANE_BUFFER_BYTES && p.body.firstChild) {
-      p.bytes -= (p.body.firstChild.textContent || '').length;
-      p.body.removeChild(p.body.firstChild);
-    }
+    trimBuffer(p);
   }
 
   function pollTranscript(p) {
@@ -2133,6 +2135,54 @@ body {
   // Retained scrollback per pane, in bytes. Bounded in bytes rather than lines
   // because a single line can be megabytes and a line cap bounds nothing.
   const PANE_BUFFER_BYTES = 5 * 1024 * 1024;
+  // The tighter cap for a pane nobody is reading BACK through. A live tail is
+  // watched at its end, so deep scrollback there costs memory for content no
+  // eye is on; 2MB is still ~20k lines of it. The moment the reader holds
+  // position or searches they ARE reading the history, and the full 5MB
+  // applies — so scrollback is never yanked out from under someone using it.
+  // That is the whole reason the tighter cap is conditional rather than
+  // absolute: trimming is irreversible, and a buffer that shrank because a
+  // stream blipped live would destroy what the reader had scrolled back to.
+  const PANE_BUFFER_LIVE_BYTES = 2 * 1024 * 1024;
+  const PANE_LIVE_MS = 1500;   // same threshold the pill calls "streaming"
+
+  function paneCap(p) {
+    const tailing = (Date.now() - p.lastData) < PANE_LIVE_MS
+                    && !p.hold && !p.search;
+    return tailing ? PANE_BUFFER_LIVE_BYTES : PANE_BUFFER_BYTES;
+  }
+
+  // One trimmer for both append sites. The loop was inline twice, and the
+  // vertical-scroll compensation below was in neither: removing nodes from the
+  // TOP shrinks scrollHeight while scrollTop keeps its number, so the content
+  // slides up under a reader who is holding position — the horizontal axis was
+  // protected against exactly this and the vertical one was not.
+  function trimBuffer(p) {
+    const cap = paneCap(p);
+    if ((p.bytes || 0) <= cap) return;
+    const h0 = p.body.scrollHeight;
+    while (p.bytes > cap) {
+      let victim = p.body.firstChild;
+      if (victim === p.edgeEl) victim = victim.nextSibling;
+      if (!victim) break;
+      p.bytes -= (victim.textContent || '').length;
+      p.body.removeChild(victim);
+    }
+    // The window states its own edge. Capture never drops a byte — the file
+    // keeps everything — but the PANE is a window onto it, and a reader who
+    // scrolls to the top and finds their output gone reads that as data loss.
+    // Same doctrine as the capture-gap notice: an unstated boundary reads as
+    // "nothing happened".
+    if (!p.edgeEl) {
+      p.edgeEl = document.createElement('div');
+      p.edgeEl.className = 'buf-edge';
+      p.edgeEl.textContent =
+        'earlier output is in the file, not in this pane';
+    }
+    if (p.body.firstChild !== p.edgeEl)
+      p.body.insertBefore(p.edgeEl, p.body.firstChild);
+    if (p.hold || p.search) p.body.scrollTop -= (h0 - p.body.scrollHeight);
+  }
   setInterval(() => {
     panes.forEach(p => {
       if (p.due > 0) { p.due -= 1; return; }

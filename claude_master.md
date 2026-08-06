@@ -281,6 +281,54 @@ explanations were false. Verify against the upstream source, the official or
 formal documentation, current web sources, and the real running artifact. A
 remembered mechanism is a lead to check, never evidence (P9, P12).
 
+**16. Infer from context; require configuration only where inference is
+impossible.** Demanding that someone state what the program could have
+discovered is a **defect**, not a neutral design choice — it is precisely why
+Unix and Linux software earned its reputation for painful setup: hundreds of
+details required up front, 99% of which were derivable from context all along.
+The default posture is therefore *read the situation and adapt*: `argv[0]`,
+`/proc`, the environment, the filesystem, the terminal, the running system, the
+live resource itself. A knob is justified only where the answer is genuinely
+unknowable from inside the process, and **every surviving knob carries a comment
+naming the scope it covers and why inference cannot serve it** — an
+undocumented setting is an unexamined one, and unexamined settings are how the
+hundred accumulate. This binds identically to a library's API, a daemon's
+startup, a CLI's defaults, and a test harness's fixtures. Corollaries:
+
+- **A fallback ladder never ends in "give up."** Each rung exists because the
+  one above it can be absent, and the last rung is something that always works —
+  a diagnostic with nowhere to write is a crash with no evidence.
+- **Adaptation is part of inference, not a separate feature.** A value derived
+  once at startup and then held against a changed world is a stale guess wearing
+  a default's clothes; re-derive when the context it came from can move (P15's
+  live-readings rule is this same requirement for shared-resource admission).
+- **A wrong-1%-of-the-time default plus an override beats a required setting**,
+  because the required setting is wrong every time someone forgets it, and it is
+  wrong silently.
+- **Verify the inference before you add the override.** The justification for a
+  knob is a factual claim about the world ("argv[0] is unreliable here"), and it
+  is exactly the class of claim that measures false — check it against the real
+  artifact first (P9), or the knob is ceremony defending a fiction.
+
+**17. A failure is a test of the infrastructure meant to diagnose it — fixing the
+instance without making the CLASS fast to diagnose is an incomplete fix.** Every
+bug yields two findings: the defect, and how long it took to locate. If the same
+failure arriving in a different application, library, IPC mechanism, socket or
+filesystem would cost that investigation again, the resolution left the real
+defect in place — a diagnosis cost paid per occurrence, forever, which is itself
+a bug. So every fix names its class and asks what would have cut the diagnosis to
+minutes, then lands that too. The recurring answer is one rule: **record
+ownership and disposition at the moment a resource is acquired or changed** — who
+installed this handler and when, who holds this lock, what is on the other end of
+this fd — so "who was in charge when it broke" is a lookup, not an investigation.
+Corollaries: (a) an artifact naming the LAYER that acted ("generic fallback"
+versus "the owner's handler") is worth more than one naming only the event, and
+the difference is typically one word; (b) the price is a few bytes at acquisition
+and one line per event, paid once, against an investigation paid every time; (c)
+the test is not that the artifact exists but that it answers the question
+**without reading source** — an artifact whose meaning must be traced back
+through the code has not reduced anything.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
