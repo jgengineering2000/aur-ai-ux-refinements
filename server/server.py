@@ -1131,6 +1131,15 @@ _CAPTURED_MARKERS = ("err", "errors", "stderr", "out", "stdout")
 _RE_CAPTURED = re.compile(
     r"^(.*[^-_.])[-_.](?:%s)$" % "|".join(_CAPTURED_MARKERS), re.I)
 
+# A crash log is a daemon's THIRD channel, not a daemon of its own. Without
+# this, `derivemeta-crash.log` reduced to the key `derivemeta-crash` and stood
+# as a separate row — a phantom process with no pid, no cpu and no memory,
+# one per executable that had ever started, while the backtraces it held sat
+# under a name matching nothing on the system.
+_CRASH_MARKERS = ("crash",)
+_RE_CRASH = re.compile(
+    r"^(.*[^-_.])[-_.](?:%s)$" % "|".join(_CRASH_MARKERS), re.I)
+
 
 def _daemon_key(stem: str) -> str:
     """Grouping identity for a daemon — separator- and case-insensitive.
@@ -1146,6 +1155,11 @@ def _daemon_key(stem: str) -> str:
 def _split_channel(filename: str):
     """(key, channel) for a log filename, by naming convention alone."""
     stem = filename[:-4] if filename.endswith(".log") else filename
+    # Crash first: it is the more specific claim, and a name ending in both
+    # markers must not be filed by the weaker one.
+    m = _RE_CRASH.match(stem)
+    if m:
+        return _daemon_key(m.group(1)), "crash"
     m = _RE_CAPTURED.match(stem)
     if m:
         return _daemon_key(m.group(1)), "captured"
@@ -1236,7 +1250,13 @@ def _log_channels(daemon_dir: Path):
                 continue
             if not target.startswith(root + os.sep):
                 continue
-            if fd in ("1", "2"):
+            # The crash log is identified by NAME before fd number, because
+            # the handler holds it on an ordinary descriptor for the process's
+            # whole life — by fd alone it looks exactly like the daemon's own
+            # log and would compete with it for the same cell.
+            if _split_channel(os.path.basename(target))[1] == "crash":
+                channel = "crash"
+            elif fd in ("1", "2"):
                 channel = "captured"
             elif target.endswith(".log"):
                 channel = "own"
@@ -1253,8 +1273,8 @@ def _log_channels(daemon_dir: Path):
             ipid = int(pid)
             rec = owners.get(ipid)
             if rec is None:
-                rec = owners[ipid] = {"name": None,
-                                      "captured": set(), "own": set()}
+                rec = owners[ipid] = {"name": None, "captured": set(),
+                                      "own": set(), "crash": set()}
             rec[channel].add(target)
             holder.setdefault(target, ipid)
     for pid, rec in owners.items():
@@ -1285,7 +1305,7 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset()):
         r = by_key.get(key)
         if r is None:
             r = by_key[key] = {"key": key, "name": name, "pid": None,
-                               "captured": None, "own": None}
+                               "captured": None, "own": None, "crash": None}
             rows.append(r)
         return r
 
@@ -1306,7 +1326,7 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset()):
             key = f"{key}#{pid}"
         r = _row(key, rec["name"])
         r["pid"] = pid
-        for channel in ("captured", "own"):
+        for channel in ("captured", "own", "crash"):
             for path in sorted(rec[channel]):
                 ch = _chan(path)
                 # Two files on one channel — a process holding fd 1 and fd 2 on
@@ -1336,10 +1356,26 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset()):
             r[channel] = ch
 
     for r in rows:
-        chans = [r[c] for c in ("captured", "own") if r[c]]
+        chans = [r[c] for c in ("captured", "own", "crash") if r[c]]
         r["live"] = any(c["live"] for c in chans)
         r["mtime"] = max((c["mtime"] for c in chans), default=0)
-    return rows
+        # An empty crash log is dropped HERE, once, rather than by each reader:
+        # the listing and the 3-second numbers poll must agree about which
+        # channels exist, and they don't share a code path. Suppressed in one
+        # and not the other, the poll writes a size into the cell the listing
+        # drew as a dash. Liveness and mtime are taken FIRST — a live process
+        # holding an empty crash log is still live evidence.
+        if r["crash"] and not r["crash"]["size"]:
+            r["crash"] = None
+    # A crash log is created when the handler INSTALLS — at startup, before any
+    # crash — because open() is not async-signal-safe and the descriptor has to
+    # exist before the SIGSEGV that uses it. So an empty one is evidence of a
+    # clean run, not a daemon to list, and a row holding nothing else describes
+    # no process, no output and no fault: six such rows were being drawn, one
+    # per executable that had ever started. A row with a live pid stays whatever
+    # its channels look like — that one IS a running daemon.
+    return [r for r in rows
+            if r["pid"] is not None or r["captured"] or r["own"] or r["crash"]]
 
 
 _HZ = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
@@ -1523,7 +1559,8 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
         entry = {"live": row["live"],
                  "ch": {name: {"size": ch["size"], "live": ch["live"]}
                         for name, ch in (("out", row["captured"]),
-                                         ("log", row["own"])) if ch}}
+                                         ("log", row["own"]),
+                                         ("crash", row["crash"])) if ch}}
         if row["pid"] is not None:
             entry.update(_proc_stats(row["pid"]) or {"pid": row["pid"]})
         out[f"dmn:{row['key']}"] = entry
@@ -1876,8 +1913,11 @@ def console_groups(*, tmp_root=None, projects=None, daemon_dir=None,
             except OSError:
                 continue
             oneshots.append({
+                # Every channel key the row shape defines, present and null —
+                # this dict is built by hand rather than by `_row`, so a channel
+                # added there and forgotten here is a KeyError in the reader.
                 "key": p.name, "name": p.name[:-4], "pid": None, "live": False,
-                "mtime": st.st_mtime, "captured": None,
+                "mtime": st.st_mtime, "captured": None, "crash": None,
                 "own": {"id": f"daemon:{p.name}", "label": p.name,
                         "size": st.st_size, "mtime": st.st_mtime,
                         "live": False}})
@@ -1893,7 +1933,8 @@ def console_groups(*, tmp_root=None, projects=None, daemon_dir=None,
         # log — named for the columns they land in. A channel that does not
         # exist is null rather than absent, so the client renders a dash in a
         # real cell instead of collapsing the row's column count.
-        for key, ch in (("out", row["captured"]), ("log", row["own"])):
+        for key, ch in (("out", row["captured"]), ("log", row["own"]),
+                        ("crash", row["crash"])):
             e[key] = None if ch is None else {
                 "id": ch["id"], "label": ch["label"],
                 "size": ch["size"], "live": ch["live"]}

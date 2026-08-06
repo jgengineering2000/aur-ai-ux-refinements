@@ -126,7 +126,19 @@ body {
 /* Console panel */
 .console-group { padding: 12px var(--group-pad-x) 14px; border-radius: 6px; }
 .console-group + .console-group { border-top: 1px solid rgba(51, 65, 85, 0.5); }
-.console-head { display: flex; align-items: baseline; gap: 10px; width: 100%; }
+/* The row wraps rather than squeezing. Carrying the session id made it long
+   enough to overrun a narrow IDE panel, and the auto margin on the dates hides
+   that until the moment it starts costing characters: slack is absorbed, then
+   the trailing fields are clipped with no sign that anything is missing. The
+   dates are the fields that move, because they are last, and they land on
+   their own line still ABOVE the title — the layout loses a column, never
+   content. The row gap is small deliberately: this is one header reflowing,
+   not two sections. */
+.console-head {
+  display: flex; align-items: baseline;
+  flex-wrap: wrap; gap: 3px 10px;
+  width: 100%;
+}
 .console-agent {
   font-size: 11px;
   font-weight: 700;
@@ -249,16 +261,56 @@ body {
               word-break: break-word; background: rgba(148,163,184,.08);
               border-radius: 4px; max-height: 40vh; overflow: auto; }
 .chips .none { font-size: 12px; color: var(--mu); font-style: italic; }
-.console-title.session { font-size: 14px; margin-top: 2px; }
+/* The id leads the title line, so this row carries two items rather than one
+   run of text: the ellipsis moves off the row and onto the NAME, which is the
+   only part of it that may be shortened. */
+.console-title.session {
+  font-size: 14px; margin-top: 2px;
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  overflow: visible; white-space: normal;
+}
+.console-title.session .sname {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
 
 /* The session id, quotable back to an assistant to recover or reference a
-   session. Dim because it is a lookup key, not something to read. */
+   session. It sits immediately before the name it identifies, so a reader who
+   has just found the session by its title has its lookup key in the same
+   glance. Only the leading 8 characters are SHOWN — measured against 208 real
+   transcripts, 8 hex characters collide zero times, while the full
+   36-character UUID is longer than most of the titles it introduces and reads
+   as noise ahead of them. The whole id stays on the tooltip, for the moment it
+   is actually being quoted. */
 .sid {
   font-size: 10.5px; color: var(--mu); opacity: .55;
-  font-variant-numeric: tabular-nums; margin-left: auto;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30ch;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 3px;
 }
 .sid:hover { opacity: 1; }
+
+/* The icon is the way OUT of the shortened form: 8 characters identify the
+   session on screen, the click puts all 36 on the clipboard. Revealed on
+   hover so the row stays quiet, but it reserves its width at all times —
+   appearing on hover is fine, REFLOWING the title next to it is not. */
+.sid-copy {
+  background: none; border: 0; padding: 0; margin: 0;
+  color: inherit; cursor: pointer; line-height: 0;
+  visibility: hidden;
+}
+.sid:hover .sid-copy, .sid-copy:focus-visible { visibility: visible; }
+.sid-copy:focus-visible { outline: 1px solid var(--ac); outline-offset: 1px; }
+
+/* Copying is a cross-boundary action: the clipboard write can be refused by
+   the embedding webview, and a refusal that shows nothing is indistinguishable
+   from success. Both outcomes say so, in the row, where the click happened. */
+.sid[data-state] { opacity: 1; }
+.sid[data-state="copied"]::after {
+  content: 'copied'; color: var(--gn); font-size: 9.5px; letter-spacing: .04em;
+}
+.sid[data-state="failed"]::after {
+  content: 'copy blocked'; color: #d9a441; font-size: 9.5px;
+}
 
 /* The one divider between the machine's daemons and the AI sessions. It states
    the window and the capture constraint where the reader meets them BEFORE the
@@ -305,7 +357,7 @@ body {
    re-aligns itself every time a live number changes. */
 .dmn-grid {
   display: grid;
-  grid-template-columns: repeat(8, max-content) 1fr;
+  grid-template-columns: repeat(9, max-content) 1fr;
   gap: 1px 5px;
   margin-top: 8px;
   margin-inline: calc(-1 * (var(--pad-x) + var(--group-pad-x)));
@@ -1020,6 +1072,17 @@ body {
   // which for a LIVE view is the whole defect it exists to avoid.
   let consoleGroups = [];
 
+  // Two offset sheets — the universal "copy" mark. Inline rather than a glyph
+  // because ⧉ and ⎘ land at wildly different sizes across fonts, and this one
+  // has to sit inside a 10.5px line without shifting it.
+  const COPY_ICON =
+    '<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">'
+    + '<rect x="5.5" y="5.5" width="8" height="9" rx="1.5" fill="none"'
+    + ' stroke="currentColor" stroke-width="1.4"/>'
+    + '<path d="M10.5 3.5v-1a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1"'
+    + ' fill="none" stroke="currentColor" stroke-width="1.4"'
+    + ' stroke-linecap="round"/></svg>';
+
   // Structure only — never values. pid/load/rss change every 3s and are written
   // into existing cells; if they entered this signature the list would rebuild
   // on every stats tick, which is the very thing being avoided.
@@ -1089,7 +1152,7 @@ body {
         body = '<div class="dmn-grid">'
              + '<div class="dmn-head"><span>process</span><span>pid</span>'
              + '<span>ni</span><span>load</span><span>cpu</span><span>rss</span>'
-             + '<span>out</span><span>log</span></div>'
+             + '<span>out</span><span>log</span><span>crash</span></div>'
              + g.streams.map(s => {
           const p = s.proc || {};
           // A channel the daemon does not have still occupies its cell, as a
@@ -1107,7 +1170,7 @@ body {
             + `<span class="dmn-n" data-f="load">${cellLoad(p)}</span>`
             + `<span class="dmn-n" data-f="cputime">${cellCpu(p)}</span>`
             + `<span class="dmn-n" data-f="rss">${cellRss(p)}</span>`
-            + chan(s.out, 'out') + chan(s.log, 'log')
+            + chan(s.out, 'out') + chan(s.log, 'log') + chan(s.crash, 'crash')
             + `</div>`;
         }).join('') + '</div>';
       } else {
@@ -1145,9 +1208,11 @@ body {
         : `<div class="console-head">
              <span class="console-agent">${esc(g.agent)}</span>${branch}
              <span class="doc-date">${esc(g.started || '')}</span>${capture(g)}
-             <span class="sid" title="session id — quote this to reference or recover this session">${esc(g.session_id || '')}</span>
            </div>
-           <div class="console-title session">${esc(g.title)}</div>`;
+           <div class="console-title session">
+             <span class="sid" data-sid="${esc(g.session_id || '')}" title="session ${esc(g.session_id || '')}">${esc((g.session_id || '').slice(0, 8))}<button type="button" class="sid-copy" aria-label="copy link" title="copy link">${COPY_ICON}</button></span>
+             <span class="sname">${esc(g.title)}</span>
+           </div>`;
       // The machine reading sits under the daemon list, where the processes it
       // describes are. Rebuilt with the group, repopulated on the 3s beat.
       const sys = isDaemon
@@ -1958,6 +2023,44 @@ body {
       renderCrashes();
     }).catch(() => {});
   }
+
+  // Delegated, like every other handler on this list: the list is rebuilt on a
+  // 10s poll, so a listener bound to the button itself dies with the first
+  // refresh and the icon goes quietly inert.
+  document.getElementById('console-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.sid-copy');
+    if (!btn) return;
+    e.stopPropagation();                 // never reaches the group underneath
+    const el = btn.closest('.sid');
+    const full = (el && el.dataset.sid) || '';
+    if (!full) return;
+    const settle = (state) => {
+      el.dataset.state = state;
+      clearTimeout(el._sidT);
+      el._sidT = setTimeout(() => { delete el.dataset.state; }, 1600);
+    };
+    // The async Clipboard API needs a secure context AND permission the
+    // embedding frame may not grant. execCommand is the path that still works
+    // there, so a refusal falls back rather than failing — and if BOTH refuse,
+    // the row says so instead of pretending.
+    const viaSelection = () => {
+      const ta = document.createElement('textarea');
+      ta.value = full;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      ta.remove();
+      settle(ok ? 'copied' : 'failed');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(full).then(() => settle('copied'), viaSelection);
+    } else {
+      viaSelection();
+    }
+  });
 
   document.getElementById('console-list').addEventListener('click', (e) => {
     if (!e.target.closest('#crash-toggle')) return;
