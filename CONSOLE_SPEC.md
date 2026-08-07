@@ -324,6 +324,19 @@ surface exists to stop. Three states, and the row says which it is in:
   symptom with the cause withheld.
   Any values still held ride along, so the reader can see *what* froze.
 
+**The row never goes blank once it has a reading.** A line stands until a newer
+one replaces it — not until a poll gets round to it, and not because the list
+around it was rebuilt. A monitoring row that blinks out is read as something
+breaking, at the exact moment the reader looks at it, and the absence of news is
+not news: a response that carries no sample, and the window before the first
+sample, both leave what is held alone. Two consequences follow. A dropped
+request takes **one automatic retry** rather than waiting out the next beat,
+since a restarting server is the ordinary case. And because the server can only
+state its own freshness in an answer that *arrives*, a held row states the
+client's side too: past the same bound, it says how long it has been since a
+sample landed. Held is never presented as current — that is the same rule as
+`stale`, applied to the half the server cannot see.
+
 ### 4.4 One authority
 
 **Every number in this row, and every threshold it is judged against, comes from
@@ -422,25 +435,46 @@ to the last line, and by nothing else.
 | Control | Behaviour |
 |---|---|
 | `Search` | Opens the find row, focuses the field, latches Hold |
-| `(regex)` / `(plain)` | Mode. Plain escapes the query; the label states which is live |
+| `regex` / `plain` | Mode. Plain escapes the query; the label states which is live |
 | `▲` / `▼` | Direction. Governs what "next" means for every repeat control |
 | Count | `position/total`, `no match`, or `bad pattern` — tabular figures, so advancing the position never reflows the row |
+
+**A button is drawn as a button and a field as a field.** The two are the only
+kinds of thing in the row, and which is which is carried by the drawing —
+a raised surface against an inset one — never by punctuation in a label. A
+control that needs parentheses around its text to read as pressable is styled
+wrongly; every button in a pane head is the same object and takes the same
+styling, whichever row it sits in.
 
 **A rejected pattern is reported as a rejected pattern.** A half-typed regex is
 the normal state while someone is typing one, so it marks the field rather than
 raising an error — but it must never render as `no match`, which is a *wrong*
 answer to the question asked rather than a vaguer one.
 
-**Repeats.** `Enter` steps in the shown direction and `Shift+Enter` against it,
-without leaving the field. `n` and `N` do the same when focus is elsewhere in
-the pane. Stepping wraps rather than stopping at the end.
+**Repeats.** Three pairs, and they agree: `Enter`/`Shift+Enter`, `n`/`N`, and
+`Ctrl+F`/`Ctrl+Shift+F`. The first of each steps in the direction shown, the
+second against it, and none of them moves the direction control — a repeat that
+flipped the button would change what the *next* repeat means. Stepping wraps
+rather than stopping at the end.
 
-**Keystrokes are a convenience, never the only route.** `Ctrl+F` opens in plain
-mode; `/` and `?` open in regex mode searching down and up respectively. A pane
-becomes the keystroke target by being clicked. The host that embeds this page
-may claim any of these before they reach the document — `Ctrl+F` is a binding
-in most editors — so **every keystroke has a control in the find row that does
-the same thing**. A swallowed key costs convenience and never capability.
+**Committing a query ends the typing.** `Enter` — and `Ctrl+F` pressed while
+still in the field, which is the same act asked for with a different key —
+cancels any pending debounce, steps, and hands focus to the pane body. `n` and
+`N` are *text* while the query field holds focus, so a search that left focus
+there left the reader with a find row whose repeat keys typed into it. Focus
+moves only on a search that landed: a `bad pattern` or a `no match` is a query
+still being worked on, and taking focus off it would make the reader click back
+to fix a typo. The query is not cleared, so `/`, `?` or a click return to
+editing it.
+
+**Keystrokes are a convenience, never the only route.** `Ctrl+F` opens the row
+in plain mode when it is shut and steps when it is already open — a second
+press is a repeat, not a re-open. `/` and `?` open in regex mode searching down
+and up respectively. A pane becomes the keystroke target by being clicked. The
+host that embeds this page may claim any of these before they reach the
+document — `Ctrl+F` is a binding in most editors — so **every keystroke has a
+control in the find row that does the same thing**. A swallowed key costs
+convenience and never capability.
 
 ### 6.3 Cost
 

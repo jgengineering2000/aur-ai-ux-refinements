@@ -543,13 +543,21 @@ body {
 .pill.live { color: var(--gn); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.12); }
 .pill.idle { color: var(--yl); border-color: rgba(251,191,36,.4); background: rgba(251,191,36,.12); }
 .pill.dead { color: var(--rd); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.12); }
+/* Every control in a pane head is one object class, styled once — the tools
+   row and the find row hold the same kind of thing and must not look like two
+   kinds. The surface is RAISED (--card) against the page, because --bg and
+   --cb are the same colour: a button drawn on --bg is indistinguishable from
+   the query field beside it, which is what made the mode toggle need
+   parentheses around its label to read as a button at all. The parentheses
+   were notation for "this is a button"; the styling is now that notation. */
 .pane-btn {
-  background: var(--bg); border: 1px solid var(--bd); border-radius: 5px;
+  background: var(--card); border: 1px solid var(--bd); border-radius: 5px;
   color: var(--mu); font-family: inherit; font-size: 10px; font-weight: 600;
-  padding: 3px 8px; cursor: pointer;
+  padding: 3px 8px; cursor: pointer; flex: 0 0 auto;
 }
 .pane-btn:hover { border-color: var(--ac); color: var(--ac); }
 .pane-btn.on { border-color: var(--ac); color: var(--ac); }
+.pane-btn:active { background: var(--bg); }
 .pane-body {
   height: 260px;
   overflow: auto;
@@ -561,6 +569,12 @@ body {
   tab-size: 8;
   background: var(--cb);
 }
+/* The body is focusable so that committing a search can put focus somewhere
+   that is NOT the query field — `n`/`N` are text in a field and navigation
+   anywhere else. Focusing it also gives the reader the arrow and page keys
+   over the pane they are searching. No focus ring: it is a scroll surface the
+   reader put focus on by acting, not a control they tabbed to. */
+.pane-body:focus { outline: none; }
 .pane-body.wrap { white-space: pre-wrap; overflow-wrap: anywhere; }
 .pane-body .sep { color: var(--yl); font-weight: 700; }
 /* Hide Headers. The text is still in the DOM — only its display is dropped —
@@ -587,24 +601,23 @@ body {
 
 /* Find row. It gets its OWN row beneath the tools for the same reason the
    tools have one: opening it must never displace the window controls. The
-   mode and direction buttons carry min-widths because "(regex)"/"(plain)" and
-   the two arrow glyphs are different widths in a proportional face, and the
-   input would otherwise jump sideways every time the mode is toggled. */
+   mode and direction toggles are `.pane-btn`s — the same object as the buttons
+   above them, so they carry no styling of their own beyond a min-width, since
+   "regex"/"plain" and the two arrow glyphs are different widths in a
+   proportional face and the input would otherwise jump sideways on every
+   toggle. */
 .pane-find { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .pane-find[hidden] { display: none; }
-.find-mode, .find-dir {
-  background: var(--bg); border: 1px solid var(--bd); border-radius: 5px;
-  color: var(--mu); font-family: inherit; font-size: 10px; font-weight: 600;
-  padding: 3px 6px; cursor: pointer; flex: 0 0 auto;
-}
-.find-mode { min-width: 56px; }
+.find-mode { min-width: 48px; }
 .find-dir { min-width: 28px; }
-.find-mode:hover, .find-dir:hover { border-color: var(--ac); color: var(--ac); }
-.find-mode.on { border-color: var(--ac); color: var(--ac); }
+/* The query is a FIELD, and reads as one against the raised buttons: inset
+   surface, thinner weight, a caret. Button-versus-box is carried by the
+   drawing, never by punctuation in the label. */
 .find-q {
   flex: 1 1 auto; min-width: 0;
   background: var(--cb); border: 1px solid var(--bd); border-radius: 5px;
   color: var(--tx); font-family: inherit; font-size: 11px; padding: 3px 7px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
 }
 .find-q:focus { outline: none; border-color: var(--ac); }
 /* An unparsable regex is reported on the field itself. The alternative — a
@@ -1294,6 +1307,12 @@ body {
       firstSession.parentNode.insertBefore(hdr, firstSession);
     }
     reattachPanes();
+    // The rebuild just recreated the machine and spool rows as empty nodes.
+    // Repaint them from what was last rendered, in the same frame — waiting
+    // for the 3-second beat is what made the row disappear for seconds at a
+    // time whenever a stream came or went.
+    paintSys();
+    paintSpool();
   }
 
   // A pane belongs to the group whose chip opened it, and renders directly
@@ -1402,14 +1421,14 @@ body {
           <button class="pane-btn srch-btn" data-act="search">Search</button>
         </div>
         <div class="pane-find" hidden>
-          <button class="find-mode" data-act="mode" title="Toggle regular expressions">(regex)</button>
+          <button class="pane-btn find-mode" data-act="mode" title="Toggle regular expressions">regex</button>
           <input class="find-q" type="text" placeholder="search for..."
                  spellcheck="false" autocomplete="off">
-          <button class="find-dir" data-act="dir" title="Toggle search direction">&#9650;</button>
+          <button class="pane-btn find-dir" data-act="dir" title="Toggle search direction">&#9650;</button>
           <span class="find-count"></span>
         </div>
       </div>
-      <div class="pane-body"></div>`;
+      <div class="pane-body" tabindex="-1"></div>`;
     el.querySelector('.pane-label').textContent = label;
 
     const p = {
@@ -1466,7 +1485,7 @@ body {
       if (act === 'mode') {
         p.findRe = !p.findRe;
         syncFindChrome(p);
-        runFind(p, 0);   // the same query means something else now — re-run
+        runFind(p);      // the same query means something else now — re-run
       }
       if (act === 'dir') {
         p.findUp = !p.findUp;
@@ -1526,8 +1545,7 @@ body {
     p.find.q.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
-        clearTimeout(p.findTimer);
-        stepFind(p, ev.shiftKey ? -1 : 1);
+        commitFind(p, ev.shiftKey ? -1 : 1);
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         closeFind(p);
@@ -1576,14 +1594,17 @@ body {
   }
 
   function syncFindChrome(p) {
-    p.find.mode.textContent = p.findRe ? '(regex)' : '(plain)';
+    p.find.mode.textContent = p.findRe ? 'regex' : 'plain';
     p.find.mode.classList.toggle('on', p.findRe);
     p.find.dir.innerHTML = p.findUp ? '&#9650;' : '&#9660;';
     p.find.dir.title = p.findUp ? 'Searching up — click to search down'
                                 : 'Searching down — click to search up';
   }
 
-  function openFind(p, regex) {
+  // `sense` carries the direction of the keystroke that opened it, so
+  // Ctrl+Shift+F on a pane with a query already in the box opens on the hit
+  // it would have stepped to, not on the one Ctrl+F would.
+  function openFind(p, regex, sense) {
     if (p.search) { p.find.q.focus(); p.find.q.select(); return; }
     p.search = true;
     p.findRe = regex;
@@ -1601,7 +1622,7 @@ body {
     p.find.q.focus();
     p.find.q.select();
     activePane = p.id;
-    if (p.find.q.value) runFind(p);
+    if (p.find.q.value) runFind(p, sense);
   }
 
   function closeFind(p) {
@@ -1722,10 +1743,30 @@ body {
     }
   }
 
-  function runFind(p) {
+  function runFind(p, sense) {
     buildHits(p);
-    if (p.hits.length) stepFind(p, 1);
+    if (p.hits.length) stepFind(p, sense === -1 ? -1 : 1);
     else setFindCount(p);
+  }
+
+  // Committing is what ENDS the typing, and it is one act however it is asked
+  // for — Enter, or Ctrl+F while still in the field. The pending debounce is
+  // cancelled first: a rebuild landing 140ms later would reset the position
+  // this step just chose. Focus then leaves the query, because `n` and `N` are
+  // TEXT while the field holds focus and navigation everywhere else — which is
+  // precisely why they did nothing after Enter. The query stays put; clicking
+  // the field, `/` or `?` come back to editing it.
+  //
+  // Focus moves only on a search that actually landed. A bad pattern or a
+  // no-match is a query the reader is still working on, and taking focus off
+  // it there would make them click back to fix a typo.
+  function commitFind(p, sense) {
+    clearTimeout(p.findTimer);
+    stepFind(p, sense);
+    if (p.hits.length && document.activeElement === p.find.q)
+      // preventScroll, or focusing a scrollable div scrolls the hit that was
+      // just centred back to wherever the browser thinks focus belongs.
+      p.body.focus({ preventScroll: true });
   }
 
   // sense: +1 follows the direction button, -1 goes against it. A fresh list
@@ -1779,13 +1820,24 @@ body {
   document.addEventListener('keydown', (e) => {
     const p = activePane && panes.get(activePane);
     if (!p) return;
-    // The find field claims its own Enter and Escape in its own listener.
-    if (typingInField(e.target)) return;
+    // Ctrl+F is read BEFORE the typing guard, because it is the one keystroke
+    // that has to work while focus is still in the query field: pressing it
+    // there means "take what I have typed and go", which is Enter's act.
+    //
+    // It REPEATS. Ctrl+F steps in the direction shown and Ctrl+Shift+F against
+    // it — the same pair as Enter/Shift+Enter and n/N, so all three ways of
+    // asking for "again" agree on what again means, and none of them moves the
+    // direction button under the reader. Opening is what it does only when the
+    // row is shut; pressing it a second time is a step, not a re-open.
     if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
-      openFind(p, false);           // Ctrl+F opens in PLAIN mode
+      const sense = e.shiftKey ? -1 : 1;
+      if (!p.search) openFind(p, false, sense);   // Ctrl+F opens in PLAIN mode
+      else commitFind(p, sense);
       return;
     }
+    // The find field claims its own Enter and Escape in its own listener.
+    if (typingInField(e.target)) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === '/' || e.key === '?') {
       e.preventDefault();
@@ -2190,13 +2242,49 @@ body {
   const SWAP_CLEAR_LOAD_PCT = 5;
   let swapPressure = false, lastSwapUsedMb = null;
 
-  function renderSys(s) {
+  // The row's own memory, and why it needs one: `#sysline` lives INSIDE the
+  // console list, so every structural rebuild of that list — a stream
+  // appearing, a command ending — recreates the node EMPTY, and the machine
+  // reading vanished until the next 3-second beat refilled it. A monitoring
+  // line that blinks out reads as "something just broke", which is exactly the
+  // moment a reader looks at it. So the last rendering is held here and
+  // repainted the instant the node is recreated: a line stands until a NEWER
+  // one replaces it, never until a poll gets round to it.
+  let sysHtml = '', spoolHtml = '', sysAt = 0;
+  // Client-side freshness, alongside the server's own (§4.3). The server can
+  // only state staleness in an answer that arrives — a doc server being
+  // restarted answers nothing at all, and a held row would otherwise show its
+  // last numbers looking perfectly current. Same bound the sampler uses.
+  const SYS_GAP_S = 12;
+  const SYS_RETRY_MS = 700;
+
+  function paintSys() {
     const el = document.getElementById('sysline');
     if (!el) return;
-    if (!s || s.status === 'starting') { el.textContent = ''; return; }
+    let html = sysHtml;
+    if (html && sysAt) {
+      const age = Math.round((Date.now() - sysAt) / 1000);
+      if (age > SYS_GAP_S)
+        html += `<span class="sf gap">no sample ${age}s</span>`;
+    }
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  function paintSpool() {
+    const el = document.getElementById('spoolline');
+    if (el && el.innerHTML !== spoolHtml) el.innerHTML = spoolHtml;
+  }
+
+  function renderSys(s) {
+    // A sample that says nothing — a response without a system block, or the
+    // window before the sampler's first line — is not news, and a row is not
+    // cleared by the absence of news. Whatever is held stays held.
+    if (!s || s.status === 'starting') { paintSys(); return; }
+    sysAt = Date.now();
     if (s.status === 'unavailable') {
-      el.innerHTML =
+      sysHtml =
         `<span class="sf gap">unavailable — ${esc(s.error || 'no sampler')}</span>`;
+      paintSys();
       return;
     }
     const mb = v => (v === undefined || v === null) ? null : v * 1048576;
@@ -2228,7 +2316,7 @@ body {
     const loadPct = (s.us || 0) + (s.ni || 0) + (s.sy || 0);
     if (swapPressure && loadPct < SWAP_CLEAR_LOAD_PCT) swapPressure = false;
 
-    el.innerHTML =
+    sysHtml =
       // `us` — top's USER share. This column briefly showed idle under an `lo`
       // label, which inverted its sense: a reader who learned "high means busy"
       // was being shown a number where high means free. It is judged against
@@ -2262,6 +2350,7 @@ body {
           .replace('<b>', '<i>stor</i> <b>')
       + (s.status === 'stale'
           ? `<span class="sf gap">stale ${s.age_s}s</span>` : '');
+    paintSys();
   }
 
   // The spool's own size, shown ALWAYS rather than only when breached.
@@ -2275,13 +2364,14 @@ body {
   // Nothing here caps anything. Capture continues past the threshold, because
   // silently dropping output is the exact defect the spool was built to fix.
   function renderSpool(sp) {
-    const el = document.getElementById('spoolline');
-    if (!el) return;
-    if (!sp) { el.textContent = ''; return; }
+    // Held for the same reason the machine row is: this node is recreated by
+    // every list rebuild, and a spool figure that disappears takes the normal
+    // number with it — which is the whole point of showing it always.
+    if (!sp) { paintSpool(); return; }
     const bad = !!sp.over;
     const f = (v, l, flag) => `<span class="sf${flag ? ' bad' : ''}">`
       + `<i>${l}</i> <b>${v}</b></span>`;
-    el.innerHTML =
+    spoolHtml =
         `<span class="sl">Spool</span>`
       + f(`${fmtBytes(sp.bytes)}/${fmtBytes(sp.alert_total)}`, 'total',
           sp.bytes > sp.alert_total)
@@ -2296,6 +2386,7 @@ body {
               'min/avg/max', sp.max > sp.alert_single)
           : '')
       + (bad ? `<span class="sf bad">over limit — capture continues</span>` : '');
+    paintSpool();
   }
 
   // ── One-shot report table ─────────────────────────────────────────────────
@@ -2428,7 +2519,9 @@ body {
     if (!el.hidden && !crashRows.length) loadCrashes();
   });
 
-  function refreshProcStats() {
+  let sysRetry = null;
+
+  function refreshProcStats(isRetry) {
     const panel = document.getElementById('console-panel');
     if (!panel || !panel.classList.contains('active')) return;
     const rows = [...document.querySelectorAll('#console-list .dmn-row')];
@@ -2460,9 +2553,22 @@ body {
         const dot = row.querySelector('.dot');
         if (dot) dot.hidden = !s.live;
       });
-    }).catch(() => {});
+    }).catch(() => {
+      // A dropped request is usually a server restart or a momentary stall, and
+      // three seconds is a long time to sit on a machine reading when the
+      // answer is 700ms away — so one automatic retry, then wait for the next
+      // beat. Exactly one: a server that is actually down must not collect a
+      // retry storm on top of every beat. The row is repainted either way,
+      // which is what ages the held line toward its `no sample` marker.
+      paintSys();
+      if (!isRetry && sysRetry === null)
+        sysRetry = setTimeout(() => {
+          sysRetry = null;
+          refreshProcStats(true);
+        }, SYS_RETRY_MS);
+    });
   }
-  setInterval(refreshProcStats, TOP_INTERVAL_MS);
+  setInterval(() => refreshProcStats(), TOP_INTERVAL_MS);
 
   // ONE clock for the whole page: local, 24-hour, zero-padded. `toLocaleTime‐
   // String()` follows the browser's locale, which on this machine renders

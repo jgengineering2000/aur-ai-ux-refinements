@@ -126,10 +126,26 @@ PAGE_TEST = r"""
   // 1. Open a pane through the real path — a click on a real chip. The list
   //    is fetched, so a started page is not yet a populated one: wait for the
   //    chip to exist rather than assuming load means ready.
+  //
+  //    Waiting for it is also what makes the tab click land. A tab carries no
+  //    behaviour until the page's script has attached one, and the markup is
+  //    parsed long before that — clicking it earlier hits an element that is
+  //    not yet a control, silently. The chip only exists once the script has
+  //    fetched and rendered, so it is the readiness signal for both.
   const chip = await until(() =>
     document.querySelector('#console-list .dmn-open, #console-list .chip'));
   if (!chip) return [{ name: 'a console chip exists to open', ok: false,
                        got: null, want: 'one chip' }];
+  //    The Console tab is then selected, because an inactive panel is
+  //    `display: none` — the machine row does not poll while it is hidden, and
+  //    focus() inside a hidden subtree does nothing at all, which would make
+  //    every focus assertion below fail for a reason that is not the feature's.
+  const tab = document.querySelector('.tab[data-panel="console-panel"]');
+  if (tab) tab.click();
+  const shown = await until(() =>
+    document.getElementById('console-panel').classList.contains('active'));
+  if (!shown) return [{ name: 'the Console tab shows the console panel',
+                        ok: false, got: null, want: 'panel active' }];
   chip.click();
   const pane = await until(() => document.querySelector('.pane'));
   if (!pane) return [{ name: 'clicking a chip opens a pane', ok: false,
@@ -168,7 +184,7 @@ PAGE_TEST = r"""
   ck('Search opens the find row',   row.hidden, false);
   ck('Search marks its own button', btnS.classList.contains('on'), true);
   ck('Search latches Hold on',      btnH.classList.contains('on'), true);
-  ck('default mode is regex',       mode.textContent, '(regex)');
+  ck('default mode is regex',       mode.textContent, 'regex');
   ck('default direction is up',     dir.textContent.trim(), '▲');
 
   const type = async (text) => {
@@ -178,6 +194,18 @@ PAGE_TEST = r"""
   };
   const enter = (shift) => q.dispatchEvent(new KeyboardEvent('keydown',
     { key: 'Enter', shiftKey: !!shift, bubbles: true }));
+  // Keystrokes are dispatched from whatever holds focus, never from `document`.
+  // Routing is the thing under test: a key typed while the query field has
+  // focus is TEXT, and a gate that dispatches on the document bypasses exactly
+  // the check that decides. This version of the gate could not see that n/N
+  // were dead after Enter, because it asked the document directly.
+  const dkey = (init) => (document.activeElement || document.body)
+    .dispatchEvent(new KeyboardEvent('keydown',
+      Object.assign({ bubbles: true }, init)));
+  const unfocus = () => {
+    const a = document.activeElement;
+    if (a && a.blur) a.blur();
+  };
   const hits = () => body.querySelectorAll('mark.find-hit').length;
   const cur  = () => body.querySelector('mark.find-hit.cur');
 
@@ -192,74 +220,149 @@ PAGE_TEST = r"""
   ck('up-search opens at the last hit',
      cur() === body.querySelectorAll('mark.find-hit')[2], true);
 
-  // 6. n steps in the direction shown; it wraps rather than stopping.
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-  ck('n steps up to the previous hit', count.textContent, '2/3');
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'N', bubbles: true }));
-  ck('N steps back the other way',     count.textContent, '3/3');
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-  ck('n wraps past the first hit',     count.textContent, '3/3');
-
-  // 7. Enter repeats without leaving the field.
+  // 6. Enter COMMITS: it steps, and it hands focus out of the query field.
+  //    `n` and `N` are text while that field holds focus, which is why they
+  //    did nothing after Enter — the reader had finished typing and the page
+  //    had not noticed. Focus lands on the pane body, which also gives them
+  //    the arrow and page keys over the pane they are reading.
+  ck('a search opens with focus in the field', document.activeElement === q, true);
   enter(false);
-  ck('Enter steps like n', count.textContent, '2/3');
-  enter(true);
-  ck('Shift+Enter reverses', count.textContent, '3/3');
+  ck('Enter steps in the shown direction', count.textContent, '2/3');
+  ck('Enter releases the query field',     document.activeElement === q, false);
+  ck('focus lands on the pane body',       document.activeElement === body, true);
 
-  // 8. Direction toggle flips the glyph and the sense of a step.
+  // 7. n steps in the direction shown; it wraps rather than stopping. These
+  //    now travel the real route — from the focused element, through the
+  //    document listener.
+  dkey({ key: 'n' });
+  ck('n steps once focus has left the field', count.textContent, '1/3');
+  dkey({ key: 'N' });
+  ck('N steps back the other way',            count.textContent, '2/3');
+  dkey({ key: 'n' });
+  dkey({ key: 'n' });
+  ck('n wraps past the first hit',            count.textContent, '3/3');
+
+  // 8. Ctrl+F REPEATS. The second press is a step, not a re-open, and it does
+  //    not pull focus back into the field. Shift reverses it, repeatably, and
+  //    neither moves the direction button under the reader.
+  dkey({ key: 'f', ctrlKey: true });
+  ck('Ctrl+F steps in the shown direction',   count.textContent, '2/3');
+  dkey({ key: 'f', ctrlKey: true });
+  ck('Ctrl+F again repeats the same search',  count.textContent, '1/3');
+  ck('Ctrl+F does not take focus back',       document.activeElement === q, false);
+  dkey({ key: 'F', ctrlKey: true, shiftKey: true });
+  ck('Ctrl+Shift+F steps the other way',      count.textContent, '2/3');
+  dkey({ key: 'F', ctrlKey: true, shiftKey: true });
+  ck('Ctrl+Shift+F again repeats backward',   count.textContent, '3/3');
+  ck('repeating never moves the direction',   dir.textContent.trim(), '▲');
+
+  // 9. Ctrl+F from INSIDE the field is Enter's act: commit what is typed and
+  //    go. It is the one keystroke read before the typing guard.
+  q.focus();
+  ck('the field can be returned to', document.activeElement === q, true);
+  dkey({ key: 'f', ctrlKey: true });
+  ck('Ctrl+F commits from inside the field', count.textContent, '2/3');
+  ck('and releases the field too',           document.activeElement === q, false);
+
+  // 10. Shift+Enter reverses, and commits the same way Enter does.
+  q.focus();
+  enter(true);
+  ck('Shift+Enter reverses',            count.textContent, '3/3');
+  ck('Shift+Enter commits like Enter',  document.activeElement === q, false);
+
+  // 11. Direction toggle flips the glyph and the sense of a step.
   dir.click();
   ck('direction toggles to down', dir.textContent.trim(), '▼');
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-  ck('n now steps forward', count.textContent, '1/3');
+  dkey({ key: 'n' });
+  ck('n now steps down the buffer', count.textContent, '1/3');
   dir.click();
 
-  // 9. Mode toggle. `.` is a wildcard in regex and a literal in plain, so one
-  //    query separates the two modes without depending on the fixture text.
+  // 12. Mode toggle. `.` is a wildcard in regex and a literal in plain, so one
+  //     query separates the two modes without depending on the fixture text.
   await type(T.slice(0, 3) + '.' + T.slice(4));
   ck('regex treats . as a wildcard', hits(), 3);
   mode.click();
   await sleep(50);
-  ck('mode toggles to plain', mode.textContent, '(plain)');
+  ck('mode toggles to plain', mode.textContent, 'plain');
   ck('plain treats . as a literal', hits(), 0);
   ck('no match says so', count.textContent, 'no match');
   mode.click();
   await sleep(50);
 
-  // 10. A half-typed regex is the normal state while typing one. It must read
-  //     as a bad pattern, never as "no match" — that is a wrong answer.
+  // 13. A half-typed regex is the normal state while typing one. It must read
+  //     as a bad pattern, never as "no match" — that is a wrong answer. Focus
+  //     stays put on one of these: there is nothing to commit.
   await type('[' + T);
-  ck('bad regex marks the field', q.classList.contains('bad'), true);
-  ck('bad regex says bad pattern', count.textContent, 'bad pattern');
+  q.focus();
+  dkey({ key: 'f', ctrlKey: true });
+  ck('bad regex marks the field',      q.classList.contains('bad'), true);
+  ck('bad regex says bad pattern',     count.textContent, 'bad pattern');
+  ck('a bad pattern keeps the field',  document.activeElement === q, true);
 
-  // 11. Case sensitivity: the lowercase copy on line two is a different string.
+  // 14. Case sensitivity: the lowercase copy on line two is a different string.
   await type(T.toLowerCase());
   ck('search is case sensitive', hits(), 1);
 
-  // 12. Closing removes every mark and restores the text exactly.
+  // 15. Closing removes every mark and restores the text exactly. Escape is
+  //     routed from the pane, not from the field, since after a commit that is
+  //     where the reader's focus is.
   const before = body.textContent;
-  q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  unfocus();
+  dkey({ key: 'Escape' });
   ck('Escape hides the find row',  row.hidden, true);
   ck('Escape clears every mark',   hits(), 0);
   ck('text survives unmarking',    body.textContent, before);
   ck('Hold is NOT released',       btnH.classList.contains('on'), true);
 
-  // 13. Ctrl+F opens in PLAIN mode; / and ? open in REGEX with a direction.
-  document.dispatchEvent(new KeyboardEvent('keydown',
-    { key: 'f', ctrlKey: true, bubbles: true }));
+  // 16. Ctrl+F opens in PLAIN mode; / and ? open in REGEX with a direction.
+  dkey({ key: 'f', ctrlKey: true });
   ck('Ctrl+F opens the find row', row.hidden, false);
-  ck('Ctrl+F selects plain mode', mode.textContent, '(plain)');
+  ck('Ctrl+F selects plain mode', mode.textContent, 'plain');
   q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
-  ck('/ opens in regex mode', mode.textContent, '(regex)');
+  unfocus();
+  dkey({ key: '/' });
+  ck('/ opens in regex mode', mode.textContent, 'regex');
   ck('/ searches down',       dir.textContent.trim(), '▼');
   q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+  unfocus();
+  dkey({ key: '?' });
   ck('? searches up', dir.textContent.trim(), '▲');
   q.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+  // 17. A button looks like a button and a field looks like a field. The mode
+  //     toggle carried parentheses in its LABEL to say "I am pressable", which
+  //     is punctuation standing in for drawing — and it read as text either
+  //     way. The assertion is the requirement itself: the two are not drawn
+  //     the same, and the label is a word.
+  ck('the mode toggle is a pane button', mode.classList.contains('pane-btn'), true);
+  ck('the direction toggle is one too',  dir.classList.contains('pane-btn'), true);
+  ck('the mode label is a bare word',    /^(regex|plain)$/.test(mode.textContent), true);
+  ck('a button is not drawn like the field',
+     getComputedStyle(mode).backgroundColor !== getComputedStyle(q).backgroundColor,
+     true);
+
+  // 18. The machine row survives a rebuild of the list it lives in. `#sysline`
+  //     is recreated empty by every structural rebuild — a stream appearing, a
+  //     command ending, or Refresh — and it used to stay blank until the next
+  //     3-second beat refilled it. A monitoring line that blinks out reads as
+  //     something breaking, at the exact moment a reader looks at it.
+  const sysBefore = await until(() => {
+    const el = document.getElementById('sysline');
+    return el && el.innerHTML ? el.innerHTML : null;
+  });
+  ck('the machine row has a reading', !!sysBefore, true);
+  const spoolBefore = (document.getElementById('spoolline') || {}).innerHTML;
+  document.getElementById('console-refresh').click();   // forces a full rebuild
+  const sysAfter = document.getElementById('sysline');
+  const spoolAfter = document.getElementById('spoolline');
+  ck('the machine row survives a rebuild',
+     !!(sysAfter && sysAfter.innerHTML), true);
+  ck('and it is the same reading, not a blank one',
+     !!(sysAfter && sysAfter.innerHTML === sysBefore), true);
+  ck('the spool row survives it too',
+     !!(spoolAfter && spoolAfter.innerHTML === spoolBefore), true);
 
   return R;
 })()
@@ -285,6 +388,15 @@ PAGE_PERF = r"""
   const chip = await until(() =>
     document.querySelector('#console-list .dmn-open, #console-list .chip'));
   if (!chip) return { error: 'no chip to open' };
+  // The panel has to be SHOWING. An inactive one is `display: none`, and DOM
+  // work inside a hidden subtree skips the layout and paint that are most of
+  // what a 5MB pane costs — a number measured there is not the number the
+  // reader waits for.
+  const tab = document.querySelector('.tab[data-panel="console-panel"]');
+  if (tab) tab.click();
+  const shown = await until(() =>
+    document.getElementById('console-panel').classList.contains('active'));
+  if (!shown) return { error: 'console panel never became active' };
   chip.click();
   const pane = await until(() => document.querySelector('.pane'));
   if (!pane) return { error: 'no pane opened' };
