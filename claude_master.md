@@ -405,6 +405,22 @@ advantage of.
   outcome all belong to the user. Reporting what the user has is not
   recommending what they should get.
 
+**20. Any call that ever responds always responds.** ACK, NAK, unknown, OK, 0,
+1 — the content matters far less than its arrival, and a path that answers on
+success while returning silently on unrecognised input is the defect, because
+it has broken a contract it established itself. **Not discharged by a log
+line**: logging serves the operator, responding serves whoever asked, and the
+log is written where the asker cannot see it. *"Nothing happened"* — refusal,
+no-op, not-applicable, already-done, unknown-request — is a complete answer;
+*nothing* is not, and P14 governs the wording of the last. A response may be
+**asynchronous** — arrival is what matters, not timing — and the obligation
+follows the call that can actually fail and reports it: a log helper's own
+outcome may go unchecked, the `write()` beneath it may not. **A call that never
+responds must be assumed to fail most of the time**, unless it sits in a
+context that is generally deterministic — so an interface with no response
+channel is the defect to fix before anything is built on top of it (P15's
+cross-boundary corollary, from the other end).
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
