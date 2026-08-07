@@ -79,7 +79,11 @@ document.querySelectorAll('tr').forEach((row, i) => {
   annTd.appendChild(wrap); annRow.appendChild(annTd); row.insertAdjacentElement('afterend', annRow);
   row.dataset.annId = id;
   const ta = wrap.querySelector('textarea'), st = wrap.querySelector('.ann-status');
-  btn.onclick = e => { e.stopPropagation(); const open = annRow.style.display !== 'none'; annRow.style.display = open ? 'none' : ''; if (!open) ta.focus(); };
+  // The ROW's display and the WRAP's .show class both gate visibility: ann.css
+  // has .ann-wrap{display:none} with .ann-wrap.show{display:block}. Toggling
+  // only the row revealed an empty row with the textarea still hidden inside
+  // it — the <li> branch below sets .show and was the only one that worked.
+  btn.onclick = e => { e.stopPropagation(); const open = annRow.style.display !== 'none'; annRow.style.display = open ? 'none' : ''; wrap.classList.toggle('show', !open); if (!open) ta.focus(); };
   wireInput(id, btn, ta, st);
 });
 
@@ -120,7 +124,9 @@ allItems.forEach(el => {
     Object.assign(wrap.style, {margin:'0', padding:'4px 10px 6px', borderTop:'none'});
     annTd.appendChild(wrap); annRow.appendChild(annTd); el.insertAdjacentElement('afterend', annRow);
     const ta = wrap.querySelector('textarea'), st = wrap.querySelector('.ann-status');
-    btn.onclick = e => { e.stopPropagation(); const open = annRow.style.display !== 'none'; annRow.style.display = open ? 'none' : ''; if (!open) ta.focus(); };
+    // Same two-gate bug as the section-header branch above: the row's display
+    // AND the wrap's .show both have to open, or the row appears empty.
+    btn.onclick = e => { e.stopPropagation(); const open = annRow.style.display !== 'none'; annRow.style.display = open ? 'none' : ''; wrap.classList.toggle('show', !open); if (!open) ta.focus(); };
     wireInput(storeId, btn, ta, st);
   }
 });
