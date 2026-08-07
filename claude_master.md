@@ -329,6 +329,42 @@ the test is not that the artifact exists but that it answers the question
 **without reading source** — an artifact whose meaning must be traced back
 through the code has not reduced anything.
 
+**18. A build makes a PRODUCT from a PRECEDENT by a RULE — the question is never
+"should this be a target", it is "what is its product".** That is what the word
+*build* means, and there is literally no exception until you reach something that
+has no product at all. The details vary by toolchain; the shape does not. So the
+diagnostic for any step in a build tree is one question, and a step that cannot
+answer it is not a build step — it is either work that belongs somewhere else, or
+a product nobody bothered to name. **Shell in a build tree is the observable
+symptom of that question going unanswered**: a script is a sequence of actions,
+and actions are what you write when you could not say what you were making, which
+is why the redundant work, the missing incrementality and the
+delete-it-all-and-start-over come bundled with it. Corollaries:
+
+- **A wipe is a confession.** `rm -rf` over an output tree, a
+  regenerate-everything step, a clean-before-build — each says the same thing:
+  the precedents are not stated, so staleness cannot be computed and the only
+  safe move is to destroy the evidence. Do not harden the wipe; state the
+  dependency and the wipe becomes unnecessary. Framing it as an *atomicity* or
+  *safety* concern misfiles it — the defect is missing precedents, and the
+  safety issue is downstream of that.
+- **Dependencies bought resumability, not just speed.** A run that dies partway
+  through a properly-stated graph leaves every completed product correct and
+  every uncompleted one untouched, so re-running resumes rather than restarts.
+  That property is unavailable to a script and is usually worth more than the
+  skipping.
+- **A step whose product is a STATE, not a file, still has a product** — and its
+  honest form is an artifact recording that the state was reached, carrying the
+  same precedents as the work it guards, so it is skipped exactly when the work
+  is. What is forbidden is the unconditional step hiding inside a conditional
+  graph; verify which one you built, because the tooling's defaults will not
+  tell you (a phony order-only prerequisite in GNU make runs on *every*
+  invocation — measured, not assumed).
+- **Product-runtime is not build.** A script the shipped product invokes at
+  runtime is not a build step and does not convert; it has no product because it
+  is not making anything, it is doing something. Converting it is a category
+  error. The test is who runs it and when, never what language it is in.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
