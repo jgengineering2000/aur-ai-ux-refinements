@@ -365,6 +365,46 @@ delete-it-all-and-start-over come bundled with it. Corollaries:
   is not making anything, it is doing something. Converting it is a category
   error. The test is who runs it and when, never what language it is in.
 
+**19. An asset whose licence you cannot establish is the USER'S, never the
+product's.** The test applies to the **asset**, not to the repository hosting it:
+code and data are routinely licensed apart, a package's headline licence is not a
+statement about everything inside it, and the honest upstreams say so out loud —
+one MIT-labelled library in this class disclaims its own published weights and
+ships a GPL-3 component besides. So where a licence is absent, opaque, or
+restricts *use* rather than only redistribution: the **user** acquires and
+installs it, the product **discovers a public interface** and uses it if present,
+the product is **fully functional without it**, and **nothing they provide is
+modified** — the only permitted relationship is interfacing to it. The role being
+claimed is the container's: Apache is not liable for the non-OSS database behind
+a site deployed on it, despite having provided the capability the deployment took
+advantage of.
+
+- **Verification does not retire the risk, so this is the posture for ALL such
+  assets, not a fallback for the ones that fail.** The exposure sits *upstream of
+  the licence* — in provenance the publisher never disclosed — and no amount of
+  reading LICENSE files reaches it. Ground this externally like everything in
+  P15: Fedora's steering committee took the same question and could not settle
+  whether model weights are code or content.
+- **Genericity is how indifference is implemented.** Code carrying per-product
+  knowledge can prefer, depend and claim; code describing a *capability shape*
+  cannot, because nothing in it knows what it is talking to. That is also why
+  it is the better engineering irrespective of licensing — it is the only shape
+  that can use an artifact the user **made themselves**, which a
+  vendor-directory-shaped implementation is structurally blind to.
+- **Discover the interface, never the asset.** An importable module, an
+  executable on the path, a conforming entry in a conventional directory — the
+  places the operating system publishes such things — never the user's data
+  files by name, which is rummaging rather than querying. Configuration is the
+  override for an unconventional location, never the only route, because a
+  capability reachable solely by hand-configuration is one that never gets used.
+- **The sentence test, and it binds every user-facing string** — labels,
+  tooltips, errors, log lines, not merely documentation. *"Install X to unlock
+  Y"* asserts X should exist and makes Y the product's outcome: an integration
+  claim, never permitted. *"If X is present you can use it to do Y"* asserts
+  nothing — the condition stays open and the capability, the verb and the
+  outcome all belong to the user. Reporting what the user has is not
+  recommending what they should get.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
