@@ -1452,7 +1452,13 @@ body {
       // something that has already gone past.
       search: false, findRe: true, findUp: true,
       findKey: null,   // the query+mode the current hit list was built from
-      hits: [], hitIdx: -1
+      // Matching and marking are separate: `groups` are the matches found,
+      // `hits` point into them, and a group grows its <mark>s only when the
+      // reader reaches it or the idle fill gets there. `filled` counts the
+      // materialized groups, so the fill knows when it is finished.
+      groups: [], hits: [], hitIdx: -1, curMark: null,
+      filled: 0, fillDown: 0, fillUp: -1, fillStart: 0, fillEnd: -1,
+      fillReq: null, scrollReq: null
     };
     panes.set(id, p);
     // Placed by the same path that re-places it after every render, so opening
@@ -1518,6 +1524,15 @@ body {
     // Hold is off must not quietly stop the pane from tailing.
     p.body.addEventListener('scroll', () => {
       releaseHoldAtBottom(p, el.querySelector('[data-act="hold"]'));
+      // Scrolling by hand moves the reader as surely as stepping does, so the
+      // marked region follows them here too. Coalesced to one frame: a scroll
+      // fires far faster than anything needs to be recomputed, and geometry
+      // read per event is how a scroll handler becomes the stutter.
+      if (!p.search || !p.groups.length || p.scrollReq !== null) return;
+      p.scrollReq = requestAnimationFrame(() => {
+        p.scrollReq = null;
+        if (p.search && p.groups.length) centreFill(p, groupNearView(p));
+      });
     });
 
     // The find chrome, resolved once. Every find path reads it, and querying
@@ -1559,7 +1574,11 @@ body {
   function closePane(id) {
     const p = panes.get(id);
     if (!p) return;
-    clearTimeout(p.findTimer);   // the pane owns its own timer on every exit path
+    // The pane owns its own timers on every exit path — the find debounce, and
+    // an idle fill that would otherwise go on marking a detached buffer.
+    clearTimeout(p.findTimer);
+    stopFill(p);
+    if (p.scrollReq !== null) cancelAnimationFrame(p.scrollReq);
     if (activePane === id) activePane = null;
     p.el.remove();
     panes.delete(id);
@@ -1573,7 +1592,8 @@ body {
   //
   // Matches are WRAPPED in <mark>, never rewritten: textContent is preserved
   // exactly, so the byte accounting in paneAppend/trimBuffer stays true and
-  // Hide Headers keeps working on a line that contains a hit.
+  // Hide Headers keeps working on a line that contains a hit. Wrapping is
+  // deferred — see FIND_NEAR below for what that buys and what it costs.
   //
   // Bound worth stating: output arriving AFTER a list is built is not in it.
   // Enter picks that up (it rebuilds when the buffer has grown); n/N navigate
@@ -1588,6 +1608,41 @@ body {
   // DOM cost, not on the answer: the count says "5000+" so the reader knows
   // the list is a prefix and can narrow the query.
   const FIND_MAX_HITS = 5000;
+
+  // Marking is separated from matching, because measurement says the two are
+  // not remotely the same cost. At the spec's 5MB cap — 5,242,925 bytes,
+  // 44,598 lines — finding every hit costs 77ms, wrapping 5000 of them costs
+  // 1234ms, and unwrapping them again on the next query costs a further 478ms.
+  // Matching is 4% of the work; the DOM is the other 96%.
+  //
+  // So a query MATCHES everything and MARKS what is being looked at: the hit
+  // the reader is on and the lines around it, painted before the step returns,
+  // with the rest arriving on idle time. The count is exact from the first
+  // frame either way, because the count comes from the match list and never
+  // from the marks.
+  // The fill is BOUNDED, and the bound is the whole point. Marking the entire
+  // buffer would move the 1234ms off the keystroke — and then charge it back
+  // as 516ms of UNwrapping on the next query, because a mark that exists has
+  // to be taken out again. Marks are therefore kept where the reader has been
+  // looking: a radius around the current hit, which the reader drags with them
+  // by stepping or by scrolling. Both costs then scale with the view rather
+  // than with the buffer, which is the only version of this that stays flat as
+  // the pane fills.
+  const FIND_NEAR = 8;        // groups either side of the hit, painted NOW
+  const FIND_RADIUS = 400;    // groups either side the idle fill will reach
+  const FILL_SLICE_MS = 8;    // budget per idle slice, under one frame
+  // `timeout` is short and the slice budget is our own, deliberately. A page
+  // that never goes idle — one polling panes and stats on a beat — gets its
+  // idle callbacks only through the timeout path, and a callback that fired
+  // that way reports `timeRemaining() === 0`. Believing it means the fill
+  // advances two lines per timeout and never arrives; the browser's hint is
+  // worth having for WHEN to run, never for how long.
+  const idleRun = window.requestIdleCallback
+    ? (fn) => window.requestIdleCallback(fn, { timeout: 60 })
+    : (fn) => setTimeout(() => fn({}), 16);
+  const idleStop = window.cancelIdleCallback
+    ? (id) => window.cancelIdleCallback(id)
+    : (id) => clearTimeout(id);
 
   function findKeyOf(p) {
     return (p.findRe ? 're ' : 'pl ') + p.find.q.value;
@@ -1641,10 +1696,130 @@ body {
     // closed the box. The Hold button releases Hold.
   }
 
+  // A GROUP is one text node and the matches found in it. It is the unit of
+  // marking because wrapping rewrites the node: doing one match at a time
+  // would invalidate the positions of the others in the same line. A group
+  // holds its match offsets until it is materialized, and its marks after.
+  function groupAlive(g) {
+    return g.marks ? (g.marks.length > 0 && g.marks[0].isConnected)
+                   : g.node.isConnected;
+  }
+
+  function markOf(p, h) {
+    const g = p.groups[h.g];
+    return g && g.marks ? g.marks[h.k] : null;
+  }
+
+  // Wrap one group's matches. Idempotent and cheap to call on a group already
+  // done, which is what lets the idle fill re-sweep from a new centre without
+  // paying for the ground it has already covered.
+  function materialize(p, gi) {
+    const g = p.groups[gi];
+    if (!g || g.marks || g.dead) return;
+    const n = g.node;
+    if (!n.isConnected) { g.dead = true; g.marks = []; return; }
+    const text = n.nodeValue;
+    const frag = document.createDocumentFragment();
+    const marks = [];
+    let at = 0;
+    for (const [i, len] of g.at) {
+      if (i > at) frag.appendChild(document.createTextNode(text.slice(at, i)));
+      const mark = document.createElement('mark');
+      mark.className = 'find-hit';
+      mark.textContent = text.slice(i, i + len);
+      frag.appendChild(mark);
+      marks.push(mark);
+      at = i + len;
+    }
+    if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
+    n.parentNode.replaceChild(frag, n);
+    g.marks = marks;
+    p.filled++;
+  }
+
+  // The reader's neighbourhood, on idle time, radiating outward from where
+  // they are. Two cursors rather than one pass, so the lines just off the top
+  // and the bottom of the view are marked before anything further away.
+  function fillPending(p) {
+    return p.fillDown <= p.fillEnd || p.fillUp >= p.fillStart;
+  }
+
+  function scheduleFill(p) {
+    if (p.fillReq !== null || !fillPending(p)) return;
+    p.fillReq = idleRun(() => {
+      p.fillReq = null;
+      const t0 = performance.now();
+      while (fillPending(p)) {
+        if (p.fillDown <= p.fillEnd) materialize(p, p.fillDown++);
+        if (p.fillUp >= p.fillStart) materialize(p, p.fillUp--);
+        if (performance.now() - t0 > FILL_SLICE_MS) break;
+      }
+      if (fillPending(p)) scheduleFill(p);
+    });
+  }
+
+  function stopFill(p) {
+    if (p.fillReq !== null) { idleStop(p.fillReq); p.fillReq = null; }
+  }
+
+  // Seed the fill at a group. Called on every step and on scroll, which is how
+  // the marked region follows the reader instead of sitting where the search
+  // happened to start.
+  function centreFill(p, gi) {
+    if (!p.groups.length) return;
+    p.fillStart = Math.max(0, gi - FIND_RADIUS);
+    p.fillEnd = Math.min(p.groups.length - 1, gi + FIND_RADIUS);
+    p.fillDown = gi + 1;
+    p.fillUp = gi - 1;
+    scheduleFill(p);
+  }
+
+  // Which group is the reader looking at? Groups are in document order, so
+  // their positions are monotonic and a binary search answers in ~17 geometry
+  // reads instead of 5000 — the difference between a scroll handler that is
+  // free and one that is the reason scrolling stutters.
+  function groupEl(g) {
+    if (g.dead) return null;
+    return g.marks && g.marks.length ? g.marks[0] : g.node.parentElement;
+  }
+
+  function groupNearView(p) {
+    const mid = p.body.getBoundingClientRect().top + p.body.clientHeight / 2;
+    let lo = 0, hi = p.groups.length - 1, best = 0;
+    while (lo <= hi) {
+      const k = (lo + hi) >> 1;
+      const el = groupEl(p.groups[k]);
+      if (!el) break;
+      best = k;
+      if (el.getBoundingClientRect().top < mid) lo = k + 1;
+      else hi = k - 1;
+    }
+    return best;
+  }
+
   function clearHits(p) {
-    for (const m of p.body.querySelectorAll('mark.find-hit'))
-      m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
-    p.body.normalize();          // re-merge, or the next search splits at old seams
+    stopFill(p);
+    // Only the groups that were actually marked, and only their own lines get
+    // re-merged. `body.normalize()` walks every node in the buffer — 5MB of it
+    // — to repair seams that exist in at most a few hundred of them.
+    const touched = new Set();
+    for (const g of p.groups) {
+      if (!g.marks) continue;
+      for (const m of g.marks) {
+        if (!m.isConnected) continue;
+        const parent = m.parentNode;
+        parent.replaceChild(document.createTextNode(m.textContent), m);
+        touched.add(parent);
+      }
+    }
+    for (const el of touched) el.normalize();
+    p.groups = [];
+    p.filled = 0;
+    p.fillDown = 0;
+    p.fillUp = -1;
+    p.fillStart = 0;
+    p.fillEnd = -1;
+    p.curMark = null;
     p.hits = [];
     p.hitIdx = -1;
   }
@@ -1672,40 +1847,28 @@ body {
       p.find.count.textContent = 'bad pattern';
       return;
     }
-    // Collect the text nodes BEFORE wrapping any of them: wrapping mutates the
-    // tree, and a live TreeWalker over a tree being rewritten skips nodes.
+    // Matching only. Nothing here touches the DOM, which is what makes it the
+    // 77ms half rather than the 1234ms half — and it is also why the walker no
+    // longer needs collecting first: the tree it walks is not being rewritten
+    // underneath it.
     const walker = document.createTreeWalker(p.body, NodeFilter.SHOW_TEXT, {
       acceptNode: (n) => n.parentNode && n.parentNode.closest('.buf-edge')
         ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
     });
-    const nodes = [];
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n);
-
-    for (const n of nodes) {
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (p.hits.length >= FIND_MAX_HITS) break;
       const text = n.nodeValue;
-      let m, at = 0, frag = null;
+      let m, at = null;
       re.lastIndex = 0;
       while ((m = re.exec(text))) {
         // A zero-width pattern ("^", "x*") matches without consuming, so
         // lastIndex never advances and exec loops forever. Step it by hand.
         if (m[0] === '') { re.lastIndex++; continue; }
-        frag = frag || document.createDocumentFragment();
-        if (m.index > at)
-          frag.appendChild(document.createTextNode(text.slice(at, m.index)));
-        const mark = document.createElement('mark');
-        mark.className = 'find-hit';
-        mark.textContent = m[0];
-        frag.appendChild(mark);
-        p.hits.push(mark);
-        at = m.index + m[0].length;
+        (at = at || []).push([m.index, m[0].length]);
+        p.hits.push({ g: p.groups.length, k: at.length - 1 });
         if (p.hits.length >= FIND_MAX_HITS) break;
       }
-      if (frag) {
-        if (at < text.length)
-          frag.appendChild(document.createTextNode(text.slice(at)));
-        n.parentNode.replaceChild(frag, n);
-      }
+      if (at) p.groups.push({ node: n, at, marks: null, dead: false });
     }
     setFindCount(p);
   }
@@ -1730,17 +1893,22 @@ body {
   }
 
   // Two things invalidate a built list: the query or mode changing, and the
-  // trimmer dropping a marked line off the top. Both are checked here rather
-  // than at each call site, so no navigation path can miss one.
+  // trimmer dropping a matched line off the top. Both are checked here rather
+  // than at each call site, so no navigation path can miss one. A group is
+  // checked whether or not it was ever marked — a match that has scrolled out
+  // of the buffer is gone either way, and only one of the two states has a
+  // <mark> to ask.
   function freshHits(p) {
     if (p.findKey !== findKeyOf(p)) { buildHits(p); return; }
-    if (p.hits.some(m => !m.isConnected)) {
-      const cur = p.hits[p.hitIdx];
-      p.hits = p.hits.filter(m => m.isConnected);
-      p.hitIdx = cur && cur.isConnected
-        ? p.hits.indexOf(cur)
-        : Math.min(p.hitIdx, p.hits.length - 1);
-    }
+    let lost = false;
+    for (const g of p.groups)
+      if (!g.dead && !groupAlive(g)) { g.dead = true; lost = true; }
+    if (!lost) return;
+    const cur = p.hits[p.hitIdx];
+    p.hits = p.hits.filter(h => !p.groups[h.g].dead);
+    p.hitIdx = cur && !p.groups[cur.g].dead
+      ? p.hits.indexOf(cur)
+      : Math.min(p.hitIdx, p.hits.length - 1);
   }
 
   function runFind(p, sense) {
@@ -1789,8 +1957,23 @@ body {
   }
 
   function showHit(p) {
-    p.hits.forEach((m, i) => m.classList.toggle('cur', i === p.hitIdx));
-    const m = p.hits[p.hitIdx];
+    const h = p.hits[p.hitIdx];
+    // The reader's own window, painted before this returns: the hit and the
+    // lines around it, so a small scroll never lands on text that matches and
+    // is not marked. Everything beyond it is the idle fill's job, and the fill
+    // re-centres here so a reader stepping ahead of it pulls it along.
+    if (h) {
+      const lo = Math.max(0, h.g - FIND_NEAR);
+      const hi = Math.min(p.groups.length - 1, h.g + FIND_NEAR);
+      for (let gi = lo; gi <= hi; gi++) materialize(p, gi);
+      centreFill(p, h.g);
+    }
+    // Two class writes rather than one per hit: at the 5000-mark cap the
+    // sweep was 5000 of them for a step that moves between two.
+    const m = h ? markOf(p, h) : null;
+    if (p.curMark && p.curMark !== m) p.curMark.classList.remove('cur');
+    if (m) m.classList.add('cur');
+    p.curMark = m;
     if (m) {
       // Scroll the PANE, not the page. scrollIntoView walks every scrollable
       // ancestor, so on a maximized pane it drags the document with it.

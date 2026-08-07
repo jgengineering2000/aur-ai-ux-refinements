@@ -364,6 +364,50 @@ PAGE_TEST = r"""
   ck('the spool row survives it too',
      !!(spoolAfter && spoolAfter.innerHTML === spoolBefore), true);
 
+  // 19. Marking is deferred and bounded, and the count is not. At the 5MB cap
+  //     matching costs 77ms and wrapping every hit costs 1234ms, so the marks
+  //     are built where the reader is and the rest follow on idle time — but
+  //     the ANSWER must be complete from the first frame, because a count that
+  //     grew as marks appeared would be a wrong number, not a partial one.
+  //     A fixture larger than the fill radius is what makes any of this
+  //     observable; on three lines everything is inside the first window.
+  const T2 = 'ZQXDEFER';
+  pane.querySelector('[data-act="clear"]').click();
+  const bulk = document.createDocumentFragment();
+  for (let i = 0; i < 1200; i++) {
+    const s = document.createElement('span');
+    s.className = 'ln';
+    s.textContent = 'line ' + i + ' ' + T2 + '\n';
+    bulk.appendChild(s);
+  }
+  const firstLine = bulk.firstChild;   // captured before append empties it
+  body.appendChild(bulk);
+  const bulkText = body.textContent;
+  btnS.click();
+  await type(T2);
+  await sleep(400);                    // the fill reaches its radius in ~240ms
+  const settled = hits();
+  ck('the count answers for every match',   count.textContent, '1200/1200');
+  ck('the hit being shown is marked',       !!cur(), true);
+  ck('marking stops at its radius',         settled > 8 && settled < 1200, true);
+  ck('the far end is left unmarked',
+     !firstLine.querySelector('mark.find-hit'), true);
+
+  // Stepping past the marked region marks on arrival, and drags the region
+  // along — a reader who walks 450 hits does not walk off the end of it.
+  enter(false);
+  for (let i = 0; i < 450; i++) dkey({ key: 'n' });
+  ck('stepping 450 hits lands where it says', count.textContent, '749/1200');
+  ck('a hit stepped to is marked on arrival', !!cur(), true);
+  await sleep(600);
+  ck('the marked region follows the reader',  hits() > settled, true);
+
+  // And unmarking still restores the text exactly, deferred or not.
+  unfocus();
+  dkey({ key: 'Escape' });
+  ck('deferred marks unwrap cleanly', body.textContent, bulkText);
+  ck('no mark survives the close',    hits(), 0);
+
   return R;
 })()
 """
@@ -433,12 +477,15 @@ PAGE_PERF = r"""
   // Time the WORK, not the debounce: dispatch, then poll until the count
   // changes, and subtract the debounce the timer was always going to spend.
   // Sleeping a fixed interval and reporting it measures the sleep.
+  // Blank the count and wait for it to come BACK. Waiting for the text to
+  // change instead makes two queries that land on the same answer ('no match'
+  // twice) wait out the timeout and report it as the measurement.
   const run = async (text) => {
-    const before = cnt.textContent;
+    cnt.textContent = '';
     q.value = text;
     const t = performance.now();
     q.dispatchEvent(new Event('input', { bubbles: true }));
-    for (let i = 0; i < 4000 && cnt.textContent === before; i++) await sleep(2);
+    for (let i = 0; i < 4000 && cnt.textContent === ''; i++) await sleep(2);
     return { ms: performance.now() - t - 140, count: cnt.textContent };
   };
 
@@ -452,12 +499,24 @@ PAGE_PERF = r"""
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
   const step = performance.now() - t1;
 
+  // A query does not only pay for its own marks — it pays to take out the ones
+  // the last query left behind. Marking is deferred and its radius is bounded
+  // precisely so that second cost stays flat as the buffer grows, so both the
+  // repeat query and the marks actually resident are measured rather than
+  // assumed. `marks` far below the hit count is the bound doing its job.
+  await sleep(700);                    // let the idle fill reach its radius
+  const again = await run('md5=');
+  const marksNow = body.querySelectorAll('mark.find-hit').length;
+  await sleep(700);                    // and again, for the settled figure
+  const marks = body.querySelectorAll('mark.find-hit').length;
+
   return {
-    lines: i, bytes,
+    lines: i, bytes, marks, marksNow,
     fill_ms:   Math.round(tFill),
     capped_ms: Math.round(capped.ms), capped_count: capped.count,
     common_ms: Math.round(common.ms), common_count: common.count,
     rare_ms:   Math.round(rare.ms),   rare_count:   rare.count,
+    again_ms:  Math.round(again.ms),  again_count:  again.count,
     step_ms:   Math.round(step * 100) / 100
   };
 })()
@@ -567,6 +626,9 @@ def main():
             print(f"cap hit     {m['capped_ms']:>5} ms   {m['capped_count']}")
             print(f"common hit  {m['common_ms']:>5} ms   {m['common_count']}")
             print(f"rare hit    {m['rare_ms']:>5} ms   {m['rare_count']}")
+            print(f"repeat      {m['again_ms']:>5} ms   {m['again_count']}")
+            print(f"marks       {m['marksNow']:>5} on return, "
+                  f"{m['marks']} once the fill settles")
             print(f"one step    {m['step_ms']:>5} ms")
             return 0
         results = asyncio.run(drive(ws_url, opts["verbose"]))

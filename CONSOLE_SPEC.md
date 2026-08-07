@@ -481,14 +481,31 @@ convenience and never capability.
 Search is bounded so that a query cannot cost more than the buffer it runs
 over. The hit list is built once per query and then navigated, rather than
 re-scanned per step; typing is debounced, so a five-character query walks the
-buffer once and not five times; and the number of marks is capped, with the
-count reporting `+` when it truncates. A one-character query over a full buffer
-matches hundreds of thousands of times, and it is the marks, not the matching,
-that would kill the tab.
+buffer once and not five times; and the number of hits is capped, with the
+count reporting `+` when it truncates.
+
+**Matching and marking are separated, because they are not the same cost.**
+Measured at the 5 MB cap — 5,242,925 bytes, 44,598 lines — finding every hit
+costs 77 ms, wrapping 5,000 of them costs 1,234 ms, and unwrapping them again
+on the next query costs a further 478 ms. Matching is 4% of the work and the
+DOM is the rest, so a query **matches everything and marks what is being looked
+at**: the current hit and the lines around it before the step returns, the
+reader's neighbourhood on idle time, and nothing beyond a fixed radius from
+where they are. Stepping and scrolling both re-centre that region, so it
+follows the reader rather than sitting where the search began.
+
+Two consequences are normative. **The count is complete from the first frame**
+— it is read off the match list, never off the marks, because a total that grew
+as highlights appeared would be a wrong answer rather than a partial one. And
+**the marks resident are proportional to the view, not to the buffer**: the
+second query on a full pane pays to remove only what the first one drew, which
+is what keeps a repeat search flat as the pane fills.
 
 Matches are **wrapped, never rewritten**: the text of a line is preserved
 exactly, so the byte accounting stays true and Hide Headers keeps working on a
-line that contains a hit.
+line that contains a hit. Unwrapping restores the text exactly, and re-merges
+only the lines that carried a mark — the whole-buffer normalize it replaced was
+a walk over 5 MB to repair seams in a few hundred nodes.
 
 *Open:* output arriving after a hit list is built is not in it. `Enter`
 rebuilds; `n`/`N` deliberately do not, since a list that rebuilt underneath a
