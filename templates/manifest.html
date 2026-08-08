@@ -703,6 +703,9 @@ body {
 /* Header badges that are LINKS. Previously each carried a style attribute
    repeating eight declarations inline — which is why adding a second one
    duplicated them rather than reusing them. */
+.badge.proj-self {
+  background: rgba(148, 163, 184, 0.14); color: var(--mu); cursor: default;
+}
 .badge.link-aur, .badge.link-pinned {
   text-decoration: none; display: inline-flex; align-items: center; gap: 4px;
 }
@@ -836,7 +839,13 @@ body {
       <div class="subtitle" id="project-subtitle">Loading…</div>
     </div>
     <div class="meta-right">
-      <a href="/goto-aur" class="badge docs link-aur" title="Open the AUR (cross-project) doc manifest — resolves AUR's live port automatically">🗂 AUR docs ↗</a>
+      <!-- Sibling doc-server instances, filled from /projects. Discovery is on
+           the FILESYSTEM, so a project appears here whether or not its server is
+           running — /goto starts the ones that are down, which is precisely what
+           a port scan could never do. This replaced a hardcoded AUR link: AUR is
+           just another sibling, and special-casing it is what makes a shared
+           page start to fork. -->
+      <span id="project-menu"></span>
       <!-- Project-pinned documents, filled from /meta. Hard-coding one
            project's report here is what forked this page. -->
       <span id="header-links"></span>
@@ -921,6 +930,29 @@ body {
               .classList.toggle('wide', tab.dataset.panel === 'console-panel');
     });
   });
+
+  // --- Project menu: sibling doc-server instances ---
+  // Built as elements rather than markup: a project name is a directory name
+  // off the filesystem, and the doc list has already had one hostile-input
+  // defect through exactly that path.
+  fetch('/projects').then(r => r.json()).then(list => {
+    const menu = document.getElementById('project-menu');
+    if (!menu || !Array.isArray(list)) return;
+    list.forEach(p => {
+      if (!p || !p.name) return;
+      const el = document.createElement(p.self ? 'span' : 'a');
+      el.className = 'badge docs link-aur' + (p.self ? ' proj-self' : '');
+      if (!p.self) el.href = '/goto/' + encodeURIComponent(p.name);
+      el.textContent = p.self ? '\u25CF ' + p.name : p.name + ' \u2197';
+      el.title = p.self
+        ? 'This project'
+        : (p.running
+            ? 'Open ' + p.name + ' \u2014 running on port ' + p.port
+            : 'Open ' + p.name + ' \u2014 its server is not running and will be started');
+      if (!p.self && !p.running) el.style.opacity = '0.72';
+      menu.appendChild(el);
+    });
+  }).catch(() => {});
 
   // --- Fetch meta ---
   fetch('/meta').then(r => r.json()).then(m => {
@@ -1645,7 +1677,7 @@ body {
     : (id) => clearTimeout(id);
 
   function findKeyOf(p) {
-    return (p.findRe ? 're ' : 'pl ') + p.find.q.value;
+    return (p.findRe ? 're\0' : 'pl\0') + p.find.q.value;
   }
 
   function syncFindChrome(p) {

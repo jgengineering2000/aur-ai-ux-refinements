@@ -135,8 +135,8 @@ never lost (they live here in AUR), but their *applied* state is gone until re-r
 
 `systemd/` wires this up automatically:
 
-- **`claude-ux-reapply.path`** — a user path unit watching `~/.antigravity/extensions/`.
-- **`claude-ux-reapply.service`** — a oneshot that runs `patches/apply-all.py --no-browser`
+- **`aur-reapply.path`** — a user path unit watching `~/.antigravity/extensions/`.
+- **`aur-reapply.service`** — a oneshot that runs `patches/apply-all.py --no-browser`
   when the watcher fires.
 - **`install-autoreapply.py`** — renders the service with this AUR checkout's absolute
   path, installs both units into `~/.config/systemd/user/`, and enables the watcher.

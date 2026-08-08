@@ -10,7 +10,7 @@ GET  /annotations/<docname>     → read saved annotations for a doc
 POST /annotations/<docname>     → save annotations JSON for a doc
 
 Port selection (first match wins):
-  1. CLAUDE_DOC_PORT environment variable
+  1. AUR_DOC_PORT environment variable
   2. Default 7432
   3. Next free port scanning upward — handles multiple concurrent
      project instances without manual configuration
@@ -38,9 +38,18 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-PREFERRED_PORT = int(os.environ.get("CLAUDE_DOC_PORT", "7432"))
+for _cand in (Path(__file__).parent, Path(__file__).parent.parent):
+    if (_cand / "aurshare.py").exists():
+        sys.path.insert(0, str(_cand))
+        break
+try:
+    import aurshare
+except ImportError:                      # pre-shared-root install
+    aurshare = None
+
+PREFERRED_PORT = int(os.environ.get("AUR_DOC_PORT", "7432"))
 _HERE = Path(__file__).parent          # aur/ — AUR-provided infra, per project
-ROOT = _HERE.parent / "claude-docs"    # ../claude-docs/ — served output
+ROOT = _HERE.parent / "aur-docs"    # ../aur-docs/ — served output
 PORT_FILE = _HERE / "server.port"      # sits beside the server that binds it
 ANNOTATIONS_DIR = ROOT / "annotations"
 ROOT.mkdir(exist_ok=True)
@@ -132,16 +141,16 @@ def _cfg_path(key, default=None):
 # basename the client requests under /spec-aur/<name>, mapped to an absolute path.
 # Each path is resolved once here; the request handler only ever indexes this dict,
 # so no client-supplied string is joined to a directory and the traversal guard is
-# never relaxed. claude_master.md + PROCESS.md are the inherited engineering specs.
+# never relaxed. ai_common.md + PROCESS.md are the inherited engineering specs.
 _AUR_DIR = Path.home() / "develop" / "aur"
 AUR_SPECS = {
-    "claude_master.md": _AUR_DIR / "claude_master.md",
+    "ai_common.md": _AUR_DIR / "ai_common.md",
     "PROCESS.md":       _AUR_DIR / "PROCESS.md",
 }
 
 # AI Context tab: the instruction/memory files that drive Claude's behavior in
 # this project, surfaced read-only for the owner. Rooted at .claude/ (sibling
-# of claude-docs/); excludes checkpoints-archive/ (stale trail) and __pycache__.
+# of aur-docs/); excludes checkpoints-archive/ (stale trail) and __pycache__.
 AI_CONTEXT_ROOT = ROOT.parent / ".claude"
 AI_CONTEXT_EXCLUDE_DIRS = set(CONFIG["ai_context_exclude"])
 
@@ -2135,6 +2144,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self._serve_ai_context(parsed.path[len("/ai-context/"):])
         elif parsed.path == "/goto-aur":
             self._goto_aur()
+        elif parsed.path == "/projects":
+            self._get_projects()
+        elif parsed.path.startswith("/goto/"):
+            self._goto_project(unquote(parsed.path[len("/goto/"):]).strip("/"))
         elif parsed.path == "/oneshots":
             self._json(console_oneshots())
         elif parsed.path == "/procstats":
@@ -2158,37 +2171,94 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     self._track_read(stem)
             super().do_GET()
 
+    # ── Cross-project navigation ────────────────────────────────────────────
+    #
+    # Projects are discovered on the FILESYSTEM, never by probing ports. A port
+    # scan can only find servers that are ALREADY RUNNING, and the single most
+    # valuable thing /goto does is start one that is not — so a scan would be
+    # blind to exactly the case the feature exists for. The sibling layout it
+    # walks (`develop/<project>/`) is not a new assumption: every shared asset
+    # in this doc system is a relative symlink that already depends on it.
+    #
+    # Two layouts are recognised because AUR self-hosts from `server/`, while
+    # every installed project keeps its instance under `aur/`.
+
+    @staticmethod
+    def _project_server(name):
+        """Path to <name>'s server.py, from the REGISTRY — never from a layout.
+
+        A directory layout is one person's convention; the registry is a record
+        of what was actually installed, written by the component that knew.
+        """
+        if not name or "/" in name or name.startswith("."):
+            return None
+        if aurshare is None:
+            return None
+        for row in aurshare.registry_read():
+            if Path(row["path"]).name != name:
+                continue
+            cand = Path(row["path"]) / row.get("layout", "aur") / "server.py"
+            if cand.is_file():
+                return cand
+        return None
+
+    def _get_projects(self):
+        """Registered doc-server instances, for the manifest's project menu.
+
+        Reports every instance, running or not: the menu's job is to offer them,
+        and /goto starts the ones that are down — which is precisely why this
+        cannot be a port scan.
+        """
+        out = []
+        me = _HERE.parent.resolve()
+        if aurshare is not None:
+            for row in aurshare.registry_read():
+                proj = Path(row["path"])
+                server = proj / row.get("layout", "aur") / "server.py"
+                if not server.is_file():
+                    continue
+                try:
+                    port = int((server.parent / "server.port").read_text().strip())
+                except (OSError, ValueError):
+                    port = None
+                out.append({"name": proj.name,
+                            "self": proj.resolve() == me,
+                            "port": port,
+                            "running": bool(port and already_running(port))})
+        self._json(out)
+
     def _goto_aur(self):
-        """Redirect to the AUR doc manifest, STARTING that server if it is down.
+        """Legacy route. AUR is just another sibling; keep the URL working."""
+        self._goto_project("aur")
+
+    def _goto_project(self, name):
+        """Redirect to <name>'s doc manifest, STARTING its server if it is down.
 
         Handing the reader a command to paste is not a fallback, it is the
         failure: a doc server that has just established another doc server is
-        not running is in a strictly better position to start it than the person
-        who clicked a link. This is the same start-then-poll `open-manifest.sh`
-        already performs for this server's own port, and it works verbatim for
-        AUR's because AUR self-hosts from its canonical `server/` rather than
-        from an installed copy.
+        not running is in a strictly better position to start it than the
+        person who clicked a link.
 
-        Ports are dynamic — `find_free_port` scans upward when the preferred one
-        is busy, which it will be here, since this very process holds it — so
-        the port file is re-read on every poll rather than once at the start.
+        Ports are dynamic — find_free_port scans upward when the preferred one
+        is busy — so the port file is re-read on every poll, not once.
         """
-        server = _AUR_DIR / "server" / "server.py"
-        port_file = _AUR_DIR / "server" / "server.port"
+        import html as _html
+
+        server = self._project_server(name)
+        port_file = (server.parent / "server.port") if server else None
 
         def live_port():
             try:
                 p = int(port_file.read_text().strip())
-            except (OSError, ValueError):
+            except (OSError, ValueError, AttributeError):
                 return None
             return p if already_running(p) else None
 
         port = live_port()
         started = False
-        if port is None and server.is_file():
+        if port is None and server is not None:
             try:
-                # Detached, so it outlives this request rather than dying with
-                # the handler thread that spawned it.
+                # Detached, so it outlives the handler thread that spawned it.
                 subprocess.Popen(
                     [sys.executable, str(server)], cwd=str(server.parent),
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -2207,44 +2277,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        # Reached only when starting it FAILED. The page therefore reports what
-        # was attempted and why it did not work — a reader who is told "run
-        # this" after the server already tried to run it, and was not told that,
-        # will run it and watch it fail the same way.
-        if not server.is_file():
-            cause = (f"<p>No server found at <code>{server}</code>. The AUR "
-                     f"checkout may be missing or moved.</p>")
+
+        # Reached only when starting it FAILED. Report what was ATTEMPTED, not
+        # merely what to try: a reader told "run this" after the server already
+        # ran it, and was not told so, will run it and watch it fail identically.
+        safe = _html.escape(name)
+        if server is None:
+            cause = (f"<p>No doc-server instance found for <code>{safe}</code> "
+                     f"under <code>{_HERE.parent.parent}</code>. It may have been "
+                     f"moved, renamed, or never installed.</p>")
         elif started:
-            cause = ("<p>It was started automatically, but did not bind a port "
-                     "within 5 seconds. Its own startup output is discarded, so "
-                     "run it in a terminal to see why:</p>"
-                     "<pre style='background:#f1f3f5;padding:.8rem;"
-                     "border-radius:6px'>python3 ~/develop/aur/server/server.py"
-                     "</pre>")
+            cause = (f"<p>It was started automatically but did not bind a port "
+                     f"within 5 seconds. Its startup output is discarded, so run "
+                     f"it in a terminal to see why:</p>"
+                     f"<pre style='background:#f1f3f5;padding:.8rem;"
+                     f"border-radius:6px'>python3 {server}</pre>")
         else:
-            cause = ("<p>It could not be launched at all. Run it in a terminal "
-                     "to see why:</p>"
-                     "<pre style='background:#f1f3f5;padding:.8rem;"
-                     "border-radius:6px'>python3 ~/develop/aur/server/server.py"
-                     "</pre>")
-        body = (
-            "<!DOCTYPE html><meta charset='utf-8'>"
-            "<title>AUR docs — could not start</title>"
-            "<body style='font-family:system-ui;max-width:640px;margin:3rem auto;"
-            "padding:0 1rem;line-height:1.5'>"
-            "<h2>AUR doc server could not be started</h2>"
-            + cause +
-            "<p>Reload this page once it is up — the live port is resolved "
-            "automatically.</p></body>"
-        ).encode("utf-8")
+            cause = (f"<p>It could not be launched at all. Run it in a terminal "
+                     f"to see why:</p>"
+                     f"<pre style='background:#f1f3f5;padding:.8rem;"
+                     f"border-radius:6px'>python3 {server}</pre>")
+        body = ("<!DOCTYPE html><meta charset='utf-8'>"
+                f"<title>{safe} docs — could not start</title>"
+                "<body style='font-family:system-ui;max-width:640px;"
+                "margin:3rem auto;padding:0 1rem;line-height:1.5'>"
+                f"<h2>The {safe} doc server could not be started</h2>{cause}"
+                "<p><a href='/manifest.html'>← back to this project"
+                "'s manifest</a></p>").encode()
         self.send_response(503)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def _track_read(self, stem):
+        """Record that a document was opened, for the manifest's read column.
+
+        Restored 2026-08-08: destroyed by a line-range replacement that assumed
+        everything between two anchors belonged to the method being rewritten.
+        It did not. Every document fetch 500'd for hours and no test caught it,
+        because the tests only ever requested /manifest.html, /meta and /goto —
+        never an actual document.
+        """
         with _doc_lock:
             try:
                 reads = json.loads(READS_FILE.read_text()) if READS_FILE.exists() else {}
@@ -2717,7 +2791,7 @@ if __name__ == "__main__":
         try:
             existing = int(PORT_FILE.read_text().strip())
             if already_running(existing):
-                print(f"Claude doc server already running on port {existing}.")
+                print(f"AUR doc server already running on port {existing}.")
                 sys.exit(0)
         except (ValueError, OSError):
             pass
@@ -2789,8 +2863,23 @@ if __name__ == "__main__":
         allow_reuse_address = True
         daemon_threads = True
 
+    # Sanity-check and heal the shared root on every start. Cheap, and the
+    # failures it prevents are silent: a dangling stable link, a VERSION that
+    # disagrees with what is actually installed, a registry row for a project
+    # that has been deleted. Every repair is reported rather than performed
+    # quietly — a repair that leaves no trace is indistinguishable from a system
+    # that was never broken.
+    if aurshare is not None:
+        try:
+            healed = aurshare.verify_and_heal(
+                log=lambda m: print(f"[shared-root]{m}", flush=True))
+            if healed:
+                print(f"[shared-root] healed {len(healed)} condition(s)", flush=True)
+        except Exception as exc:                       # never block startup
+            print(f"[shared-root] check failed: {exc}", flush=True)
+
     server = ThreadingServer(("localhost", port), Handler)
-    print(f"Claude doc server: http://localhost:{port}/", flush=True)
+    print(f"AUR doc server: http://localhost:{port}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

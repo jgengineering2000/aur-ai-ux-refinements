@@ -45,9 +45,23 @@ reviewable, annotatable, and version-controllable.
 | IDE patches | `patches/` | Modify Claude Code extension assets in-place |
 | Doc server | `server/server.py` | Serve HTML docs + annotation API |
 | Manifest | `server/manifest-link.js` + `templates/manifest.html` | Document hub |
+| Shared root | `aurshare.py` → `~/.local/aur/` | Versioned shared assets, project registry, self-heal |
 | CLAUDE.md template | `templates/CLAUDE.md.template` | Project-level Claude instructions |
 | Installer | `install.py` | Interactive setup for all components |
 | Prompt spec | `PROMPTS.md` | Canonical prompt library |
+| Version | `VERSION` | Single source of truth for the release version |
+
+### The shared root
+
+Every installed project links to `~/.local/aur/`, never to an AUR checkout. Assets
+are stored version-suffixed (`server.py.2.4.1`) with a stable symlink beside them
+(`server.py`), so an upgrade repoints one link and every project follows. A TSV
+registry at `~/.local/aur/projects.tsv` records installed projects; cross-project
+discovery reads it rather than scanning any directory layout.
+
+On a machine where AUR is developed, `aurshare.py devlink` points those stable
+names at the working tree instead, so edits are live and AUR is not a special case
+in the consuming code. Design and rationale: `shared-root-design.md`.
 
 ## Roadmap
 

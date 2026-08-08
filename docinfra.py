@@ -58,7 +58,7 @@ def keybindings_path(ide):
 # The keybinding invokes the ensure-task BY LABEL, so these must match the
 # labels in server/tasks.json.template exactly.
 
-START_TASK_LABEL = "Start Claude doc server"
+START_TASK_LABEL = "Start AUR doc server"
 ENSURE_TASK_LABEL = "Ensure doc server"
 
 # ── Keybinding ────────────────────────────────────────────────────────────────
@@ -171,14 +171,14 @@ def install_keybinding(ide, port, log=print):
 # ── tasks.json ────────────────────────────────────────────────────────────────
 
 def _with_port(task, port):
-    """Prefix CLAUDE_DOC_PORT onto a task command for a non-default port.
+    """Prefix AUR_DOC_PORT onto a task command for a non-default port.
 
     The ensure-task needs it too: open-manifest.sh falls back to
-    $CLAUDE_DOC_PORT when aur/server.port does not exist yet.
+    $AUR_DOC_PORT when aur/server.port does not exist yet.
     """
     if port != 7432:
         task = dict(task)
-        task["command"] = f"CLAUDE_DOC_PORT={port} " + task["command"]
+        task["command"] = f"AUR_DOC_PORT={port} " + task["command"]
     return task
 
 def install_task(project_dir, port, log=print):
@@ -231,7 +231,7 @@ def install_review_infra(project_dir, do_claude_md, log=print):
     # parked inside it pays that toll on every edit, forever. `aur/` is the
     # project's instance of AUR-provided infrastructure, and it is ordinary.
     aur_dir = project_dir / "aur"
-    docs_dir = project_dir / "claude-docs"
+    docs_dir = project_dir / "aur-docs"
     aur_dir.mkdir(exist_ok=True)
     docs_dir.mkdir(exist_ok=True)
 

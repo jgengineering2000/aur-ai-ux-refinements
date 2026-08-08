@@ -4,7 +4,7 @@
 # Oneshot: re-apply the Claude Code UX patches (chat margins + static
 # "Working" indicator) to whatever extension version is currently installed.
 #
-# Triggered by claude-ux-reapply.path when ~/.antigravity/extensions/ changes
+# Triggered by aur-reapply.path when ~/.antigravity/extensions/ changes
 # (i.e. after a Claude Code extension update installs a fresh, unpatched
 # webview). The patch scripts are idempotent, so re-running on unrelated
 # extension changes is harmless.

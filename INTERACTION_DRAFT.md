@@ -140,7 +140,7 @@ was violated three times in three turns. That clause is now in rule 3.
 Merging without these deletions ADDS a seventh scattered location instead of
 replacing four. Each deletion was checked for who cites it.
 
-| Paragraph in `claude_master.md` | Verdict |
+| Paragraph in `ai_common.md` | Verdict |
 |---|---|
 | *Response shape* | **Delete** — rule 3's Lead absorbs it, conditional lead included. |
 | *Status table* bullets (both) | **Delete** — rule 3's Lead, in-flight clause included. |
@@ -174,7 +174,7 @@ Before/After 12 %, user-scenario 0 %, ambiguity raised 6 %, structure 69 %.
 # Two further proposals, unrelated to interaction
 
 Kept here only so they live in a tracked file rather than in an untracked HTML
-document. They belong to `claude_master.md`'s engineering sections, not to the
+document. They belong to `ai_common.md`'s engineering sections, not to the
 contract above.
 
 ## P15 register — a new hazard class

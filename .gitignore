@@ -1,7 +1,7 @@
 .claude/server.port
 .claude/server.py
-claude-docs/annotations/
-claude-docs/marked.min.js
+aur-docs/annotations/
+aur-docs/marked.min.js
 __pycache__/
 *.pyc
 *.bak

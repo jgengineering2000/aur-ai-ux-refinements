@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start Claude doc server",
+      "label": "Start AUR doc server",
       "type": "shell",
       "command": "python3 '${workspaceFolder}/aur/server.py'",
       "isBackground": true,
@@ -18,8 +18,8 @@
         "pattern": { "regexp": "^NEVER_MATCHES$" },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "^Claude doc server",
-          "endsPattern":   "^Claude doc server"
+          "beginsPattern": "^AUR doc server",
+          "endsPattern":   "^AUR doc server"
         }
       }
     },

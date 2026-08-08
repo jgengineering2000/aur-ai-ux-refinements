@@ -4,25 +4,25 @@
 
 Universal engineering principles, collaboration rules, spec-doc rule,
 communication style, and patent-IP whitelist live in AUR's
-`claude_master.md` and are auto-loaded into every session via the
+`ai_common.md` and are auto-loaded into every session via the
 `~/.claude/CLAUDE.md` symlink. This file contains only project-specific
 guidance.
 
-If `~/.claude/CLAUDE.md` is not a symlink to `~/develop/aur/claude_master.md`
+If `~/.claude/CLAUDE.md` is not a symlink to `~/develop/aur/ai_common.md`
 on this machine, `install.py` will offer to create it. Without the symlink,
 cross-project rules are not loaded and project work falls back to
 project-only context.
 
 ## Generated Documents
 
-Write structured output (audits, plans, reviews) as HTML to `claude-docs/`, post a one-paragraph summary + link in chat, tell the user **Alt+D**. Never paste document content into chat.
+Write structured output (audits, plans, reviews) as HTML to `aur-docs/`, post a one-paragraph summary + link in chat, tell the user **Alt+D**. Never paste document content into chat.
 
 - `.claude/` — server binary, config, port file (infrastructure only)
-- `claude-docs/` — all generated HTML documents and annotations (output/product)
+- `aur-docs/` — all generated HTML documents and annotations (output/product)
 
-1. Write `claude-docs/<name>-<date>-<HHMMSS>.html` (seconds precision avoids multi-session collisions)
+1. Write `aur-docs/<name>-<date>-<HHMMSS>.html` (seconds precision avoids multi-session collisions)
 2. `PORT=$(cat .claude/server.port 2>/dev/null || echo 7432)` — set `Alt+D` keybinding to `http://localhost:${PORT}/<name>-<date>-<HHMMSS>.html`
-3. Server auto-starts via `Start Claude doc server` VSCode task; manual fallback: `python3 .claude/server.py &`
+3. Server auto-starts via `Start AUR doc server` VSCode task; manual fallback: `python3 aur/server.py &`
 
 Every HTML doc must include the annotation system via external files. Four targets, all via relative `/annotations/${DOC}`:
 - `.finding`/`.card` divs and `h2`/`h3` headings → `✎ Annotate` button
@@ -36,8 +36,8 @@ Add `<link rel="stylesheet" href="/ann.css">` in `<head>`. Just before `</body>`
 <script src="/ann.js"></script>
 ```
 
-On first use, run the installer (`python3 install.py`) or manually copy `server/manifest-link.js`, `server/ann.css`, `server/ann.js`, `templates/manifest.html` into `claude-docs/`, and download `marked.min.js`:
-`curl -s https://cdn.jsdelivr.net/npm/marked@9/marked.min.js -o claude-docs/marked.min.js`
+On first use, run the installer (`python3 install.py`) or manually copy `server/manifest-link.js`, `server/ann.css`, `server/ann.js`, `templates/manifest.html` into `aur-docs/`, and download `marked.min.js`:
+`curl -s https://cdn.jsdelivr.net/npm/marked@9/marked.min.js -o aur-docs/marked.min.js`
 
 ## Triggers
 

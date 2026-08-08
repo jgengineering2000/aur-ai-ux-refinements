@@ -1,7 +1,7 @@
 # Process & Methodology — AUR Master
 
 Methodology rules — *how* we audit, verify, and build (the principles — *what*
-correct looks like — live in `claude_master.md`). Inherited by every project; a
+correct looks like — live in `ai_common.md`). Inherited by every project; a
 project `PROCESS.md` adds workflow on top without duplicating this. When in
 doubt: describes the artifact → principle; describes our actions → process.
 
@@ -97,7 +97,7 @@ skipped. Full stage detail: the **audit-methodology skill**. (MTI instances:
 
 When the owner states a general principle ("X should always…", a capability or
 content rule), file it at the level its scope implies — universal →
-`claude_master.md`; repeatable procedure → PROCESS; project fact → project
+`ai_common.md`; repeatable procedure → PROCESS; project fact → project
 memory/spec — and do NOT demote it to a local task because it surfaced while
 discussing one bug. A **task-shaped recipe** — guidance consulted only when a
 specific task shape occurs (logging setup, an audit pass, a hazardous subsystem)

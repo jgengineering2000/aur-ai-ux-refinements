@@ -17,19 +17,19 @@ Two independent layers — use either or both:
 
 ### Linux — clickable installer
 
-1. Download `claude-ux-installer` from the
+1. Download `aur-installer` from the
    [latest release](https://github.com/jgengineering2000/claude-ux-refined/releases/latest)
 2. Mark it executable:
    ```bash
-   chmod +x claude-ux-installer
+   chmod +x aur-installer
    ```
-3. Double-click it in your file manager, or run `./claude-ux-installer`
+3. Double-click it in your file manager, or run `./aur-installer`
 
 A GUI window opens with checkboxes for each feature. No Python installation required.
 
 ### Windows / macOS — source install
 
-1. Download `claude-ux-refined-vX.Y.Z-source.zip` from the
+1. Download `aur-refined-vX.Y.Z-source.zip` from the
    [latest release](https://github.com/jgengineering2000/claude-ux-refined/releases/latest)
 2. Extract the zip and open a terminal in the folder
 3. Run the CLI installer:
@@ -45,7 +45,7 @@ A GUI window opens with checkboxes for each feature. No Python installation requ
 
 ```bash
 git clone https://github.com/jgengineering2000/claude-ux-refined.git
-cd claude-ux-refined
+cd aur-refined
 python3 install.py
 ```
 
@@ -163,31 +163,41 @@ or the CLI with any browser.
 
 The interactive installer handles all of this. For manual setup:
 
-**1. Copy the server into your project:**
+**1. Deploy the shared assets** (once per machine):
 
 ```bash
-mkdir -p yourproject/.claude
-cp server/server.py yourproject/.claude/
-cp server/open-manifest.sh yourproject/.claude/
-chmod +x yourproject/.claude/open-manifest.sh
+python3 aurshare.py deploy . "$(cat VERSION)"
 ```
 
-`open-manifest.sh` is the health-check the Alt+D keybinding runs before opening
-the browser (step 4), and it keeps that binding's URL pointed at the live port.
+This populates `~/.local/aur/` — the **shared root**. Assets are stored
+version-suffixed (`server.py.2.4.1`) with a stable symlink beside them
+(`server.py`), so a later upgrade repoints one link and every installed project
+follows without being touched. Downgrades are refused per asset, comparing
+versions as integer tuples so `2.10.0` correctly outranks `2.9.0`.
 
-**2. Start it:**
+**2. Install into your project:**
+
+```bash
+python3 aurshare.py install yourproject
+```
+
+This links `yourproject/aur/` and `yourproject/aur-docs/` at the shared root,
+writes a minimal `server.config.json` and a `.vscode/tasks.json`, and records the
+project in `~/.local/aur/projects.tsv`. **Nothing is copied**, so nothing drifts,
+and no project depends on this checkout — move or delete it and installed projects
+keep working.
+
+`open-manifest.sh` is the health-check the Alt+D keybinding runs before opening
+the browser (step 4). It keeps that binding's URL pointed at the live port, and
+it verifies the responder is *this* project's server rather than merely that
+something is listening — otherwise a second project falls back to the default
+7432, finds the first project's server, and silently opens the wrong manifest.
+
+**3. Start it:**
 
 ```bash
 python3 yourproject/aur/server.py &
-# Serves on http://localhost:7432/
-```
-
-**3. Copy the manifest assets:**
-
-```bash
-mkdir -p yourproject/claude-docs
-cp server/manifest-link.js yourproject/claude-docs/
-cp templates/manifest.html yourproject/claude-docs/
+# Serves on http://localhost:7432/, scanning upward if that port is taken
 ```
 
 **4. Add the keybinding** (VS Code / Antigravity) to your IDE's `keybindings.json`:
@@ -206,10 +216,15 @@ cp templates/manifest.html yourproject/claude-docs/
 ```
 
 Two phases, deliberately. Phase 1 runs the `Ensure doc server` task
-(`.claude/open-manifest.sh`), which health-checks the port and starts the server
-if nothing is listening; phase 2 opens the manifest. Binding `simpleBrowser.show`
+(`aur/open-manifest.sh`), which confirms *this project's* server is answering and
+starts it if not; phase 2 opens the manifest. Binding `simpleBrowser.show`
 directly races the `folderOpen` auto-start task and shows connection-refused when
 the server has not bound yet.
+
+With several projects installed, the manifest also carries a **project menu** built
+from the registry. Clicking through starts the target project's server if it is not
+running — which is why discovery is a registry and not a port scan: a scan can only
+find servers that are already up.
 
 `open-manifest.sh` also rewrites this URL to match `aur/server.port`, so the
 binding follows the server if it scans past a busy 7432.
@@ -221,7 +236,7 @@ and fill in the project-specific section at the bottom.
 
 ### Annotation Storage
 
-Annotations are saved to `claude-docs/annotations/<docname>.json` via
+Annotations are saved to `aur-docs/annotations/<docname>.json` via
 the local server. They load automatically when the page is opened.
 The JSON files are plain text and can be committed to git or read by
 Claude directly.

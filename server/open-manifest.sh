@@ -12,7 +12,7 @@
 # health-check first guarantees something is listening before the browser
 # connects.
 #
-#   1. Resolve the port (aur/server.port, else $CLAUDE_DOC_PORT, else 7432).
+#   1. Resolve the port (aur/server.port, else $AUR_DOC_PORT, else 7432).
 #   2. If THIS PROJECT's server is not answering there, start server.py detached
 #      and wait for it.
 #   3. Sync the Alt+D keybinding's URL to the resolved port.
@@ -27,7 +27,7 @@
 # question".
 #
 # Identity comes from the server's existing /meta endpoint, whose `subtitle` is
-# "<project-dir>/claude-docs". Reusing it rather than adding an endpoint means
+# "<project-dir>/aur-docs". Reusing it rather than adding an endpoint means
 # already-running servers answer correctly too, so there is no flag day. The
 # residual limitation is that identity is the directory NAME: two checkouts of
 # the same project under different paths would look alike. That is not the
@@ -48,12 +48,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT_FILE="$HERE/server.port"
 SERVER="$HERE/server.py"
-PORT="$(cat "$PORT_FILE" 2>/dev/null || echo "${CLAUDE_DOC_PORT:-7432}")"
+PORT="$(cat "$PORT_FILE" 2>/dev/null || echo "${AUR_DOC_PORT:-7432}")"
 
 # What this project's server reports as its identity: the directory holding
 # aur/, which is also ROOT.parent in server.py, so the two derive the same name
 # from the same layout rather than agreeing by convention.
-PROJECT_ID="$(basename "$(dirname "$HERE")")/claude-docs"
+PROJECT_ID="$(basename "$(dirname "$HERE")")/aur-docs"
 
 is_mine() {
   # Confirm the server answering on $1 is THIS project's instance. Connecting

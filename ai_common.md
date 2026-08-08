@@ -8,12 +8,14 @@ AUR's and is inherited, while what a project DOES is the project's. A
 project-local fork of AUR tooling is a debt to reconcile, never a variant
 to maintain.** Distribution: `~/.claude/CLAUDE.md`,
 `~/.claude/git-ip-guard.sh`, and the AUR skills under `~/.claude/skills/`
-(audit-methodology, logging-discipline) are symlinks to this repo
-(`claude_master.md`, `hooks/`, `skills/`). Principles (what
-correct looks like) live here; methodology (how we audit/verify/build) is
-imported:
+(audit-methodology, logging-discipline) resolve through the **shared root**,
+`~/.local/aur/` — `ai_common.md` is this file, `ai_process.md` is PROCESS.md,
+`skills/` is the skills tree. No project depends on an AUR *source checkout*;
+on a machine where AUR is developed those stable names front the working tree,
+so edits are live. Principles (what correct looks like) live here; methodology
+(how we audit/verify/build) is imported:
 
-@~/develop/aur/PROCESS.md
+@~/.local/aur/ai_process.md
 
 ## Engineering Principles
 

@@ -4,7 +4,7 @@
 """
 Measure how consistently the assistant applied its own interaction rules.
 
-The rules in `claude_master.md` are only worth what gets applied, and the
+The rules in `ai_common.md` are only worth what gets applied, and the
 failure mode is not a rule being wrong — it is a rule quietly going unused
 while every response still looks fine. That decay is invisible turn by turn
 and obvious across a corpus, so it is measured rather than recalled.

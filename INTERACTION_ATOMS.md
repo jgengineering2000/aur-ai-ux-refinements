@@ -6,7 +6,7 @@ unbundles them so nothing hides inside a clause. Deliberately long and
 redundant — redundancy is removed by the consolidation pass, not by the
 atomization pass, because a concept dropped here can never be recovered later.
 
-Provenance codes: `M`=claude_master.md, `P`=PROCESS.md, `Q`=owner quote in a
+Provenance codes: `M`=ai_common.md, `P`=PROCESS.md, `Q`=owner quote in a
 transcript, `S`=skill, `N`=new/never written down.
 
 ---

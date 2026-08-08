@@ -9,7 +9,7 @@ Wires up a path watcher so the Claude Code UX patches (chat margins + static
 extension update replaces the patched webview with a fresh one.
 
 What it does:
-  1. Renders claude-ux-reapply.service with this AUR checkout's absolute path
+  1. Renders aur-reapply.service with this AUR checkout's absolute path
      substituted for __AUR_DIR__ (the checkout location is not fixed).
   2. Copies both units into ~/.config/systemd/user/.
   3. `systemctl --user daemon-reload`, then enables + starts the .path unit.
@@ -32,8 +32,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent          # <aur>/systemd
 AUR_DIR = HERE.parent                            # <aur>
 UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
-SERVICE = "claude-ux-reapply.service"
-PATH_UNIT = "claude-ux-reapply.path"
+SERVICE = "aur-reapply.service"
+PATH_UNIT = "aur-reapply.path"
 
 
 def systemctl(*args, check=True):

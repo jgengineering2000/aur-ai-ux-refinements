@@ -2,7 +2,7 @@
 # PreToolUse(Bash) hook: deterministic patent-IP guard.
 # Default-deny: network-touching git/gh operations are blocked unless the
 # repo is listed in ~/.claude/git-public-projects.txt (exact path or listed
-# path + "/"). Enforces in the harness what claude_master.md states as policy,
+# path + "/"). Enforces in the harness what ai_common.md states as policy,
 # so it holds even if the model forgets or a permission rule allows the call.
 
 WHITELIST="$HOME/.claude/git-public-projects.txt"
@@ -20,7 +20,7 @@ deny() {
 # Fast path: nothing git/gh-shaped in the command.
 grep -qE '(^|[;&|[:space:]])(git|gh)([[:space:]]|$)' <<<"$cmd" || exit 0
 
-# Network-touching operations (per claude_master.md Patent-IP section).
+# Network-touching operations (per ai_common.md Patent-IP section).
 # URL = ://-style or scp-style git@host:, excluding file:// and local paths.
 url_re='((ssh|https?|git)://|git@[^ ]+:)'
 net=0

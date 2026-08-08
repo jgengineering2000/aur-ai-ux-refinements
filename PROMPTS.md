@@ -21,7 +21,7 @@ promotions to specification documents are executed.
 > 2. For each knowledge item: identify the target document and section, categorise as
 >    **ready-to-promote**, **needs-verification**, or **defer**, and draft the exact text
 >    to insert (for ready items).
-> 3. Locate any prior unprocessed session-close documents in `claude-docs/`; merge their
+> 3. Locate any prior unprocessed session-close documents in `aur-docs/`; merge their
 >    unresolved items into this inventory (newer source wins on conflicts).
 > 4. Generate a session-close review document with:
 >    - Master table — ID | Source | Knowledge Item | Target Document | Action | Notes
@@ -44,7 +44,7 @@ promotions to specification documents are executed.
 >    - Proposed next actions, priority-ordered
 > 5. Do not promote anything. Await explicit confirmation for each promotion.
 
-**Output format:** HTML session-close document written to `claude-docs/`.
+**Output format:** HTML session-close document written to `aur-docs/`.
 **Gate:** Nothing is written to spec docs until the user confirms each item.
 
 ---
@@ -75,7 +75,7 @@ work begins. Results come later; this is the plan only.
 >    benchmark, ready to copy-paste.
 > 7. **Execution schedule** — ordered steps for a complete benchmark run session.
 
-**Output format:** HTML bench-plan document written to `claude-docs/`.
+**Output format:** HTML bench-plan document written to `aur-docs/`.
 **Gate:** No benchmarks are run during this step.
 
 ---
@@ -102,7 +102,7 @@ each result against the plan's expected values.
 >   and recommended next step.
 > - **Open items** — benchmarks not yet run, deferred measurements, infrastructure gaps.
 
-**Output format:** HTML bench-results document written to `claude-docs/`.
+**Output format:** HTML bench-results document written to `aur-docs/`.
 **Gate:** No code changes — document findings only.
 
 ---
@@ -134,7 +134,7 @@ analysis and implementation roadmap.
 >    - **Implementation roadmap** — P1–P4 priority buckets with effort estimates
 > 5. Flag dead code and deferred-scope items separately.
 
-**Output format:** HTML audit document written to `claude-docs/`.
+**Output format:** HTML audit document written to `aur-docs/`.
 **Gate:** No code changes during audit.
 
 ---
@@ -165,7 +165,7 @@ making changes.
 > Each card: file path and line range, description, why it matters, suggested fix.
 > Close with a prioritised fix list — critical and high items first.
 
-**Output format:** HTML code-quality document written to `claude-docs/`.
+**Output format:** HTML code-quality document written to `aur-docs/`.
 **Gate:** Review only — no code is changed.
 
 ---
@@ -192,7 +192,7 @@ problem before any fixes are attempted.
 >
 > Do not attempt any fixes. The output is the plan only.
 
-**Output format:** HTML debug-plan document written to `claude-docs/`.
+**Output format:** HTML debug-plan document written to `aur-docs/`.
 **Gate:** No code changes — plan only.
 
 ---
@@ -220,7 +220,7 @@ plan and validating that fixes resolved the correct root cause.
 > - **Side-effect check** — confirm fixes did not regress adjacent behaviour
 > - **Open items** — remaining hypotheses not yet tested, follow-on work
 
-**Output format:** HTML debug-results document written to `claude-docs/`.
+**Output format:** HTML debug-results document written to `aur-docs/`.
 **Gate:** No further code changes — document findings only.
 
 ---
@@ -254,7 +254,7 @@ repository and package registry.
 >
 > After confirmation: execute the above steps in order, reporting the result of each.
 
-**Output format:** HTML release-summary document written to `claude-docs/`.
+**Output format:** HTML release-summary document written to `aur-docs/`.
 **Gate:** Full confirmation required before any push, tag, or publish action.
 
 ---

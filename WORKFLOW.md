@@ -12,17 +12,19 @@ in a future session.
 CLAUDE.md instructions
     │  tells Claude where to write and how to format
     ▼
-claude-docs/<name>-<date>-<HHMMSS>.html
+aur-docs/<name>-<date>-<HHMMSS>.html
     │  static HTML document written by Claude
     ▼
 aur/server.py  (running in background)
-    │  serves claude-docs/ on localhost
+    │  serves aur-docs/ on localhost
     │  stores/retrieves annotations as JSON
     ▼
 Alt+D keybinding  (runCommands, two phases)
-    │  1. task "Ensure doc server" → .claude/open-manifest.sh
-    │       health-checks the port, starts server.py if nothing is listening,
-    │       and re-points this binding at aur/server.port
+    │  1. task "Ensure doc server" → aur/open-manifest.sh
+    │       asks whether THIS project's server is answering (via /meta, not a
+    │       bare port probe — another project may hold the default port),
+    │       starts server.py if not, and re-points this binding at
+    │       aur/server.port
     │  2. simpleBrowser.show(http://localhost:PORT/manifest.html)
     │  single keystroke, and the server is guaranteed up before the browser
     │  connects — binding the browser directly races the folderOpen auto-start
@@ -33,7 +35,7 @@ manifest.html
     ▼
 Per-document annotation system
     │  ✎ buttons on cards, headings, list items, table rows
-    │  auto-saves to claude-docs/annotations/<docname>.json
+    │  auto-saves to aur-docs/annotations/<docname>.json
     ▼
 Future Claude session
     │  can read annotation JSON files directly
@@ -45,7 +47,7 @@ Future Claude session
 ## Document naming convention
 
 ```
-claude-docs/<type>-<YYYY>-<MM>-<DD>-<HHMMSS>.html
+aur-docs/<type>-<YYYY>-<MM>-<DD>-<HHMMSS>.html
 ```
 
 - **type** — short slug describing the document kind: `audit`, `bench-plan`,
@@ -59,7 +61,7 @@ claude-docs/<type>-<YYYY>-<MM>-<DD>-<HHMMSS>.html
 
 ## Server port selection
 
-1. Check `CLAUDE_DOC_PORT` environment variable.
+1. Check `AUR_DOC_PORT` environment variable.
 2. If unset, try port 7432.
 3. If 7432 is taken, scan upward until a free port is found (limit: 100 ports).
 4. Write the bound port to `aur/server.port`.
@@ -75,7 +77,7 @@ specific document; the manifest listing is dynamic.
 Annotations are stored as plain JSON alongside the documents they annotate:
 
 ```
-claude-docs/annotations/<docname>.json
+aur-docs/annotations/<docname>.json
 ```
 
 Where `<docname>` is the HTML filename without extension.
@@ -104,7 +106,7 @@ Because annotation files are plain text, they can be:
 
 Projects using AUR infrastructure add the following to their CLAUDE.md:
 
-1. Write structured output as HTML to `claude-docs/`, never paste it into chat.
+1. Write structured output as HTML to `aur-docs/`, never paste it into chat.
 2. Filename format: `<type>-<YYYY>-<MM>-<DD>-<HHMMSS>.html`.
 3. Post a one-paragraph summary + Alt+D reminder in chat after writing.
 4. Never repoint the Alt+D keybinding per document — it targets `manifest.html`,
@@ -124,7 +126,7 @@ The manifest includes a row of chip buttons populated from the `PROMPTS` array i
 `manifest.html`. Clicking a chip copies the prompt text to the clipboard.
 
 To customise prompts for a project, edit the `PROMPTS` array in the project's
-`claude-docs/manifest.html`. The `PROMPTS.md` spec document defines the full
+`aur-docs/manifest.html`. The `PROMPTS.md` spec document defines the full
 optimised instruction set for each trigger phrase.
 
 ---
@@ -135,7 +137,7 @@ The installer adds two VS Code tasks to `.vscode/tasks.json`:
 
 ```json
 {
-  "label": "Start Claude doc server",
+  "label": "Start AUR doc server",
   "type": "shell",
   "command": "python3 '${workspaceFolder}/aur/server.py'",
   "runOptions": { "runOn": "folderOpen" }
@@ -149,7 +151,7 @@ Starts the server automatically when the project folder is opened. Uses
 {
   "label": "Ensure doc server",
   "type": "shell",
-  "command": "bash '${workspaceFolder}/.claude/open-manifest.sh'"
+  "command": "bash '${workspaceFolder}/aur/open-manifest.sh'"
 }
 ```
 

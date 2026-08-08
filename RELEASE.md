@@ -20,8 +20,8 @@ Every release attaches three artefacts to the GitHub release:
 
 | Artefact | Description |
 |---|---|
-| `claude-ux-installer` | Linux x86-64 self-contained binary (no Python required) |
-| `claude-ux-refined-vX.Y.Z-source.zip` | Source archive for manual install on any platform |
+| `aur-installer` | Linux x86-64 self-contained binary (no Python required) |
+| `aur-refined-vX.Y.Z-source.zip` | Source archive for manual install on any platform |
 | Source code (auto) | GitHub-generated zip/tar from the tag |
 
 ---
@@ -39,12 +39,24 @@ Every release attaches three artefacts to the GitHub release:
 
 ## Step-by-step release procedure
 
+### 0. Set the version
+
+`VERSION` at the repo root is the single source of truth. Bump it first; every
+later step reads it rather than repeating the number.
+
+```bash
+echo 2.5.0 > VERSION
+```
+
+Versions are compared as integer tuples throughout (`aurshare.parse_version`),
+so `2.10.0` correctly outranks `2.9.0`. Never compare version strings.
+
 ### 1. Build the Linux GUI binary
 
 ```bash
-cd /home/jageorge/develop/aur
-pyinstaller --onefile --windowed --name claude-ux-installer install-gui.py
-# Output: dist/claude-ux-installer
+cd <aur-checkout>
+pyinstaller --onefile --windowed --name aur-installer install-gui.py
+# Output: dist/aur-installer
 ```
 
 `dist/` and `build/` are in `.gitignore` — do not commit the binary.
@@ -53,7 +65,7 @@ pyinstaller --onefile --windowed --name claude-ux-installer install-gui.py
 
 ```bash
 VERSION=vX.Y.Z   # e.g. v2.1.0
-zip -r /tmp/claude-ux-refined-${VERSION}-source.zip \
+zip -r /tmp/aur-refined-${VERSION}-source.zip \
   patches/ server/ templates/ keybindings/ systemd/ \
   install.py install-gui.py docinfra.py README.md LICENSE \
   PROJECT.md PROMPTS.md PATCHES.md WORKFLOW.md RELEASE.md \
@@ -80,12 +92,12 @@ gh release create vX.Y.Z \
 ## Installation
 
 ### Linux
-1. Download `claude-ux-installer`
-2. `chmod +x claude-ux-installer`
-3. Double-click or `./claude-ux-installer`
+1. Download `aur-installer`
+2. `chmod +x aur-installer`
+3. Double-click or `./aur-installer`
 
 ### Windows / macOS
-Download `claude-ux-refined-vX.Y.Z-source.zip`, extract, run `python3 install.py`
+Download `aur-refined-vX.Y.Z-source.zip`, extract, run `python3 install.py`
 
 ## Requirements
 - Python 3.8+ (source install only)
@@ -99,15 +111,15 @@ EOF
 
 ```bash
 gh release upload vX.Y.Z \
-  dist/claude-ux-installer \
-  /tmp/claude-ux-refined-${VERSION}-source.zip
+  dist/aur-installer \
+  /tmp/aur-refined-${VERSION}-source.zip
 ```
 
 ### 6. Verify
 
 ```bash
 gh release view vX.Y.Z --json assets --jq '.assets[].name'
-# Should list: claude-ux-installer, claude-ux-refined-vX.Y.Z-source.zip
+# Should list: aur-installer, aur-refined-vX.Y.Z-source.zip
 ```
 
 ---
@@ -122,7 +134,7 @@ gh release view vX.Y.Z --json assets --jq '.assets[].name'
 
 Windows and macOS binaries will be added to releases as additional artefacts
 using the same `gh release upload` step with platform-specific filenames
-(e.g. `claude-ux-installer.exe`, `claude-ux-installer-macos`).
+(e.g. `aur-installer.exe`, `aur-installer-macos`).
 
 ---
 

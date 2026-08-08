@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Jonathan George
 #
 # Watches the Claude Code extensions directory and fires
-# claude-ux-reapply.service whenever it changes. An extension update adds a
+# aur-reapply.service whenever it changes. An extension update adds a
 # new versioned subdir (e.g. anthropic.claude-code-2.1.162-linux-x64) whose
 # webview is pristine — PathChanged catches that and re-applies the patches.
 #
@@ -17,7 +17,7 @@ Description=Watch Claude Code extensions dir; re-apply UX patches on change
 
 [Path]
 PathChanged=%h/.antigravity/extensions
-Unit=claude-ux-reapply.service
+Unit=aur-reapply.service
 
 [Install]
 WantedBy=default.target
