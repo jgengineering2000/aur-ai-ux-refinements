@@ -14,20 +14,51 @@ result while reporting success.
 
 | Tool | Purpose |
 |---|---|
+| `tools/git-adopt.py <dir>` | Pre-flight before a **first** `git init` on a lived-in directory |
 | `tools/git-scope.py` | Commit exactly this unit of work; refuse if the index holds anything else |
 | `tools/commit-guard.py <repo>` | Scan **added lines** for PII, personal-tree paths, cross-project leakage |
 | `tools/scan-hazards.py <roots>` | Tracked absolute symlinks, NUL bytes, CRLF, invalid UTF-8 |
 
 ```
+python3 tools/git-adopt.py        <dir>           # only for a first `git init`
 python3 tools/git-scope.py begin  <repo>          # before touching anything
 python3 tools/git-scope.py status <repo>          # mine / theirs / ambiguous
-python3 tools/commit-guard.py     <repo>          # before every commit
+git -C <repo> add -A -- <paths>                   # MUST precede the guard
+python3 tools/commit-guard.py     <repo>          # scans the STAGED set
 printf '%s\n' "$MSG" | python3 tools/git-scope.py commit <repo> -F -
 ```
 
 ---
 
-## 1 · The index is shared between sessions
+## 1 · Adopting an existing directory: inventory before you init
+
+`git init && git add -A` is the wrong move on a directory that has been lived in.
+By the time anyone thinks to track it, work, output, state and links have grown
+together, and **every wrong inclusion commits silently**. Run
+`git-adopt.py <dir>` first; it asks each path the only question that matters —
+**does this regenerate, and from what?**
+
+- **Absolute symlinks are the sharpest edge.** A symlink's target *is* its
+  tracked content, so committing one writes a home path into the repository.
+  They are output: the generator is tracked, the link is not.
+- **Generated output is scoped by directory AND extension**, never by directory
+  alone. A bare `<dir>/*` also swallows whatever hand-written thing lands beside
+  the output later, silently.
+- **Something precious usually lives inside the generated tree.** Annotations,
+  review comments, notes — not generated, not reconstructable, and exactly what
+  a blanket ignore takes with it. Negate them back in explicitly, so a later
+  broadening of the rule cannot drop them.
+- **Duplicate content is a decision, not a nuisance.** The same bytes at two
+  paths means one will go stale. Keep the copy the toolchain actually reads —
+  check where the generator resolves its input and output, which is not always
+  where the name suggests.
+- **Settle the posture in the same pass.** A repo on neither the public
+  whitelist nor `git-backup-projects.txt` is the worst of both: not publishable,
+  and history nothing preserves. `git-adopt.py` reports both.
+- **Identity is not global here.** `git init` produces a repo that cannot commit
+  until `user.name`/`user.email` are set *in that repo*.
+
+## 2 · The index is shared between sessions
 
 Two agent sessions in one repository share one index. A bare `git commit` takes
 whatever the other session happened to have staged, and the result looks
@@ -40,7 +71,7 @@ deliberate to everyone who reads it later.
 - **Leave pre-existing changes strictly alone**, and confirm your edits do not
   overlap them before you commit around them.
 
-## 2 · Commit idioms that silently drop work
+## 3 · Commit idioms that silently drop work
 
 - **`git commit -- <paths>` commits WORKTREE state for those paths and ignores
   the index.** A staged `git rm --cached` deletion is dropped without a word.
@@ -51,7 +82,7 @@ deliberate to everyone who reads it later.
   aborts with "empty commit message" — after the rest of the compound command has
   already run.
 
-## 3 · Untracking is a state, not an operation
+## 4 · Untracking is a state, not an operation
 
 - **gitignore does not apply to a path already in the index.** Adding a rule for
   a tracked file does nothing.
@@ -63,7 +94,7 @@ deliberate to everyone who reads it later.
 - **Therefore: verify with `git ls-files <path>`.** Empty output is the only
   evidence that untracking took.
 
-## 4 · Renames
+## 5 · Renames
 
 - **`git mv`, so history follows.** Verify with `git status --short | grep '^R'`;
   a rename recorded as delete-plus-add has lost exactly what you were preserving.
@@ -73,7 +104,7 @@ deliberate to everyone who reads it later.
   negations that whitelist specific tracked files — must move with it, or those
   files silently leave the index.
 
-## 5 · What must never be committed
+## 6 · What must never be committed
 
 - **A symlink's target is its tracked content.** Committing one publishes its
   target string, so an absolute link publishes a home path. Links a tool
@@ -86,7 +117,7 @@ deliberate to everyone who reads it later.
   whole-file scanning reports the same legacy findings every run, and a guard
   that cries wolf is one you learn to skip.
 
-## 6 · Stash
+## 7 · Stash
 
 - **Stash/restore invalidates build caches.** Content goes to HEAD and back, so
   the build system correctly rebuilds. A gate went from 46s to 517s this way —
@@ -95,7 +126,7 @@ deliberate to everyone who reads it later.
   must be done, restore it the moment the operation completes, and verify every
   file came back.
 
-## 7 · Hooks, gates and authority
+## 8 · Hooks, gates and authority
 
 - **A red gate may not be yours.** Check whether the failure originates in work
   that was already in the tree before assuming your change caused it.
@@ -105,10 +136,24 @@ deliberate to everyone who reads it later.
   instead.
 - **A gate that neither ran nor was skipped is not a pass.** Report it.
 
-## 8 · Network operations
+## 9 · Network operations
 
-- **Default-deny.** Push, fetch, clone-by-URL, `ls-remote` and `gh` are refused
-  for any project not on the public whitelist; the guard hook enforces it.
+- **Default-deny.** Network git/gh operations are refused for any project not on
+  the public whitelist; the `git-ip-guard.sh` PreToolUse hook enforces it.
+- **The backup remote is a local path, not a network host.** Each project
+  mirrors to a bare repo on the router's USB drive —
+  `/mnt/router-usb/develop/<name>.git` — and that push is the backup. It sends
+  deltas, so all four repos' full history occupies ~270 MB there, against 6.7 GB
+  of accumulated whole-tree tarballs in `~/git-backups`. Prefer it.
+- **Know what the hook actually matches, because it does not match intent.**
+  `push`, `send-email`, `request-pull` and the `gh` subcommands are caught
+  **unconditionally** — including `git push router main` to that local bare
+  repo, which is a backup, not a disclosure. Meanwhile `fetch`, `pull`, `clone`,
+  `ls-remote` and `remote add` are caught **only when the command text contains
+  a URL**, so `git fetch origin` against a configured remote passes straight
+  through. The guard matches command TEXT, never the remote's resolved target,
+  which is why it is simultaneously too strict and too loose. Verify it fires;
+  never treat "the hook would have stopped me" as a control.
 - **Commit and push are separate decisions.** "Commit" is never authority to
   push. Pushing publishes.
 - **A repository's name is a published identifier**, not a path. Renaming it in

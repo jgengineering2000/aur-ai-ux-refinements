@@ -143,6 +143,20 @@ def main():
 
     mode = "all" if a.all else "staged"
     added = added_lines(repo, mode)
+
+    # An empty staged set is not a pass. Reporting "clean" here is the exact
+    # failure this tool exists to prevent — a guard that examined nothing and
+    # said so in the vocabulary of approval. It happens routinely, because
+    # git-scope.py does not stage until commit time, so the documented
+    # "guard, then commit" order runs the guard against an empty index.
+    if not added and mode == "staged":
+        print("commit-guard: NOTHING STAGED — this is not a clean result, it is "
+              "no result.\n  Stage the work first (`git add -A -- <paths>`), or "
+              "pass --all to scan the\n  worktree. git-scope.py stages at commit "
+              "time, so run the guard after\n  staging, not before.",
+              file=sys.stderr)
+        return 2
+
     projects = tracked_projects()
     findings = scan(repo, added, projects, print)
 
