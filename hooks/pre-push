@@ -6,14 +6,21 @@
 #      whitelist or an unresolvable toplevel refuses the push.
 #
 #   2. CONTENT — scans everything the push would INTRODUCE for PII,
-#      personal-tree paths and cross-project leakage. This is the stage that
-#      matters, because `git commit --no-verify` skips the commit-time scan
-#      and nothing else stands between that and publication. Up to this point
-#      a leak is local and `filter-repo` is cheap; past it, it is not.
+#      personal-tree paths and cross-project leakage. UNCONDITIONAL: there is
+#      no destination for which PII is acceptable, so this runs for the router
+#      backup exactly as for a public remote. It matters most where the
+#      commit-time scan was bypassed with --no-verify, since nothing else
+#      stands between that and the content leaving.
 #
-# Pushes to local paths, file:// or the designated 'router' remote are always
-# allowed: they reach a mounted filesystem, not the public internet, and that
-# push is the sanctioned backup for exactly the repos this hook protects.
+# The two rules have DIFFERENT shapes and must not be conflated. Patent-IP is a
+# per-project CLASSIFICATION — a project is protected until explicitly released,
+# and the whitelist is that release. PII is a property of the content and admits
+# no authorised destination at all.
+#
+# So the whitelist exemption below covers rule 1 only. The 'router' remote and
+# local paths are exempt from it because they are a classified-private
+# destination, NOT because they are somehow not the network: that mount is a
+# CIFS share, and its path shape says nothing about who can read it.
 
 set -uo pipefail
 
@@ -69,11 +76,15 @@ EOF
 fi
 
 # ── 2 · content ─────────────────────────────────────────────────────────────
-# Only for pushes that actually publish. A router backup carries the same
-# bytes to a private drive; scanning it would block the backup over content
-# that is already committed and already local.
-[[ $is_local -eq 1 ]] && exit 0
-
+# UNCONDITIONAL. There is no destination for which PII is acceptable, so this
+# runs for the router backup exactly as it runs for a public remote.
+#
+# An earlier version skipped it for "local" pushes, which was wrong twice over.
+# It made a PII check conditional on where the data was going, and it rested on
+# a fiction: the router remote is a path only in presentation — the mount is a
+# CIFS share over the network. Nothing about the path shape told us it was
+# private. What makes it acceptable is CLASSIFICATION, which is the whitelist's
+# job and governs patent-IP only.
 GUARD=""
 for c in "$HOME/.local/aur/commit-guard.py" \
          "$HOME/develop/aur/tools/commit-guard.py"; do
