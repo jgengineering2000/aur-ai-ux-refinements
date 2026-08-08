@@ -17,35 +17,6 @@
 (function () {
   var IS_MANIFEST = window.location.pathname.endsWith('/manifest.html');
 
-  // Reload restore, take two. VSCode's Simple Browser reloads the URL it was
-  // OPENED with — always the manifest — so refreshing while reading a document
-  // lands on the index.
-  //
-  // The first attempt recorded the document in sessionStorage on load and had
-  // the manifest check performance navigation type. It never fired: the reload
-  // builds a fresh webview context, so sessionStorage is empty by the time the
-  // manifest reads it, and the navigation type is not reliably 'reload' there.
-  //
-  // So: localStorage (survives the context), written at PAGEHIDE rather than at
-  // load. A fresh unload record means we were reading a document a moment ago
-  // and are now somehow at the manifest — which is a reload. Clicking
-  // "← Manifest" clears the record first, so a deliberate visit to the index
-  // stays there.
-  //
-  // This is a heuristic and worth naming as one: Alt+D pressed seconds after
-  // reading is indistinguishable from a reload, because both re-request the
-  // same URL with no other signal. The window is kept short to bound that.
-  try {
-    if (!IS_MANIFEST) {
-      window.addEventListener('pagehide', function () {
-        try {
-          localStorage.setItem('aur:lastDoc', JSON.stringify(
-            { p: window.location.pathname, t: Date.now() }));
-        } catch (e) {}
-      });
-    }
-  } catch (e) { /* storage disabled: the refresh button still works */ }
-
   if (IS_MANIFEST) return;
 
   function parseDateFromPath() {
@@ -155,11 +126,6 @@
       bar.insertBefore(a, bar.firstChild);
       existingLink = a;
     }
-    // Going to the index deliberately must not bounce straight back, so drop
-    // the restore record before navigating.
-    existingLink.addEventListener('click', function () {
-      try { localStorage.removeItem('aur:lastDoc'); } catch (e) {}
-    });
     if (!bar.querySelector('.altd-label')) {
       var altd = makeAltD();
       altd.className = 'altd-label';
