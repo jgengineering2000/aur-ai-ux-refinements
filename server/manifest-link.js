@@ -17,6 +17,37 @@
 (function () {
   var IS_MANIFEST = window.location.pathname.endsWith('/manifest.html');
 
+  // ── Reload restore: tell the server where we are ─────────────────────────
+  // Simple Browser cannot see inside its own iframe, so the server keeps the
+  // "current document" per webview session and redirects a refresh onto it.
+  // See server.py's do_GET for the measured request shapes this relies on.
+  //
+  // The session key is VSCode's own `?id=` on the url it opens. In-page
+  // navigation drops the query string, so it is stashed in sessionStorage —
+  // measured to survive both link navigation and the webview refresh, which
+  // is the fact an earlier attempt got wrong.
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var sid = params.get('id');
+    if (sid) sessionStorage.setItem('aur:sid', sid);
+    else sid = sessionStorage.getItem('aur:sid');
+
+    if (sid) {
+      if (IS_MANIFEST) {
+        // No vscodeBrowserReqId means a link click, not a webview load: the
+        // user asked for the index, so forget where they were and let a
+        // refresh stay here.
+        if (!params.has('vscodeBrowserReqId')) {
+          fetch('/_clear?sid=' + encodeURIComponent(sid)).catch(function () {});
+        }
+      } else {
+        fetch('/_seen?sid=' + encodeURIComponent(sid) +
+              '&doc=' + encodeURIComponent(window.location.pathname))
+          .catch(function () {});
+      }
+    }
+  } catch (e) { /* storage or fetch unavailable: refresh button still works */ }
+
   if (IS_MANIFEST) return;
 
   function parseDateFromPath() {

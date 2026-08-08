@@ -2124,8 +2124,63 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if args and str(args[1]) not in ("200", "304"):
             super().log_message(fmt, *args)
 
+    # ── Reload restore ──────────────────────────────────────────────────────
+    #
+    # VSCode's Simple Browser hosts the page in a cross-origin iframe and can
+    # never observe navigation inside it, so the URL it holds stays the one it
+    # was opened with — always the manifest. Refreshing while reading a
+    # document therefore landed on the index.
+    #
+    # It is fixable because Simple Browser stamps its OWN url, measured:
+    #
+    #   Alt+D    /manifest.html?id=<uuid>&vscodeBrowserReqId=<epoch-ms>
+    #   refresh  /manifest.html?id=<same uuid>&vscodeBrowserReqId=<new epoch-ms>
+    #   link     /manifest.html                       (no query at all)
+    #
+    # `id` is a STABLE per-webview session key — VSCode hands us exactly the
+    # session identity needed, so no cookie and no global state; two viewers
+    # cannot contend, and it stays correct if tabs ever exist. The presence of
+    # `vscodeBrowserReqId` says the WEBVIEW loaded this url rather than the
+    # user clicking a link.
+    #
+    # So the rule is decided purely by request shape, with no timer anywhere:
+    #
+    #   manifest WITH vscodeBrowserReqId + a recorded doc  ->  302 to the doc
+    #   manifest WITHOUT it (a link click)                 ->  serve the index
+    #
+    # A refresh and an Alt+D are genuinely identical at this layer, so Alt+D
+    # also lands on the last document. Reaching the index is one click on
+    # "← Manifest", which clears the record precisely because it arrives with
+    # no query string. Distinguishing them would need an out-of-band flag with
+    # a time window, and a time window is the one thing this design refuses.
+    #
+    # The map is in memory: a restart forgets, and forgetting shows the index,
+    # which is the safe direction.
+    _last_doc = {}
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        q = parse_qs(parsed.query)
+
+        if parsed.path == "/_seen":
+            sid, doc = (q.get("sid") or [""])[0], (q.get("doc") or [""])[0]
+            if sid and doc.endswith(".html") and "/" not in doc.lstrip("/")[:-5]:
+                Handler._last_doc[sid] = "/" + doc.lstrip("/")
+            self._json({"ok": True})
+            return
+        if parsed.path == "/_clear":
+            Handler._last_doc.pop((q.get("sid") or [""])[0], None)
+            self._json({"ok": True})
+            return
+
+        if parsed.path == "/manifest.html" and "vscodeBrowserReqId" in q:
+            target = Handler._last_doc.get((q.get("id") or [""])[0])
+            if target:
+                self.send_response(302)
+                self.send_header("Location", target)
+                self.end_headers()
+                return
+
         if parsed.path.startswith("/annotations/"):
             self._get_annotations(parsed.path[len("/annotations/"):])
         elif parsed.path == "/docs":
