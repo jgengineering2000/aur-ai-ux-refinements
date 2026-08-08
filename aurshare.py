@@ -262,6 +262,26 @@ def verify_and_heal(log=print):
         registry_write(sorted(deduped, key=lambda r: r["path"]))
         findings += [f"pruned {p}" for p in pruned]
 
+    # DRIFT: a project serving a real file where a link belongs has forked from
+    # canonical. AUR itself did exactly this — aur-docs/ held copies of ann.js,
+    # ann.css and manifest-link.js that were three months stale and all three
+    # diverged, in the repository that DEFINES the document system. "It is
+    # symlinked so it cannot drift" is an assertion; this is the check.
+    for row in registry_read():
+        docs = Path(row["path"]) / "aur-docs"
+        for name in DOCS_LINKS:
+            f = docs / name
+            if not f.exists():
+                continue
+            if not f.is_symlink():
+                findings.append(
+                    f"DRIFT {f} is a real file, not a link into {SHARE} — "
+                    f"it has forked from canonical and will not receive fixes")
+            elif SHARE not in Path(f).resolve().parents and \
+                    not str(Path(f).readlink()).startswith(str(SHARE)):
+                findings.append(f"DRIFT {f} links outside the shared root "
+                                f"-> {Path(f).readlink()}")
+
     synced = _sync_version_file()
     if synced:
         findings.append(f"VERSION reconciled to {synced} (it disagreed with the links)")
@@ -272,6 +292,38 @@ def verify_and_heal(log=print):
 
 
 # ── deployment ──────────────────────────────────────────────────────────────
+
+def check_canonical(aur_root, log=print):
+    """Every asset the installer distributes must exist AND be tracked.
+
+    The shared root is where assets are installed TO; this repository is where
+    they are installed FROM. An untracked source is one that ships from a
+    working tree and exists nowhere else — a release that cannot be rebuilt.
+    """
+    aur_root = Path(aur_root).expanduser().resolve()
+    is_git = (aur_root / ".git").is_dir()
+    missing, untracked = [], []
+    for name, rel in SHARED_ASSETS.items():
+        src = aur_root / rel.rstrip("/")
+        if not src.exists():
+            missing.append(rel)
+            continue
+        if is_git:
+            import subprocess
+            ok = subprocess.run(["git", "-C", str(aur_root), "ls-files",
+                                 "--error-unmatch", rel.rstrip("/")],
+                                capture_output=True).returncode == 0
+            if not ok:
+                untracked.append(rel)
+    for m in missing:
+        log(f"  [canonical] MISSING source: {m}")
+    for u in untracked:
+        log(f"  [canonical] UNTRACKED source: {u} — the installer would ship a "
+            f"file that exists only in this working tree")
+    if not missing and not untracked:
+        log(f"  [canonical] all {len(SHARED_ASSETS)} sources present and tracked")
+    return missing + untracked
+
 
 def deploy(aur_root, version, log=print):
     """Install assets at `version`, refusing any per-asset downgrade.
@@ -452,7 +504,9 @@ def install_project(project_dir, version="", log=print):
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "verify"
-    if cmd == "verify":
+    if cmd == "canonical":
+        sys.exit(1 if check_canonical(sys.argv[2] if len(sys.argv) > 2 else ".") else 0)
+    elif cmd == "verify":
         found = verify_and_heal()
         print(f"shared root {SHARE}: {'healed ' + str(len(found)) if found else 'clean'}")
     elif cmd == "deploy":
@@ -472,6 +526,6 @@ if __name__ == "__main__":
             print(f"{r['path']}\t{r['layout']}\t{r['version']}")
     else:
         print(f"usage: {sys.argv[0]} "
-              "{verify|deploy <aur_root> <ver>|devlink <aur_root> [names]|install <proj>|link <proj>|"
+              "{verify|canonical <aur_root>|deploy <aur_root> <ver>|devlink <aur_root> [names]|install <proj>|link <proj>|"
               "register <proj> [ver]|discover <root>|list}", file=sys.stderr)
         sys.exit(2)
