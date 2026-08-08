@@ -172,6 +172,19 @@ def main():
     # git-scope.py does not stage until commit time, so the documented
     # "guard, then commit" order runs the guard against an empty index.
     if not added and mode == "staged":
+        # "No added lines" is NOT "nothing staged". A pure-deletion commit
+        # stages plenty and adds nothing, and is legitimately clean — this
+        # scanner only ever reads added lines. Ask git what is staged rather
+        # than inferring it from this tool's own empty result.
+        staged_any = subprocess.run(
+            ["git", "-C", repo, "diff", "--cached", "--name-only"],
+            capture_output=True, text=True).stdout.strip()
+        if staged_any:
+            if not a.quiet:
+                print(f"commit-guard: {Path(repo).name} — "
+                      f"{len(staged_any.splitlines())} file(s) staged, no added "
+                      f"lines to scan (deletions only)\n  clean")
+            return 0
         print("commit-guard: NOTHING STAGED — this is not a clean result, it is "
               "no result.\n  Stage the work first (`git add -A -- <paths>`), or "
               "pass --all to scan the\n  worktree. git-scope.py stages at commit "
