@@ -41,6 +41,12 @@ SHARED_ASSETS = {
     "ai_common.md":     "ai_common.md",
     "ai_process.md":    "PROCESS.md",
     "skills/":          "skills/",
+    # Git hooks and the tool they call. These deploy to the shared root rather
+    # than being read out of an AUR checkout, because a hook that depends on a
+    # source tree stops working the moment that tree moves — and it fails at
+    # commit time, on a machine that may not have the checkout at all.
+    "commit-guard.py":  "tools/commit-guard.py",
+    "hooks/":           "hooks/",
 }
 
 # The subset a project's aur/ directory links to. The rules files are consumed

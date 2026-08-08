@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Universal pre-commit — content guard, then the project's own gate.
+#
+# Two stages, deliberately in this order and deliberately in one hook, because
+# git offers no per-hook bypass: `--no-verify` skips everything or nothing.
+#
+#   1. CONTENT (universal, milliseconds). PII, personal-tree paths and
+#      cross-project leakage in the lines this commit ADDS. Applies to every
+#      repository regardless of language, and to prose repositories as much as
+#      code — a home path in a document is the same defect as one in a source
+#      file.
+#
+#   2. CORRECTNESS (project-specific, possibly minutes). Delegated to
+#      scripts/git-hooks/pre-commit if the project ships one — a test gate,
+#      a linter, whatever that project's correctness means. Projects without
+#      one pay nothing.
+#
+# Content runs FIRST so a leak is refused before an expensive gate spends
+# minutes proving code that is about to be rewritten anyway.
+#
+# On `--no-verify`: it is the sanctioned escape for stage 2, and it takes
+# stage 1 with it. That is accepted rather than worked around — for a
+# protected repo the content stays local, where `filter-repo` is still cheap,
+# and the pre-push hook scans the whole pushed range at the boundary where it
+# stops being cheap. A post-commit re-scan was considered and rejected: it
+# cannot refuse anything, and a warning printed after the fact is not a gate.
+set -u
+
+repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
+cd "$repo" || exit 1
+
+# ── 1 · content ─────────────────────────────────────────────────────────────
+# Ladder, most-stable location first. The shared root survives an AUR checkout
+# moving or being absent; the checkout is the developer-machine fallback.
+GUARD=""
+for c in "$HOME/.local/aur/commit-guard.py" \
+         "$HOME/develop/aur/tools/commit-guard.py"; do
+    [ -r "$c" ] && { GUARD="$c"; break; }
+done
+
+if [ -n "$GUARD" ]; then
+    python3 "$GUARD" "$repo"
+    rc=$?
+    # 0 clean · 1 findings · 2 nothing staged (an --amend of the message only,
+    # which git is entitled to do and which introduces no content).
+    if [ "$rc" -eq 1 ]; then
+        echo "[pre-commit] CONTENT GUARD FAILED — commit blocked. Each finding" \
+             "above is a location, not a verdict: read it, then fix it or use" \
+             "git commit --no-verify deliberately." >&2
+        exit 1
+    fi
+else
+    # A guard that cannot run must say so. Silence here is indistinguishable
+    # from a clean scan, which is the failure this whole file exists to avoid.
+    echo "[pre-commit] WARNING: commit-guard.py not found in ~/.local/aur or" \
+         "~/develop/aur/tools — content was NOT scanned." >&2
+fi
+
+# ── 2 · project-specific gate ───────────────────────────────────────────────
+LOCAL="$repo/scripts/git-hooks/pre-commit"
+if [ -x "$LOCAL" ]; then
+    exec "$LOCAL" "$@"
+fi
+exit 0

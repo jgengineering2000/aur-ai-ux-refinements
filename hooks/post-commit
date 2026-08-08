@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Universal post-commit — router backup push, then the project's own follow-up.
+#
+# The router push is the backup: it sends deltas to a bare repo on the router's
+# USB drive, so full history for every project costs a fraction of what a
+# whole-tree tarball costs per run. Connectivity is decided live, in one shared
+# script, by comparing the current default gateway's MAC — never a hardcoded
+# address — so this is silent and harmless on a foreign network.
+#
+# No content scanning here. post-commit cannot refuse anything, and a warning
+# after the commit exists is not a gate; the refusals live in pre-commit and
+# pre-push, which can.
+set -u
+
+"$HOME/.claude/git-templates/router-backup-push.sh"
+
+repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+LOCAL="$repo/scripts/git-hooks/post-commit"
+[ -x "$LOCAL" ] && exec "$LOCAL" "$@"
+exit 0

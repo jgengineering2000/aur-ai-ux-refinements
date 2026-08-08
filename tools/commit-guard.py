@@ -46,8 +46,13 @@ PII = [
     ("home path (~ form)", re.compile(rf"/home/{re.escape(USER)}\b")),
     # Extension ids (foo@ubuntu.com, bar@gnome.org) share the email shape and
     # are not addresses; excluding the known suffixes beats a cleverer regex.
+    # An scp-style git remote (git@host:org/repo.git) has the same shape too,
+    # and appears legitimately in any code that talks about remotes — flagging
+    # it is the cry-wolf failure that teaches people to skip the guard. The
+    # trailing ':' is what distinguishes a host from a mailbox.
     ("email address",
      re.compile(r"(?![\w.+-]+@(?:ubuntu\.com|gnome\.org|localhost)\b)"
+                r"(?<![\w.+-])(?!git@[\w.-]+:)"
                 r"[\w.+-]+@[\w-]+\.[\w.]{2,}")),
     ("personal tree reference",
      re.compile(rf"[~/]\s*(?:{'|'.join(PERSONAL_DIRS)})/")),
@@ -85,7 +90,17 @@ def added_lines(repo, mode):
     actionable; what was already there is a separate, deliberate cleanup.
     """
     args = ["git", "-C", repo, "diff", "--unified=0"]
-    args += ["--cached"] if mode == "staged" else ["HEAD"]
+    if mode == "staged":
+        args += ["--cached"]
+    elif mode.startswith("range:"):
+        # Everything a push would introduce. The pre-push hook uses this: the
+        # commit-time scan is bypassable with --no-verify, and this stage is
+        # where the content stops being recoverable by a cheap history rewrite.
+        # Split, because a new branch's range is multi-token
+        # ("<oid> --not --remotes=router"), not a single A..B revision.
+        args += mode[len("range:"):].split()
+    else:
+        args += ["HEAD"]
     out = subprocess.run(args, capture_output=True, text=True).stdout
     files, cur, lineno = {}, None, 0
     for line in out.splitlines():
@@ -133,15 +148,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("repo")
     ap.add_argument("--all", action="store_true", help="whole worktree, not just staged")
+    ap.add_argument("--range", metavar="A..B",
+                    help="everything a push would introduce (pre-push hook)")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
+
+    if a.all and a.range:
+        print("commit-guard: --all and --range are mutually exclusive",
+              file=sys.stderr)
+        return 2
 
     repo = str(Path(a.repo).expanduser().resolve())
     if not (Path(repo) / ".git").is_dir():
         print(f"commit-guard: not a git repo: {repo}", file=sys.stderr)
         return 2
 
-    mode = "all" if a.all else "staged"
+    mode = f"range:{a.range}" if a.range else ("all" if a.all else "staged")
     added = added_lines(repo, mode)
 
     # An empty staged set is not a pass. Reporting "clean" here is the exact
