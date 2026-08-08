@@ -10,3 +10,12 @@ build/
 *.spec
 server/server.port
 tools/rule-tests/real-cases.json
+
+# AUR's own doc assets link through the shared root like every other project.
+# They were stale copies for three months — the exact fork this architecture
+# exists to prevent, in the repository that defines it. A symlink's target is
+# its tracked content, and these are regenerable, so they are not tracked.
+aur-docs/ann.css
+aur-docs/ann.js
+aur-docs/manifest-link.js
+aur-docs/manifest.html

@@ -45,7 +45,17 @@
 
   function ensureBar() {
     var bar = document.querySelector('.bar');
-    if (bar) return bar;
+    if (bar) {
+      // The bar is a flex row the DOCUMENT authored, sized for the two or three
+      // children it ships with. This script then adds up to six more — manifest
+      // link, Alt+D, url, name, date, refresh — so without wrapping the row
+      // overflows and the items render on top of one another. The document
+      // cannot know that, and editing every generated file is not a fix, so the
+      // injector enforces it on whatever bar it is handed.
+      bar.style.flexWrap = 'wrap';
+      if (!bar.style.rowGap) bar.style.rowGap = '6px';
+      return bar;
+    }
     // Self-contained host: pages that include manifest-link.js but don't
     // pre-render a .bar div still get the header.
     //
@@ -66,7 +76,7 @@
     bar.style.cssText =
       'position:sticky;top:0;z-index:100;background:var(--cb,#181825);' +
       'border-bottom:1px solid var(--bd,#3a3a55);padding:8px 16px;' +
-      'display:flex;align-items:center;gap:12px;' +
+      'display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:6px;' +
       'margin:0 -' + padR + 'px ' + (padT || 24) + 'px -' + padL + 'px;' +
       'font-size:12px;color:var(--mu,#7f849c)';
     document.body.insertBefore(bar, document.body.firstChild);
@@ -101,6 +111,10 @@
     // hardcoded one). Strip any sibling "Project:" label — wasted space.
     if (!bar.querySelector('code')) {
       var url = document.createElement('code');
+      // Widest child: let it shrink rather than set the row's width.
+      url.style.minWidth = '0';
+      url.style.overflow = 'hidden';
+      url.style.textOverflow = 'ellipsis';
       url.className = 'doc-url';
       url.style.cssText =
         'font-family:"SF Mono","Fira Code",Consolas,monospace;font-size:11px;' +

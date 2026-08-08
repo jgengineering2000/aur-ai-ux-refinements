@@ -43,6 +43,24 @@ body {
   align-items: center;
   gap: 16px;
   margin-bottom: 32px;
+  /* Wrap, never overlap. The bar grew a project menu whose width scales with the
+     number of installed projects, and this panel is often a narrow Simple Browser
+     pane. Without wrapping, extra items are pushed against the title by
+     meta-right's margin-left:auto and the text collides. Layout degrades by
+     reflowing rows, not by silently stacking. */
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+/* Let the title column actually shrink: a flex item defaults to min-width:auto,
+   which refuses to go below its content and is what forces the overlap. */
+.header > div:first-child { min-width: 0; flex: 1 1 auto; }
+/* The menu is a flex row in its own right. As a bare span its badges inherited
+   no gap and could not wrap — they are inline-flex, so they simply ran on. */
+#project-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .header h1 {
   font-size: 22px;
@@ -61,6 +79,8 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .header .badge {
   font-size: 11px;
