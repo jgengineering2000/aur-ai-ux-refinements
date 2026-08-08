@@ -1,10 +1,32 @@
-// Injects into the .bar of every Claude doc page:
+// Normalises the .bar of every doc page into one header:
 //   LEFT   — "← Manifest" link + muted "Alt+D" label
-//   MIDDLE — current document URL (selectable code chip)
-//   RIGHT  — document generation timestamp (from filename) + ↻ Refresh button
-// Skips entirely on manifest.html itself.
+//   THEN   — the FILENAME: the document's identity, selectable for copy, and
+//            free to wrap onto a second line when the window is narrow
+//   RIGHT  — generation timestamp (parsed from the filename) + ↻ Refresh
+//
+// It also REMOVES what the generated document put there itself: a second
+// manifest link (the document's own is relative, the injected one absolute, so
+// they never matched and both rendered), the human title, and the "|" framing
+// spans. The title is dropped because the filename already identifies the
+// document and carries its date; two names for one thing is what pushed this
+// header into overflow.
+//
+// Repairing at the injector rather than in the generator is deliberate: it
+// fixes every document already written, not only the next one. md2doc.py stops
+// emitting them too, so a fresh page needs no repair.
 (function () {
-  if (window.location.pathname.endsWith('/manifest.html')) return;
+  var IS_MANIFEST = window.location.pathname.endsWith('/manifest.html');
+
+  // Remember the document being read, so a browser reload can come back here
+  // instead of landing on the manifest. The manifest reads this on load; see
+  // templates/manifest.html. sessionStorage, because this is about the current
+  // reading session and should not resurrect a doc opened days ago.
+  try {
+    if (IS_MANIFEST) sessionStorage.removeItem('aur:lastDoc');
+    else sessionStorage.setItem('aur:lastDoc', window.location.pathname);
+  } catch (e) { /* storage disabled: the refresh button still works */ }
+
+  if (IS_MANIFEST) return;
 
   function parseDateFromPath() {
     var filename = window.location.pathname.split('/').pop();
@@ -87,10 +109,24 @@
     var bar = ensureBar();
     if (!bar) return;
 
+    // ── Strip what the document authored ─────────────────────────────────
+    // A generated doc ships its own bar: a RELATIVE manifest link, its human
+    // title, and "|" separators. The relative href never matched the absolute
+    // one looked for below, so both links rendered and pointed at the same
+    // place. Remove the document's versions and let one injected set stand.
+    Array.prototype.forEach.call(bar.querySelectorAll('a'), function (a) {
+      if (/(^|\/)manifest\.html$/.test(a.getAttribute('href') || '')) a.remove();
+    });
+    Array.prototype.forEach.call(bar.querySelectorAll('strong'), function (s) {
+      s.remove();                       // the human title: the filename says it
+    });
+    Array.prototype.forEach.call(bar.querySelectorAll('span'), function (s) {
+      if (s.textContent.trim() === '|') s.remove();
+    });
+
     // ── Left: ← Manifest + Alt+D ─────────────────────────────────────────
-    var existingLink = bar.querySelector('a[href="/manifest.html"]');
+    var existingLink = bar.querySelector('a.manifest-link');
     if (!existingLink) {
-      // Inject new link as first child
       var a = document.createElement('a');
       a.className = 'manifest-link';
       a.href = '/manifest.html';
@@ -99,50 +135,35 @@
       bar.insertBefore(a, bar.firstChild);
       existingLink = a;
     }
-    // Insert Alt+D immediately after the manifest link if not already there
     if (!bar.querySelector('.altd-label')) {
       var altd = makeAltD();
       altd.className = 'altd-label';
       existingLink.insertAdjacentElement('afterend', altd);
     }
 
-    // ── Middle: current document URL ─────────────────────────────────────
-    // Only inject if no <code> already exists in the bar (older docs
-    // hardcoded one). Strip any sibling "Project:" label — wasted space.
-    if (!bar.querySelector('code')) {
-      var url = document.createElement('code');
-      // Widest child: let it shrink rather than set the row's width.
-      url.style.minWidth = '0';
-      url.style.overflow = 'hidden';
-      url.style.textOverflow = 'ellipsis';
-      url.className = 'doc-url';
-      url.style.cssText =
-        'font-family:"SF Mono","Fira Code",Consolas,monospace;font-size:11px;' +
-        'color:var(--ac,#89b4fa);background:var(--sf,#27273a);' +
-        'padding:2px 7px;border-radius:4px;border:1px solid var(--bd,#3a3a55);' +
-        'user-select:all;flex-shrink:0';
-      url.textContent = window.location.origin + window.location.pathname;
-      var anchor = bar.querySelector('.altd-label') || existingLink;
-      anchor.insertAdjacentElement('afterend', url);
-    }
-
-    // ── Centre: current document name ────────────────────────────────────
-    // Absolutely centred over the bar (the sticky bar is a containing block),
-    // so it stays centred regardless of the side-group widths. Basename of the
-    // URL for a glanceable identity when several docs are open, with the full
-    // <title> as a hover tooltip. Complements the selectable URL chip (copy the
-    // link) — this is the at-a-glance "which doc am I in".
+    // ── The filename IS the identity ─────────────────────────────────────
+    // In flow, where the title used to sit — not absolutely centred, because a
+    // centred element overlaps its neighbours the moment the row wraps, and
+    // wrapping is exactly what a long filename must be allowed to do.
+    //
+    // flex:1 1 auto with min-width:0 lets it take the slack and then wrap
+    // rather than force the row wider; overflow-wrap:anywhere breaks inside the
+    // name, since a generated filename is one unbroken token with no space to
+    // wrap at. user-select:all makes one click select the whole thing to copy,
+    // which is why the separate URL chip is gone — it was the widest element in
+    // the bar and said the same thing twice.
     if (!bar.querySelector('.doc-name')) {
       var name = document.createElement('span');
       name.className = 'doc-name';
       var base = decodeURIComponent(window.location.pathname.split('/').pop() || '');
       name.textContent = base || document.title || '(document)';
-      name.title = document.title || base;
+      name.title = window.location.origin + window.location.pathname;
       name.style.cssText =
-        'position:absolute;left:50%;transform:translateX(-50%);max-width:45%;' +
-        'font-weight:600;color:var(--tx,#cdd6f4);font-size:12px;overflow:hidden;' +
-        'text-overflow:ellipsis;white-space:nowrap;pointer-events:none';
-      bar.appendChild(name);
+        'flex:1 1 auto;min-width:0;font-weight:600;color:var(--tx,#cdd6f4);' +
+        'font-size:12px;white-space:normal;overflow-wrap:anywhere;' +
+        'word-break:break-word;user-select:all;cursor:text';
+      var anchor = bar.querySelector('.altd-label') || existingLink;
+      anchor.insertAdjacentElement('afterend', name);
     }
 
     // ── Right: timestamp + ↻ Refresh — skip if already injected ──────────

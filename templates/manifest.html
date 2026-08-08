@@ -850,6 +850,31 @@ body {
 .panel { display: none; }
 .panel.active { display: block; }
 </style>
+<script>
+// Reload restore. VSCode's Simple Browser reloads the URL it was OPENED with,
+// which is always this manifest — so pressing refresh while reading a document
+// threw the reader back to the index. Doc pages record themselves in
+// sessionStorage (server/manifest-link.js); if this load is a RELOAD and such a
+// record exists, hand control back to the document.
+//
+// Only on a reload: arriving here by clicking "← Manifest" is a NAVIGATE, and
+// that path clears the record, so a deliberate visit to the index stays on the
+// index. ?stay=1 is the escape hatch if the two ever disagree.
+//
+// In <head> and synchronous on purpose: a redirect decided after render is a
+// visible flash of the wrong page.
+(function () {
+  try {
+    if (location.search.indexOf('stay=1') !== -1) return;
+    var nav = performance.getEntriesByType('navigation')[0];
+    var isReload = nav ? nav.type === 'reload'
+                       : performance.navigation && performance.navigation.type === 1;
+    if (!isReload) { sessionStorage.removeItem('aur:lastDoc'); return; }
+    var last = sessionStorage.getItem('aur:lastDoc');
+    if (last && last !== location.pathname) location.replace(last);
+  } catch (e) { /* storage or timing API unavailable: stay on the manifest */ }
+}());
+</script>
 </head>
 <body>
 <div class="container">
