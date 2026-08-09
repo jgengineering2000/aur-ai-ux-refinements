@@ -48,6 +48,27 @@
     }
   } catch (e) { /* storage or fetch unavailable: refresh button still works */ }
 
+  // ── The one document theme ───────────────────────────────────────────────
+  // Appended to <head> so it lands AFTER the document's own <style> and wins
+  // the cascade at equal specificity. Documents written before doc.css existed
+  // carry their own palette — 20 of them across the corpus — and this is what
+  // brings them into line without rewriting 114 files.
+  //
+  // doc.css is colour and typography only, never layout, so a document that
+  // builds a column mock out of a grid is repainted rather than relaid out.
+  // Rules more specific than a bare element selector still win locally; that is
+  // accepted, and the alternative is a sheet aggressive enough to break the
+  // careful ones.
+  try {
+    if (!document.querySelector('link[data-aur-theme]')) {
+      var th = document.createElement('link');
+      th.rel = 'stylesheet';
+      th.href = '/doc.css';
+      th.setAttribute('data-aur-theme', '1');
+      document.head.appendChild(th);
+    }
+  } catch (e) { /* theme is cosmetic: never let it stop the page */ }
+
   if (IS_MANIFEST) return;
 
   function parseDateFromPath() {

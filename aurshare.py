@@ -37,6 +37,7 @@ SHARED_ASSETS = {
     "ann.css":          "server/ann.css",
     "ann.js":           "server/ann.js",
     "manifest-link.js": "server/manifest-link.js",
+    "doc.css":          "server/doc.css",
     "manifest.html":    "templates/manifest.html",
     "ai_common.md":     "ai_common.md",
     "ai_process.md":    "PROCESS.md",
@@ -52,7 +53,7 @@ SHARED_ASSETS = {
 # The subset a project's aur/ directory links to. The rules files are consumed
 # through the vendor's own mechanism and are not linked per project.
 PROJECT_LINKS = ("aurshare.py", "server.py", "open-manifest.sh")
-DOCS_LINKS = ("ann.css", "ann.js", "manifest-link.js", "manifest.html")
+DOCS_LINKS = ("ann.css", "ann.js", "manifest-link.js", "manifest.html", "doc.css")
 
 
 # ── versions ────────────────────────────────────────────────────────────────
