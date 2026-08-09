@@ -1,0 +1,392 @@
+<meta charset="utf-8"><title>Document theme comparison</title>
+<link rel="stylesheet" href="/ann.css">
+<style>
+body{margin:0;background:#14161a;color:#e6edf3;
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 24px 90px}
+.bar{position:sticky;top:0;z-index:100;background:#1b1e24;border-bottom:1px solid #2a323d;
+padding:11px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:6px;
+margin:-28px -24px 26px;font-size:13px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.lede{color:#9aa7b4;margin:0 0 26px;max-width:70ch}
+table.panels{width:100%;border-collapse:separate;border-spacing:0 18px}
+table.panels>tbody>tr>td{padding:0}
+.theme{background:var(--bg);color:var(--ink);border:1px solid #2a323d;border-radius:10px;
+padding:18px 20px}
+.meta{font-size:12px;color:var(--mut);margin-bottom:12px}
+.meta code{color:var(--accent);font-size:11px}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.sw{display:flex;align-items:center;gap:6px;background:var(--panel);
+border:1px solid var(--line);border-radius:5px;padding:3px 8px;font-size:11px}
+.sw i{width:13px;height:13px;border-radius:3px;border:1px solid var(--line);display:block}
+.sw b{color:var(--ink);font-weight:600}
+.sw u{color:var(--mut);text-decoration:none;font-variant-numeric:tabular-nums}
+.demo{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 18px}
+.demo h3{margin:0 0 8px;font-size:16px;color:var(--ink)}
+.demo p{margin:0 0 10px}
+.demo a{color:var(--accent)}
+.demo code{background:var(--bg);border:1px solid var(--line);border-radius:4px;
+padding:1px 6px;font-size:.9em}
+.g{display:grid;grid-template-columns:max-content max-content max-content;
+gap:0;margin:12px 0;font-size:13px;width:max-content}
+.g>span{border:1px solid var(--line);padding:5px 14px;margin:-1px 0 0 -1px}
+.g .gh{color:var(--mut);font-weight:600}
+.g .n{text-align:right;font-variant-numeric:tabular-nums}
+.demo ul{margin:10px 0;padding-left:20px}
+.st{margin-top:10px}
+.st span{font-size:11px;font-weight:700;letter-spacing:.04em;margin-right:16px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+.fill{margin-top:12px;font-size:11px;color:var(--mut);font-style:italic}
+</style>
+<div class="wrap">
+<div class="bar"><span>114 documents · 20 distinct themes</span></div>
+<h1>Document theme comparison</h1>
+<p class="lede">Every generated document carries its own stylesheet, so the corpus has
+drifted into 20 palettes with nothing holding them together. Each panel below renders
+identical content in one of them, ordered by how many documents use it. Annotate the
+row you want to become the single canonical theme.</p>
+<table class="panels"><tbody>
+<tr><td>
+<div class="theme" style="--bg:#0e1116;--panel:#161b22;--ink:#e6edf3;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 1</b> — used by <b>52</b> documents
+     · example <code>articles/article-base-2026-08-08-003110.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0e1116"></i><b>bg</b><u>#0e1116</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#e6edf3"></i><b>ink</b><u>#e6edf3</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0d1117;--panel:#161b22;--ink:#e6edf3;--mut:#9da7b3;--line:#30363d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 2</b> — used by <b>14</b> documents
+     · example <code>mti/crap-latency-instrumentation-2026-05-31-150527.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0d1117"></i><b>bg</b><u>#0d1117</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#e6edf3"></i><b>ink</b><u>#e6edf3</u></span><span class="sw"><i style="background:#9da7b3"></i><b>mut</b><u>#9da7b3</u></span><span class="sw"><i style="background:#30363d"></i><b>line</b><u>#30363d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#fafafa;--panel:#161b22;--ink:#1a1a1a;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 3</b> — used by <b>8</b> documents
+     · example <code>mti/action-registry-plan-2026-07-16-170832.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#fafafa"></i><b>bg</b><u>#fafafa</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#1a1a1a"></i><b>ink</b><u>#1a1a1a</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f1115;--panel:#171a21;--ink:#e6e9ef;--mut:#9aa3b2;--line:#262b36;--accent:#7aa2f7;--ok:#5fd38d;--warn:#f0b450;--bad:#f06a6a">
+  <div class="meta"><b>Theme 4</b> — used by <b>6</b> documents
+     · example <code>mti/coexistence-implementation-plan-2026-06-08-012303.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f1115"></i><b>bg</b><u>#0f1115</u></span><span class="sw"><i style="background:#171a21"></i><b>panel</b><u>#171a21</u></span><span class="sw"><i style="background:#e6e9ef"></i><b>ink</b><u>#e6e9ef</u></span><span class="sw"><i style="background:#9aa3b2"></i><b>mut</b><u>#9aa3b2</u></span><span class="sw"><i style="background:#262b36"></i><b>line</b><u>#262b36</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5fd38d"></i><b>ok</b><u>#5fd38d</u></span><span class="sw"><i style="background:#f0b450"></i><b>warn</b><u>#f0b450</u></span><span class="sw"><i style="background:#f06a6a"></i><b>bad</b><u>#f06a6a</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: accent</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0b0f19;--panel:#161b22;--ink:#cbd5e1;--mut:#9aa7b4;--line:#1e293b;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 5</b> — used by <b>6</b> documents
+     · example <code>mti/d5-edit-writer-plan-2026-07-25-134605.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0b0f19"></i><b>bg</b><u>#0b0f19</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#cbd5e1"></i><b>ink</b><u>#cbd5e1</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#1e293b"></i><b>line</b><u>#1e293b</u></span><span class="sw"><i style="background:#38bdf8"></i><b>accent</b><u>#38bdf8</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--accent:#7aa2f7;--ok:#34d399;--warn:#fbbf24;--bad:#f87171">
+  <div class="meta"><b>Theme 6</b> — used by <b>4</b> documents
+     · example <code>mti/atspi-gtk4-tracker-finding-2026-06-05-160000.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f172a"></i><b>bg</b><u>#0f172a</u></span><span class="sw"><i style="background:#1e293b"></i><b>panel</b><u>#1e293b</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:#334155"></i><b>line</b><u>#334155</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#34d399"></i><b>ok</b><u>#34d399</u></span><span class="sw"><i style="background:#fbbf24"></i><b>warn</b><u>#fbbf24</u></span><span class="sw"><i style="background:#f87171"></i><b>bad</b><u>#f87171</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: accent</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0e1116;--panel:#161b22;--ink:#222;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 7</b> — used by <b>4</b> documents
+     · example <code>mti/database-realignment-plan-2026-07-27-163746.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0e1116"></i><b>bg</b><u>#0e1116</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#222"></i><b>ink</b><u>#222</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: bg, panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f1216;--panel:#161b22;--ink:#d8dee6;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 8</b> — used by <b>3</b> documents
+     · example <code>mti/impl-plan-ai-optimization-2026-07-11-180300.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f1216"></i><b>bg</b><u>#0f1216</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#d8dee6"></i><b>ink</b><u>#d8dee6</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Theme 9</b> — used by <b>2</b> documents
+     · example <code>mti/build-spec-coverage-audit-2026-08-04-193922.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f172a"></i><b>bg</b><u>#0f172a</u></span><span class="sw"><i style="background:#1e293b"></i><b>panel</b><u>#1e293b</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:#334155"></i><b>line</b><u>#334155</u></span><span class="sw"><i style="background:#38bdf8"></i><b>accent</b><u>#38bdf8</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#f87171"></i><b>bad</b><u>#f87171</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: ok, warn</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#fafafa;--panel:#161b22;--ink:#222;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 10</b> — used by <b>2</b> documents
+     · example <code>mti/design-mti-daemon-lifecycle-2026-07-11-113500.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#fafafa"></i><b>bg</b><u>#fafafa</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#222"></i><b>ink</b><u>#222</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0b1319;--panel:#161b22;--ink:#cbd5e1;--mut:#9aa7b4;--line:#1e293b;--accent:#059669;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 11</b> — used by <b>2</b> documents
+     · example <code>mti/facial-recognition-db-roadmap-2026-07-23-174500.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0b1319"></i><b>bg</b><u>#0b1319</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#cbd5e1"></i><b>ink</b><u>#cbd5e1</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#1e293b"></i><b>line</b><u>#1e293b</u></span><span class="sw"><i style="background:#059669"></i><b>accent</b><u>#059669</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f0f16;--panel:#07070a;--ink:#e2e8f0;--mut:#94a3b8;--line:rgba(58, 58, 85, 0.5);--accent:#3b82f6;--ok:#5cd6a0;--warn:#f59e0b;--bad:#ef4444">
+  <div class="meta"><b>Theme 12</b> — used by <b>2</b> documents
+     · example <code>mti/perf-results-2026-05-30-141034.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f0f16"></i><b>bg</b><u>#0f0f16</u></span><span class="sw"><i style="background:#07070a"></i><b>panel</b><u>#07070a</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:rgba(58, 58, 85, 0.5)"></i><b>line</b><u>rgba(58, 58, 85, 0.5)</u></span><span class="sw"><i style="background:#3b82f6"></i><b>accent</b><u>#3b82f6</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#f59e0b"></i><b>warn</b><u>#f59e0b</u></span><span class="sw"><i style="background:#ef4444"></i><b>bad</b><u>#ef4444</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: ok</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0d1117;--panel:#161b22;--ink:#c9d1d9;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 13</b> — used by <b>2</b> documents
+     · example <code>mti/test-suite-report-2026-06-16-103305.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0d1117"></i><b>bg</b><u>#0d1117</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#c9d1d9"></i><b>ink</b><u>#c9d1d9</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#fafafa;--panel:#161b22;--ink:#1c1e21;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 14</b> — used by <b>1</b> document
+     · example <code>aur/memory-context-reduction-plan-2026-06-25-091619.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#fafafa"></i><b>bg</b><u>#fafafa</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#1c1e21"></i><b>ink</b><u>#1c1e21</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0e1116;--panel:#161b22;--ink:#e6edf3;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 15</b> — used by <b>1</b> document
+     · example <code>mti/build-lifecycle-plan-2026-08-05-114500.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0e1116"></i><b>bg</b><u>#0e1116</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#e6edf3"></i><b>ink</b><u>#e6edf3</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: bg, panel, ink, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#09090d;--panel:rgba(16, 16, 26, 0.85);--ink:#e2e8f0;--mut:#94a3b8;--line:rgba(58, 58, 85, 0.4);--accent:#3b82f6;--ok:#5cd6a0;--warn:#f59e0b;--bad:#ef4444">
+  <div class="meta"><b>Theme 16</b> — used by <b>1</b> document
+     · example <code>mti/concurrency-scaling-results.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#09090d"></i><b>bg</b><u>#09090d</u></span><span class="sw"><i style="background:rgba(16, 16, 26, 0.85)"></i><b>panel</b><u>rgba(16, 16, 26, 0.85)</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:rgba(58, 58, 85, 0.4)"></i><b>line</b><u>rgba(58, 58, 85, 0.4)</u></span><span class="sw"><i style="background:#3b82f6"></i><b>accent</b><u>#3b82f6</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#f59e0b"></i><b>warn</b><u>#f59e0b</u></span><span class="sw"><i style="background:#ef4444"></i><b>bad</b><u>#ef4444</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: ok</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0b0f19;--panel:#161b22;--ink:#cbd5e1;--mut:#9aa7b4;--line:#1e293b;--accent:#a855f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 17</b> — used by <b>1</b> document
+     · example <code>mti/fuse-modularization-plan-2026-07-23-174500.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0b0f19"></i><b>bg</b><u>#0b0f19</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#cbd5e1"></i><b>ink</b><u>#cbd5e1</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#1e293b"></i><b>line</b><u>#1e293b</u></span><span class="sw"><i style="background:#a855f7"></i><b>accent</b><u>#a855f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#090e1a;--panel:#161b22;--ink:#e2e8f0;--mut:#9aa7b4;--line:#2a323d;--accent:#7aa2f7;--ok:#5cd6a0;--warn:#ffb454;--bad:#ff6b6b">
+  <div class="meta"><b>Theme 18</b> — used by <b>1</b> document
+     · example <code>mti/hoist-error-handling-audit-2026-05-30-140037.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#090e1a"></i><b>bg</b><u>#090e1a</u></span><span class="sw"><i style="background:#161b22"></i><b>panel</b><u>#161b22</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#9aa7b4"></i><b>mut</b><u>#9aa7b4</u></span><span class="sw"><i style="background:#2a323d"></i><b>line</b><u>#2a323d</u></span><span class="sw"><i style="background:#7aa2f7"></i><b>accent</b><u>#7aa2f7</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ff6b6b"></i><b>bad</b><u>#ff6b6b</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: panel, mut, line, accent, ok, warn, bad</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0b0b10;--panel:rgba(18, 18, 29, 0.85);--ink:#e2e8f0;--mut:#94a3b8;--line:rgba(58, 58, 85, 0.4);--accent:#3b82f6;--ok:#5cd6a0;--warn:#ffb454;--bad:#ef4444">
+  <div class="meta"><b>Theme 19</b> — used by <b>1</b> document
+     · example <code>mti/scale-perf-results.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0b0b10"></i><b>bg</b><u>#0b0b10</u></span><span class="sw"><i style="background:rgba(18, 18, 29, 0.85)"></i><b>panel</b><u>rgba(18, 18, 29, 0.85)</u></span><span class="sw"><i style="background:#e2e8f0"></i><b>ink</b><u>#e2e8f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:rgba(58, 58, 85, 0.4)"></i><b>line</b><u>rgba(58, 58, 85, 0.4)</u></span><span class="sw"><i style="background:#3b82f6"></i><b>accent</b><u>#3b82f6</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#ef4444"></i><b>bad</b><u>#ef4444</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: ok, warn</div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#f0f0f0;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Theme 20</b> — used by <b>1</b> document
+     · example <code>mti/session-handoff-2026-06-10-215000.html</code></div>
+  <div class="swatches"><span class="sw"><i style="background:#0f172a"></i><b>bg</b><u>#0f172a</u></span><span class="sw"><i style="background:#1e293b"></i><b>panel</b><u>#1e293b</u></span><span class="sw"><i style="background:#f0f0f0"></i><b>ink</b><u>#f0f0f0</u></span><span class="sw"><i style="background:#94a3b8"></i><b>mut</b><u>#94a3b8</u></span><span class="sw"><i style="background:#334155"></i><b>line</b><u>#334155</u></span><span class="sw"><i style="background:#38bdf8"></i><b>accent</b><u>#38bdf8</u></span><span class="sw"><i style="background:#5cd6a0"></i><b>ok</b><u>#5cd6a0</u></span><span class="sw"><i style="background:#ffb454"></i><b>warn</b><u>#ffb454</u></span><span class="sw"><i style="background:#f87171"></i><b>bad</b><u>#f87171</u></span></div>
+  <div class="demo">
+    <h3>Serve-path latency findings</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode.</p>
+    <div class="g"><span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span><span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span><span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span><span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span></div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+  <div class="fill">Not defined by these documents, shown from the majority theme: ok, warn</div>
+</div></td></tr>
+</tbody></table>
+</div>
+<script src="/manifest-link.js"></script>
+<script src="/ann.js"></script>

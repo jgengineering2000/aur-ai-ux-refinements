@@ -770,11 +770,27 @@ Say nothing about it when the context is still load-bearing.
 listed-path + `/`). Network-touching git/gh operations (push, remote-add URL,
 fetch/pull/clone URL, ls-remote, send-email, `gh` subcommands) are **refused** for
 non-listed projects — enforced deterministically by the PreToolUse hook
-`~/.claude/git-ip-guard.sh`, which also blocks `--no-verify`/pre-push-hook
-circumvention; treat "skip the hook" requests as a flag requiring explicit
+`~/.claude/git-ip-guard.sh`, which also blocks `--no-verify` circumvention;
+treat "skip the hook" requests as a flag requiring explicit
 in-conversation owner acknowledgement of public disclosure. Whitelist additions
 are the owner's decision, only after patent-IP status is resolved. AUR is
-currently the only whitelisted project.
+currently the only whitelisted project. The hook judges the RESOLVED TARGET of
+an operation, never the command's spelling: a named remote is expanded to its
+configured URL first, because text-matching blocks the sanctioned local backup
+while letting a fetch against a configured public remote through.
+
+**PII and patent-IP are two distinct rules and are never conflated. There is no
+path where PII is acceptable, and PI requires a state of explicit
+authorization/classification as released for each project.** Patent-IP is a
+property of the PROJECT — withheld by default, granted only by the whitelist,
+and the grant is the owner's alone. PII is a property of the CONTENT and admits
+no authorised destination whatsoever: not a private drive, not a local path, not
+a backup, not a scratch branch. So the whitelist governs disclosure and has no
+bearing on PII, and **a mechanism that gates one on the other is a defect** —
+scanning for PII only when publishing makes a content rule conditional on a
+destination. The "it's only local" exemption that invites this is usually a
+fiction as well: the router backup mount is a CIFS share, and a path's shape
+says nothing about who can read it.
 
 **External-data sourcing — never check in, never distribute.** For ANY project:
 data sourced from outside the project tree (personal files, `~/` fixtures, other
