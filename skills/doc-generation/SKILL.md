@@ -105,3 +105,38 @@ Add `<link rel="stylesheet" href="/ann.css">` in `<head>`. Just before `</body>`
 <script src="/manifest-link.js"></script>
 <script src="/ann.js"></script>
 ```
+
+## Styling: link the theme, define no colours
+
+**A document never carries a palette.** Link `/doc.css` in `<head>` alongside
+`/ann.css`, and write no colour of your own — no hex literal, no named colour,
+no `:root` block. Everything comes from the shared sheet:
+
+```html
+<link rel="stylesheet" href="/ann.css">
+<link rel="stylesheet" href="/doc.css">
+```
+
+Available: `--bg --panel --panel2 --ink --mut --line --accent --ok --warn --bad
+--gen`. Use `var(--…)` for every colour you need, including inside a
+document-specific rule.
+
+This exists because the corpus reached **93 separate inline stylesheets across
+114 documents, drifted into 20 palettes, ten of them light** — each written by a
+session that had no shared sheet to reach for and so invented one. Nothing
+prevented it because nothing was shared: `ann.css` styles the annotation widgets
+and never governed a document's own appearance. The cost was not ugliness, it was
+that no two documents could be read side by side.
+
+- **Structure is yours; colour is not.** Layout, spacing and any
+  document-specific component still belong in the page. `doc.css` deliberately
+  contains no layout at all, because the same file is injected over documents
+  written before it existed — repainting those is safe, relaying them out would
+  break the ones that took the most care with their columns.
+- **Older documents are repaired automatically.** `manifest-link.js` appends
+  `doc.css` after the document's own `<style>`, so it wins the cascade. A rule
+  more specific than a bare element selector still wins locally — that is the
+  accepted limit of a non-aggressive sheet, not a bug to route around.
+- **Changing the theme means editing `server/doc.css` in AUR**, once. If a
+  document needs a colour the palette lacks, that is a request to extend the
+  palette, never a licence to hardcode one.
