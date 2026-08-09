@@ -24,30 +24,40 @@
  */
 
 :root {
-  --bg:      #0f172a;
-  --panel:   #1e293b;
-  --panel2:  #243244;
-  --ink:     #d8dee8;
-  --mut:     #94a3b8;
-  --line:    #334155;
-  --accent:  #38bdf8;
-  --ok:      #5cd6a0;
-  --warn:    #ffb454;
-  --bad:     #f87171;
-  --gen:     #c792ea;
+  --bg: #0f172a;
+  --panel: #19212e;
+  --panel2: #192534;
+  --ink: #becde4;
+  --mut: #626871;
+  --line: #334155;
+  --accent: #38bdf8;
+  --ok: #58c292;
+  --warn: #eeb468;
+  --bad: #f87171;
+  --gen: #c792ea;
 
   /* The same nine colours under every name the corpus invented for them.
    * Documents referencing var(--tx) or var(--cb) then land on this palette
    * without being rewritten — the cheapest possible migration for the ones
    * that used custom properties at all. */
-  --fg: var(--ink);   --tx: var(--ink);   --text: var(--ink);
-  --cb: var(--panel); --sf: var(--panel2); --card: var(--panel);
-  --mu: var(--mut);   --muted: var(--mut);
-  --bd: var(--line);  --border: var(--line);
-  --ac: var(--accent); --link: var(--accent);
-  --gr: var(--ok);    --good: var(--ok);
-  --am: var(--warn);  --amber: var(--warn);
-  --rd: var(--bad);   --err: var(--bad);
+  --fg: var(--ink);
+  --tx: var(--ink);
+  --text: var(--ink);
+  --cb: var(--panel);
+  --sf: var(--panel2);
+  --card: var(--panel);
+  --mu: var(--mut);
+  --muted: var(--mut);
+  --bd: var(--line);
+  --border: var(--line);
+  --ac: var(--accent);
+  --link: var(--accent);
+  --gr: var(--ok);
+  --good: var(--ok);
+  --am: var(--warn);
+  --amber: var(--warn);
+  --rd: var(--bad);
+  --err: var(--bad);
 }
 
 body {
@@ -56,47 +66,133 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-h1, h2, h3, h4, h5, h6 { color: var(--ink); }
-h4 { color: var(--mut); }
-h2 { border-top-color: var(--line); }
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--ink);
+}
 
-p, li, dd, dt, blockquote { color: var(--ink); }
-small, .muted, .mut, .wc, .meta, .note { color: var(--mut); }
+h4 {
+  color: var(--mut);
+}
 
-a       { color: var(--accent); }
-a:hover { color: var(--accent); }
+h2 {
+  border-top-color: var(--line);
+}
 
-code, kbd, samp, pre {
+p,
+li,
+dd,
+dt,
+blockquote {
+  color: var(--ink);
+}
+
+small,
+.muted,
+.mut,
+.wc,
+.meta,
+.note {
+  color: var(--mut);
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+code,
+kbd,
+samp,
+pre {
   background: var(--panel2);
   color: var(--ink);
   border-color: var(--line);
 }
-pre code { background: none; border: 0; }
+
+pre code {
+  background: none;
+  border: 0;
+}
 
 /* Tabular figures so columns of numbers line up without anyone reaching for a
  * fixed-pitch font to fake it. */
-td, th, .n, .num { font-variant-numeric: tabular-nums; }
+td,
+th,
+.n,
+.num {
+  font-variant-numeric: tabular-nums;
+}
 
-table   { border-color: var(--line); }
-th      { color: var(--mut); border-color: var(--line); background: var(--panel); }
-td      { color: var(--ink); border-color: var(--line); }
-tr:nth-child(even) td { background: color-mix(in srgb, var(--panel) 45%, transparent); }
+table {
+  border-color: var(--line);
+}
 
-hr { border-color: var(--line); }
+th {
+  color: var(--mut);
+  border-color: var(--line);
+  background: var(--panel);
+}
 
-.card, .panel, .box, .demo, .bar {
+td {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--panel) 45%, transparent);
+}
+
+hr {
+  border-color: var(--line);
+}
+
+.card,
+.panel,
+.box,
+.demo,
+.bar {
   background: var(--panel);
   border-color: var(--line);
   color: var(--ink);
 }
 
-.ok, .pass, .good   { color: var(--ok); }
-.warn, .amber       { color: var(--warn); }
-.bad, .fail, .err   { color: var(--bad); }
-.gen                { color: var(--gen); }
+.ok,
+.pass,
+.good {
+  color: var(--ok);
+}
 
-::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+.warn,
+.amber {
+  color: var(--warn);
+}
+
+.bad,
+.fail,
+.err {
+  color: var(--bad);
+}
+
+.gen {
+  color: var(--gen);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
 
 /* The annotation widgets are AUR's and keep their own sheet (ann.css); this
  * only stops them inheriting a document's stale colours. */
-.ann-badge { background: var(--panel2); color: var(--mut); border-color: var(--line); }
+.ann-badge {
+  background: var(--panel2);
+  color: var(--mut);
+  border-color: var(--line);
+}

@@ -812,8 +812,21 @@ body {
   color: var(--yl);
   border: 1px solid rgba(251, 191, 36, 0.25);
 }
+/* Read entries recede to the exact midpoint between body ink and muted text,
+ * so the distinction survives any palette change. It previously used a literal
+ * (#c2cad4) that tracked nothing, and when the ink was dimmed the two states
+ * landed within a few points of the same brightness and became indis-
+ * tinguishable — the read/unread signal disappeared without anything changing
+ * in this file.
+ *
+ * Two declarations, deliberately. The literal is the computed midpoint of the
+ * current palette and stands alone on an engine without color-mix(); where
+ * color-mix() is supported the second declaration overrides it and the colour
+ * follows --ink and --mut wherever they go. No @supports needed: an engine that
+ * cannot parse the second simply discards it. */
 .doc-row.read .doc-title {
-  color: #c2cad4;
+  color: #909aaa;
+  color: color-mix(in srgb, var(--ink) 50%, var(--mut));
 }
 .doc-date {
   font-family: 'JetBrains Mono', monospace;
