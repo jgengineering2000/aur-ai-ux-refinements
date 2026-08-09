@@ -1,0 +1,171 @@
+<meta charset="utf-8"><title>Ink ladder — Theme 9</title>
+<link rel="stylesheet" href="/ann.css">
+<style>
+body{margin:0;background:#14161a;color:#e6edf3;
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 24px 90px}
+.bar{position:sticky;top:0;z-index:100;background:#1b1e24;border-bottom:1px solid #2a323d;
+padding:11px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;row-gap:6px;
+margin:-28px -24px 26px;font-size:13px}
+h1{font-size:26px;margin:0 0 6px;letter-spacing:-.01em}
+.lede{color:#9aa7b4;margin:0 0 14px;max-width:74ch}
+.held{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 26px}
+.key{display:flex;align-items:center;gap:6px;background:#1b1e24;border:1px solid #2a323d;
+border-radius:5px;padding:3px 8px;font-size:11px;color:#9aa7b4}
+.key i{width:12px;height:12px;border-radius:3px;border:1px solid #2a323d;display:block}
+table.panels{width:100%;border-collapse:separate;border-spacing:0 18px}
+table.panels>tbody>tr>td{padding:0}
+.theme{background:var(--bg);color:var(--ink);border:1px solid #2a323d;border-radius:10px;
+padding:18px 20px}
+.meta{font-size:12px;color:var(--mut);margin-bottom:12px}
+.demo{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 18px}
+.demo h3{margin:0 0 8px;font-size:16px;color:var(--ink)}
+.demo p{margin:0 0 10px}
+.demo a{color:var(--accent)}
+.demo code{background:var(--bg);border:1px solid var(--line);border-radius:4px;
+padding:1px 6px;font-size:.9em}
+.g{display:grid;grid-template-columns:max-content max-content max-content;
+margin:12px 0;font-size:13px;width:max-content}
+.g>span{border:1px solid var(--line);padding:5px 14px;margin:-1px 0 0 -1px}
+.g .gh{color:var(--mut);font-weight:600}
+.g .n{text-align:right;font-variant-numeric:tabular-nums}
+.demo ul{margin:10px 0;padding-left:20px}
+.st{margin-top:10px}
+.st span{font-size:11px;font-weight:700;letter-spacing:.04em;margin-right:16px}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+</style>
+<div class="wrap">
+<div class="bar"><span>Theme 9 · 5 ink values · everything else held constant</span></div>
+<h1>Ink ladder — Theme 9</h1>
+<p class="lede">Only the ink changes between these panels, so any difference you see is
+the ink alone. A half step is half the distance from Theme 9's ink to your value
+(10, 10, 8 per channel), which makes the rungs evenly spaced rather than eyeballed.
+Headings are unique per panel this time, so an annotation lands unambiguously — in the
+comparison document all twenty shared one heading, which is why your comment could not
+be traced back to Theme 9.</p>
+<div class="held"><span class="key"><i style="background:#0f172a"></i>bg #0f172a</span><span class="key"><i style="background:#1e293b"></i>panel #1e293b</span><span class="key"><i style="background:#94a3b8"></i>mut #94a3b8</span><span class="key"><i style="background:#334155"></i>line #334155</span><span class="key"><i style="background:#38bdf8"></i>accent #38bdf8</span><span class="key"><i style="background:#5cd6a0"></i>ok #5cd6a0</span><span class="key"><i style="background:#ffb454"></i>warn #ffb454</span><span class="key"><i style="background:#f87171"></i>bad #f87171</span></div>
+<table class="panels"><tbody>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#e2e8f0;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Ink A · #e2e8f0</b> — Theme 9 as it stands — the reference</div>
+  <div class="demo">
+    <h3>Ink A — #e2e8f0</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode. Judge this paragraph rather than the
+       heading — a heading is large and bold enough to look right at almost any weight,
+       so it hides exactly the difference you are trying to see.</p>
+    <p>A second paragraph, because what tires the eye is a page of prose at this
+       contrast, not one line of it. Read both, then move to the next panel and read
+       both again; the comparison that matters is between panels, not within one.</p>
+    <div class="g">
+      <span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span>
+      <span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span>
+      <span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span>
+      <span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span>
+    </div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#dde3ec;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Ink B · #dde3ec</b> — Half step up — between the reference and your value</div>
+  <div class="demo">
+    <h3>Ink B — #dde3ec</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode. Judge this paragraph rather than the
+       heading — a heading is large and bold enough to look right at almost any weight,
+       so it hides exactly the difference you are trying to see.</p>
+    <p>A second paragraph, because what tires the eye is a page of prose at this
+       contrast, not one line of it. Read both, then move to the next panel and read
+       both again; the comparison that matters is between panels, not within one.</p>
+    <div class="g">
+      <span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span>
+      <span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span>
+      <span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span>
+      <span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span>
+    </div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#d8dee8;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Ink C · #d8dee8</b> — Your value</div>
+  <div class="demo">
+    <h3>Ink C — #d8dee8</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode. Judge this paragraph rather than the
+       heading — a heading is large and bold enough to look right at almost any weight,
+       so it hides exactly the difference you are trying to see.</p>
+    <p>A second paragraph, because what tires the eye is a page of prose at this
+       contrast, not one line of it. Read both, then move to the next panel and read
+       both again; the comparison that matters is between panels, not within one.</p>
+    <div class="g">
+      <span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span>
+      <span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span>
+      <span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span>
+      <span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span>
+    </div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#d3d9e4;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Ink D · #d3d9e4</b> — Half step down — as far below your value as B is above it</div>
+  <div class="demo">
+    <h3>Ink D — #d3d9e4</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode. Judge this paragraph rather than the
+       heading — a heading is large and bold enough to look right at almost any weight,
+       so it hides exactly the difference you are trying to see.</p>
+    <p>A second paragraph, because what tires the eye is a page of prose at this
+       contrast, not one line of it. Read both, then move to the next panel and read
+       both again; the comparison that matters is between panels, not within one.</p>
+    <div class="g">
+      <span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span>
+      <span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span>
+      <span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span>
+      <span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span>
+    </div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+</div></td></tr>
+<tr><td>
+<div class="theme" style="--bg:#0f172a;--panel:#1e293b;--ink:#d2dcec;--mut:#94a3b8;--line:#334155;--accent:#38bdf8;--ok:#5cd6a0;--warn:#ffb454;--bad:#f87171">
+  <div class="meta"><b>Ink E · #d2dcec</b> — Your brightness, blue-weighted — this addresses “too warm” specifically, where C addresses “too bright”</div>
+  <div class="demo">
+    <h3>Ink E — #d2dcec</h3>
+    <p>The cold path resolves through <code>get_fuse_records_in_dir()</code> before the
+       first byte is served, and the <a href="#">measured</a> cost is dominated by
+       directory enumeration rather than decode. Judge this paragraph rather than the
+       heading — a heading is large and bold enough to look right at almost any weight,
+       so it hides exactly the difference you are trying to see.</p>
+    <p>A second paragraph, because what tires the eye is a page of prose at this
+       contrast, not one line of it. Read both, then move to the next panel and read
+       both again; the comparison that matters is between panels, not within one.</p>
+    <div class="g">
+      <span class="gh">Stage</span><span class="gh n">Cold</span><span class="gh n">Warm</span>
+      <span>enumerate</span><span class="n">41.2 ms</span><span class="n">0.8 ms</span>
+      <span>decode</span><span class="n">7.9 ms</span><span class="n">7.9 ms</span>
+      <span>serve</span><span class="n">1.1 ms</span><span class="n">1.1 ms</span>
+    </div>
+    <ul><li>Enumeration dominates the cold path.</li>
+        <li>Decode is invariant, so caching it buys nothing.</li></ul>
+    <div class="st"><span class="ok">PASS</span><span class="warn">BAND BREACH</span><span class="bad">FAIL</span></div>
+  </div>
+</div></td></tr>
+</tbody></table>
+</div>
+<script src="/manifest-link.js"></script>
+<script src="/ann.js"></script>
