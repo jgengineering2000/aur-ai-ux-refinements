@@ -48,6 +48,16 @@ SHARED_ASSETS = {
     # commit time, on a machine that may not have the checkout at all.
     "commit-guard.py":  "tools/commit-guard.py",
     "hooks/":           "hooks/",
+    # Tools a SKILL tells the reader to run. Same argument as the hooks above,
+    # arrived at from the other side: a skill is consumed from inside whatever
+    # project the session is in, where `tools/` is THAT project's directory and
+    # an AUR checkout may not exist at all. commit-guard.py was registered here
+    # because a hook calls it, which left the skill-invoked tools unreachable
+    # from every project — scan-hazards.py, named by two skills as a pre-flight,
+    # had never been runnable from any of them.
+    "git-scope.py":     "tools/git-scope.py",
+    "git-adopt.py":     "tools/git-adopt.py",
+    "scan-hazards.py":  "tools/scan-hazards.py",
 }
 
 # The subset a project's aur/ directory links to. The rules files are consumed

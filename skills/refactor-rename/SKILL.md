@@ -13,11 +13,16 @@ Every item below was paid for once. None is hypothetical.
 
 ## Tooling — use it, do not re-derive it
 
+Paths are the shared root, `~/.local/aur/`, never `tools/` — you are reading
+this from inside some project, where `tools/` is THAT project's directory and an
+AUR checkout may not exist. The tools were addressed as `tools/…` here until
+2026-08-14, which made every command below fail wherever it was actually run.
+
 | Tool | Purpose |
 |---|---|
-| `tools/scan-hazards.py <roots>` | Pre-flight. NUL bytes, invalid UTF-8, CRLF in scripts, tracked absolute symlinks |
-| `tools/debrand.py` | Worked example of the full pattern: dry-run-by-default, exclusions, `git mv`, symlink repointing |
-| `tools/commit-guard.py <repo>` | Scans **added lines** for PII, personal-tree references, cross-project leakage |
+| `~/.local/aur/scan-hazards.py <roots>` | Pre-flight. NUL bytes, invalid UTF-8, CRLF in scripts, tracked absolute symlinks |
+| `~/.local/aur/commit-guard.py <repo>` | Scans **added lines** for PII, personal-tree references, cross-project leakage |
+| `tools/debrand.py` *(AUR checkout only)* | Worked example of the full pattern: dry-run-by-default, exclusions, `git mv`, symlink repointing |
 | `aurshare.py canonical <aur>` | Every distributable source exists and is tracked |
 | `aurshare.py verify` | Shared-root integrity + drift (a copy where a link belongs) |
 

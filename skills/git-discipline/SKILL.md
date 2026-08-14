@@ -12,20 +12,25 @@ result while reporting success.
 
 ## Tooling
 
+Paths are the shared root, `~/.local/aur/`, never `tools/` — you are reading
+this from inside some project, where `tools/` is THAT project's directory and an
+AUR checkout may not exist. The tools were addressed as `tools/…` here until
+2026-08-14, which made every command below fail wherever it was actually run.
+
 | Tool | Purpose |
 |---|---|
-| `tools/git-adopt.py <dir>` | Pre-flight before a **first** `git init` on a lived-in directory |
-| `tools/git-scope.py` | Commit exactly this unit of work; refuse if the index holds anything else |
-| `tools/commit-guard.py <repo>` | Scan **added lines** for PII, personal-tree paths, cross-project leakage |
-| `tools/scan-hazards.py <roots>` | Tracked absolute symlinks, NUL bytes, CRLF, invalid UTF-8 |
+| `~/.local/aur/git-adopt.py <dir>` | Pre-flight before a **first** `git init` on a lived-in directory |
+| `~/.local/aur/git-scope.py` | Commit exactly this unit of work; refuse if the index holds anything else |
+| `~/.local/aur/commit-guard.py <repo>` | Scan **added lines** for PII, personal-tree paths, cross-project leakage |
+| `~/.local/aur/scan-hazards.py <roots>` | Tracked absolute symlinks, NUL bytes, CRLF, invalid UTF-8 |
 
 ```
-python3 tools/git-adopt.py        <dir>           # only for a first `git init`
-python3 tools/git-scope.py begin  <repo>          # before touching anything
-python3 tools/git-scope.py status <repo>          # mine / theirs / ambiguous
+python3 ~/.local/aur/git-adopt.py        <dir>    # only for a first `git init`
+python3 ~/.local/aur/git-scope.py begin  <repo>   # before touching anything
+python3 ~/.local/aur/git-scope.py status <repo>   # mine / theirs / ambiguous
 git -C <repo> add -A -- <paths>                   # MUST precede the guard
-python3 tools/commit-guard.py     <repo>          # scans the STAGED set
-printf '%s\n' "$MSG" | python3 tools/git-scope.py commit <repo> -F -
+python3 ~/.local/aur/commit-guard.py     <repo>   # scans the STAGED set
+printf '%s\n' "$MSG" | python3 ~/.local/aur/git-scope.py commit <repo> -F -
 ```
 
 ---
