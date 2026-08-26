@@ -702,6 +702,18 @@ position that had something to say and did not say it.
   the durability signal (Priority 4). A row that cannot name its completion
   signal is P15's under-instrumented action — instrument it, never omit it. A row
   that is neither live nor changed is noise.
+- **The ask goes LAST, and nothing noisy runs after it.** Where a turn needs the
+  owner to *do* something — perform a gesture, make a choice, run a command — the
+  instruction is the final thing on their screen. Leading well inside the message
+  is not enough, because **the terminal is the medium and tool output shares it**:
+  a commit whose gate prints three hundred lines, a build, a test run, will scroll
+  the ask away as surely as padding will. So finish the noisy work *before* the
+  ask, never after, and never interleave an ask with an operation that prints.
+  The tell is that the owner acts late or not at all and says they never saw it —
+  which is indistinguishable, from their side, from never having been asked.
+  Measured twice in one session on 2026-08-25/26: a setup step armed and ready,
+  followed by a commit's full test-gate output, and the owner did not know a
+  window was waiting for them.
 - **What changed** — any turn that changed something says so from the user's
   side, by default in one line: **Before → After**. Expand to the full
   User-scenario ladder only where one line cannot carry it. Internals-only
