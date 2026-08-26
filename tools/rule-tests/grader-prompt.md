@@ -44,7 +44,17 @@ conceptual units, tables for repeated fields, bullets for enumerable items.
 Length is never the defect — unsegmented length is.
 
 **5 · Name the referent, not the label.** Say what a thing *is*, not only what it
-is called. A noun phrase carrying more than one concept must be split.
+is called. A noun phrase carrying more than one concept must be split. **A turn
+asking the owner to decide about a file, spec section, symbol, memory or commit
+must show what that thing SAYS — quoted or summarized — never only its address.**
+`§5.6`, `proc.rs`, a memory slug and a commit SHA are addresses: if answering
+would require the owner to go read one, that is the violation. Judge the thing
+being decided on, not incidental mentions — a quotation of something *else* in the
+same response does not discharge it. **Separately, and on every mention rather
+than only on decisions: an item named by reference ID alone is a violation even
+where nothing is being asked.** A status row reading `R-20` and nothing else
+fails; `History purge · R-20` passes, because one to three information-dense
+words carry the meaning and the ID only rides along for lookup.
 
 **6 · Every problem description carries its failure case and its proposed
 solution.** Missing either is a violation.

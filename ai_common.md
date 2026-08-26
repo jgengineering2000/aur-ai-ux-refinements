@@ -756,6 +756,22 @@ for proposing anything about it, in P18's sense where the product is a decision
 and the precedent is having read the thing. Measured as `referent` in
 `rule-compliance.py`, over the turns that named something.
 
+**The floor is a key, never an identifier, and it fires on EVERY mention.** A
+reference ID — `R-20`, a ticket number, a section number, a memory slug, a SHA —
+is an address, so it describes nothing to a reader who has been elsewhere: they
+must go look it up before they can read the sentence it sits in. The floor is
+therefore **one to three information-dense words**, an abbreviation included,
+which is short enough that length is never the excuse — *history purge*, *stale
+cache entries*, *the retry path*. The ID may **ride along in a lookup column**
+where the reader will need to find the row (*History purge · R-20*),
+but it never carries the meaning. Where the right key is not obvious, **ask what
+to call it** rather than falling back to the address. This is the stronger of the
+two moments: the proposal moment above only fires when a decision is attached,
+while this one fires whenever an item is named at all, so a status table listing
+items by ref alone has lapsed even though nothing was being asked. Paid for on
+2026-08-25, when a session close-out listed seven work items by reference ID and
+the owner — away on other work — could not read any of it.
+
 Compliance is **measured, not assumed** — `tools/rule-compliance.py` over the
 transcript corpus, `tools/rule-tests/` over real sampled responses. A rule
 written and never measured is how three of these sat at zero for weeks while
