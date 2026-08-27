@@ -17,31 +17,10 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 
-# A3 target candidates — kept in sync with simplebrowser-title.py CANDIDATES.
-BROWSER_CANDIDATES = [
-    Path("/usr/share/antigravity/resources/app/extensions/simple-browser/dist/extension.js"),
-    Path("/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
-    Path("/snap/code/current/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
-]
-
-# GUI askpass helpers (first present wins). Used so sudo can prompt even when
-# invoked from a non-tty (IDE task, agent, cron). On a tty, the helper still
-# pops a GUI dialog — slightly nicer than a terminal prompt, and consistent.
-ASKPASS_CANDIDATES = [
-    "/usr/libexec/seahorse/ssh-askpass",
-    "/usr/lib/seahorse/ssh-askpass",
-    "/usr/bin/ssh-askpass",
-    "/usr/lib/openssh/gnome-ssh-askpass",
-    "/usr/lib/openssh/ssh-askpass",
-    "/usr/libexec/openssh/ssh-askpass",
-]
-
-
-def find_askpass():
-    for p in ASKPASS_CANDIDATES:
-        if os.access(p, os.X_OK):
-            return p
-    return None
+# Target list and askpass ladder live in ONE place — docinfra — shared with
+# simplebrowser-title.py and both installer front ends.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from docinfra import SIMPLEBROWSER_CANDIDATES as BROWSER_CANDIDATES, find_askpass
 
 
 def run(script, *args, sudo=False, env=None):

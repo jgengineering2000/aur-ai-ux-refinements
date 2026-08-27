@@ -25,49 +25,70 @@ Usage:
     sudo python3 simplebrowser-title.py     # system (apt) install
 """
 
+import re
 import shutil
 import sys
 from pathlib import Path
 
-CANDIDATES = [
-    Path("/usr/share/antigravity/resources/app/extensions/simple-browser/dist/extension.js"),
-    Path("/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
-    Path("/snap/code/current/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
-]
+# Target list lives in ONE place — docinfra — shared with both installer front
+# ends and apply-all.py. This script must stay runnable standalone (including
+# under `sudo python3` from any cwd), hence the path insert.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from docinfra import SIMPLEBROWSER_CANDIDATES as CANDIDATES
 
-# The show() method pattern — identical across VS Code and forks
-OLD = (
-    "show(t,e){this._webviewPanel.webview.html=this.getHtml(t),"
-    "this._webviewPanel.reveal(e?.viewColumn,e?.preserveFocus)}"
+# The show() method, matched by its STRUCTURE rather than by a literal.
+#
+# The two parameter names are assigned by the minifier and are not stable: the
+# Antigravity build emits `show(t,e)` and the VS Code build `show(e,t)` — the
+# same source, renamed. A literal encoding one spelling reports "pattern not
+# found" on the other, which reads as "the extension changed its behaviour"
+# when nothing about the behaviour changed at all.
+#
+# So capture the names and reuse them in the replacement. Backreferences make
+# the match self-consistent: \1 must be the argument passed to getHtml() and
+# \2 the object whose viewColumn is read, so this cannot match a same-shaped
+# method that happens to use its parameters differently.
+SHOW_RE = re.compile(
+    r"show\((?P<url>[A-Za-z_$][\w$]*),(?P<opts>[A-Za-z_$][\w$]*)\)\{"
+    r"this\._webviewPanel\.webview\.html=this\.getHtml\((?P=url)\),"
+    r"this\._webviewPanel\.reveal\((?P=opts)\?\.viewColumn,(?P=opts)\?\.preserveFocus\)\}"
 )
 
-# Replaces static title with the filename portion of the URL
-NEW = (
-    "show(t,e){"
-    'const _p=t.split("/").pop().replace(/\\.[^.]+$/,"")||"Preview";'
-    "this._webviewPanel.title=_p;"
-    "this._webviewPanel.webview.html=this.getHtml(t),"
-    "this._webviewPanel.reveal(e?.viewColumn,e?.preserveFocus)}"
-)
+# Marker identifying an already-patched file. Independent of the minifier's
+# naming, because the local it introduces is ours.
+APPLIED_MARKER = "_webviewPanel.title=_p"
+
+
+def _replacement(m):
+    """Rebuild show() with a title derived from the URL, in the file's own names."""
+    url, opts = m.group("url"), m.group("opts")
+    return (
+        f"show({url},{opts}){{"
+        f'const _p={url}.split("/").pop().replace(/\\.[^.]+$/,"")||"Preview";'
+        f"this._webviewPanel.title=_p;"
+        f"this._webviewPanel.webview.html=this.getHtml({url}),"
+        f"this._webviewPanel.reveal({opts}?.viewColumn,{opts}?.preserveFocus)}}"
+    )
 
 
 def patch(path):
     src = path.read_text()
 
-    if "_webviewPanel.title=_p" in src:
+    if APPLIED_MARKER in src:
         print(f"  already patched")
         return False
 
-    if OLD not in src:
-        print(f"  ERROR: pattern not found — extension may have updated")
+    m = SHOW_RE.search(src)
+    if not m:
+        print(f"  ERROR: show() pattern not found — extension may have updated")
         print(f"         Check extension.js manually")
         return False
 
     backup = str(path) + ".bak"
     shutil.copy2(path, backup)
     print(f"  backup: {backup}")
-    path.write_text(src.replace(OLD, NEW, 1))
-    print(f"  patched OK")
+    path.write_text(src[:m.start()] + _replacement(m) + src[m.end():])
+    print(f"  patched OK (params {m.group('url')},{m.group('opts')})")
     return True
 
 
@@ -92,7 +113,8 @@ def main():
 
     any_changed = False
     for target in targets:
-        label = target.parts[2]  # 'antigravity' or 'code'
+        # IDE name for display: '/usr/share/<ide>/…' → parts[3]; '/snap/<ide>/…' → parts[2].
+        label = target.parts[2] if target.parts[1] == "snap" else target.parts[3]
         print(f"\n[{label}] {target}")
         any_changed |= patch(target)
 

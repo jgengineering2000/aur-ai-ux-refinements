@@ -1,5 +1,8 @@
-// Add to ~/.config/Antigravity/User/keybindings.json
-// (VS Code: ~/.config/Code/User/keybindings.json)
+// Add to the host IDE's keybindings.json:
+//   VS Code:     ~/.config/Code/User/keybindings.json
+//   Antigravity: ~/.config/Antigravity/User/keybindings.json
+// install.py writes this for whichever is present (docinfra.detect_ides), so
+// this file is the reference copy, not the thing you edit.
 //
 // Opens the document manifest in the IDE's Simple Browser.
 //

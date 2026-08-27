@@ -73,10 +73,15 @@ def ask_choice(prompt, choices, default=None):
 # ── Patch runner ──────────────────────────────────────────────────────────────
 
 def run_patch(script, *args, use_sudo=False):
-    cmd = (["sudo"] if use_sudo else []) + [sys.executable, str(HERE / "patches" / script)] + list(args)
-    label = " ".join(str(c) for c in cmd[1:])  # omit sudo/python prefix for display
+    cmd = [sys.executable, str(HERE / "patches" / script)] + list(args)
+    env = None
+    if use_sudo:
+        # Shared elevation policy (docinfra): sudo -A with a GUI askpass when
+        # one exists, so the same call works with or without a tty.
+        prefix, env = docinfra.sudo_argv()
+        cmd = prefix + cmd
     print(f"\n  Running: {Path(script).name} {' '.join(args)}")
-    subprocess.run(cmd)
+    subprocess.run(cmd, env=env)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -224,7 +229,7 @@ def main():
         print("    Ctrl+Shift+P → Developer: Restart Extension Host")
         print()
     if do_b:
-        server_path = project_dir / ".claude" / "server.py"
+        server_path = project_dir / "aur" / "server.py"
         print(f"  Start the doc server:")
         print(f"    python3 {server_path} &")
         print(f"  (or open the project in VS Code — task starts it automatically)")

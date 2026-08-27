@@ -6,6 +6,13 @@
 # new versioned subdir (e.g. anthropic.claude-code-2.1.162-linux-x64) whose
 # webview is pristine — PathChanged catches that and re-applies the patches.
 #
+# BOTH host IDEs are watched unconditionally, matching the two SEARCH_PATTERNS
+# in patches/claude-ui-layout.py. Not conditional on which is installed today:
+# a watch list derived at install time is a snapshot that goes stale the moment
+# the other IDE is added, and the failure is silent (patches simply stop being
+# re-applied there). A PathChanged= on an absent directory costs nothing —
+# systemd watches the nearest existing ancestor and fires when it appears.
+#
 # Known limitation: this re-patches the FILES, but the running webview won't
 # reflect it until the extension host reloads. After an update+reload the
 # margins may briefly return until the next reload; the service has by then
@@ -17,6 +24,7 @@ Description=Watch Claude Code extensions dir; re-apply UX patches on change
 
 [Path]
 PathChanged=%h/.antigravity/extensions
+PathChanged=%h/.vscode/extensions
 Unit=aur-reapply.service
 
 [Install]

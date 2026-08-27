@@ -297,7 +297,7 @@ aur/
 │   ├── manifest.html              document hub with prompt bar
 │   └── review-template.html       styled HTML review doc template
 ├── keybindings/
-│   └── antigravity.json           Alt+D binding example
+│   └── alt-d.json                 Alt+D binding example (either host IDE)
 ├── install.py                     CLI installer
 ├── install-gui.py                 GUI installer (tkinter)
 ├── docinfra.py                    shared doc-infra install logic (both installers)

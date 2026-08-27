@@ -8,8 +8,8 @@ re-run), create `.bak` backups before writing, and detect already-applied state.
 ## A1 — Chat Panel Layout
 
 **File:** `patches/claude-ui-layout.py`
-**Targets:** `~/.antigravity/extensions/anthropic.claude-code-*/webview/index.css`
-            `~/.vscode/extensions/anthropic.claude-code-*/webview/index.css`
+**Targets:** `~/.vscode/extensions/anthropic.claude-code-*/webview/index.css`
+            `~/.antigravity/extensions/anthropic.claude-code-*/webview/index.css`
 **Elevation:** Not required.
 
 ### Changes applied
@@ -36,8 +36,8 @@ pattern changed; inspect the new `index.css` and update `PATCHES` list.
 ## A2 — Processing Vocabulary
 
 **File:** `patches/claude-ui-vocabulary.py`
-**Targets:** `~/.antigravity/extensions/anthropic.claude-code-*/webview/index.js`
-            `~/.vscode/extensions/anthropic.claude-code-*/webview/index.js`
+**Targets:** `~/.vscode/extensions/anthropic.claude-code-*/webview/index.js`
+            `~/.antigravity/extensions/anthropic.claude-code-*/webview/index.js`
 **Elevation:** Not required.
 
 ### What it does
@@ -72,8 +72,8 @@ in the source. If found, reports "already patched" and skips.
 
 **File:** `patches/simplebrowser-title.py`
 **Targets (auto-detected):**
-- `/usr/share/antigravity/resources/app/extensions/simple-browser/dist/extension.js`
 - `/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js`
+- `/usr/share/antigravity/resources/app/extensions/simple-browser/dist/extension.js`
 - `/snap/code/current/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js`
 **Elevation:** Required if target is root-owned (system apt/dpkg install).
               Not required for user-local installs (AppImage, `~/.local/`).
@@ -89,16 +89,24 @@ The patch intercepts the `show()` method to extract the filename from the URL an
 
 ### Pattern matched
 
+Matched **structurally**, by regex, not by a literal — the two parameter names are
+assigned by the minifier and differ between builds of the same source (Antigravity
+emits `show(t,e)`, VS Code `show(e,t)`). A literal encoding one spelling reports
+"pattern not found" against the other, which reads as a behavioural change when
+nothing changed. The names are captured and reused in the replacement, and
+backreferences keep the match self-consistent — the first parameter must be the one
+passed to `getHtml()`, the second the one whose `viewColumn` is read.
+
 ```js
-// Before
-show(t,e){this._webviewPanel.webview.html=this.getHtml(t),
-  this._webviewPanel.reveal(e?.viewColumn,e?.preserveFocus)}
+// Before (params shown as p1,p2 — whatever the build named them)
+show(p1,p2){this._webviewPanel.webview.html=this.getHtml(p1),
+  this._webviewPanel.reveal(p2?.viewColumn,p2?.preserveFocus)}
 
 // After (condensed)
-show(t,e){const _p=t.split("/").pop().replace(/\.[^.]+$/,"")||"Preview";
+show(p1,p2){const _p=p1.split("/").pop().replace(/\.[^.]+$/,"")||"Preview";
   this._webviewPanel.title=_p;
-  this._webviewPanel.webview.html=this.getHtml(t),
-  this._webviewPanel.reveal(e?.viewColumn,e?.preserveFocus)}
+  this._webviewPanel.webview.html=this.getHtml(p1),
+  this._webviewPanel.reveal(p2?.viewColumn,p2?.preserveFocus)}
 ```
 
 Title displayed is the filename without extension (e.g. `audit-2026-05-15-132500`).
@@ -113,9 +121,14 @@ permissions error.
 
 ## Patch robustness across extension updates
 
-All three patches use **content patterns** (exact CSS value strings or JS code
-substrings) rather than byte offsets or hashed class names. This makes them moderately
-robust across minor Claude Code updates that don't change the targeted behaviour.
+All three patches use **content patterns** (exact CSS value strings, or for A3 a
+structural regex) rather than byte offsets or hashed class names. This makes them
+moderately robust across minor Claude Code updates that don't change the targeted
+behaviour.
+
+A1 and A2 still match literals, and that is a known limit: anything the minifier is
+free to rename can break them without the behaviour changing. A3 was moved to a
+structural match after exactly that happened — see its section.
 
 When an update breaks a patch:
 1. The patch reports which pattern it could not find.
@@ -135,7 +148,11 @@ never lost (they live here in AUR), but their *applied* state is gone until re-r
 
 `systemd/` wires this up automatically:
 
-- **`aur-reapply.path`** — a user path unit watching `~/.antigravity/extensions/`.
+- **`aur-reapply.path`** — a user path unit watching **both** `~/.vscode/extensions/`
+  and `~/.antigravity/extensions/`. Both unconditionally: a watch list derived from
+  which IDE is installed at install time is a snapshot that goes stale the moment the
+  other one is added, and the resulting failure is silent — patches simply stop being
+  re-applied there. Watching an absent directory costs nothing.
 - **`aur-reapply.service`** — a oneshot that runs `patches/apply-all.py --no-browser`
   when the watcher fires.
 - **`install-autoreapply.py`** — renders the service with this AUR checkout's absolute

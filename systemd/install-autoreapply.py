@@ -15,7 +15,8 @@ What it does:
   3. `systemctl --user daemon-reload`, then enables + starts the .path unit.
 
 The .service is a oneshot that runs `patches/apply-all.py --no-browser`; the
-.path unit triggers it on any change to ~/.antigravity/extensions/.
+.path unit triggers it on any change to ~/.antigravity/extensions/ or
+~/.vscode/extensions/ (both watched unconditionally — see aur-reapply.path).
 
 Idempotent: safe to re-run. Requires a user systemd instance (standard on a
 desktop login session). No sudo — everything is in the user's home.

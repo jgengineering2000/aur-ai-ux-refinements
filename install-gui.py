@@ -28,9 +28,16 @@ from docinfra import (
 HERE = docinfra.resource_root()
 
 def run_patch(script, args, use_sudo, log):
-    cmd = (["sudo"] if use_sudo else []) + [sys.executable, str(HERE / "patches" / script)] + args
+    cmd = [sys.executable, str(HERE / "patches" / script)] + args
+    env = None
+    if use_sudo:
+        # Shared elevation policy (docinfra): sudo -A with a GUI askpass. This
+        # front end has NO tty, so a bare `sudo` could never prompt at all —
+        # the askpass dialog is the only route to elevation here.
+        prefix, env = docinfra.sudo_argv()
+        cmd = prefix + cmd
     log(f"  Running {Path(script).name}...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     for line in result.stdout.strip().splitlines():
         log(f"    {line}")
     if result.returncode != 0:
@@ -258,7 +265,7 @@ class InstallerApp(tk.Tk):
         if self.do_b.get():
             log("")
             log("Start the doc server:")
-            log("  python3 <project>/.claude/server.py &")
+            log("  python3 <project>/aur/server.py &")
             log("Or open the project — the VS Code task starts it automatically.")
         self.after(0, lambda: self.install_btn.config(text="Done", state="disabled"))
 

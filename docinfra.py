@@ -35,11 +35,49 @@ def resource_root():
 
 # ── IDE detection ─────────────────────────────────────────────────────────────
 
+# The ONE authority for where a host IDE's Simple Browser lives. patches/
+# scripts and both installer front ends import this list; a fourth copy is how
+# the last "kept in sync" comment drifted.
 SIMPLEBROWSER_CANDIDATES = [
     Path("/usr/share/antigravity/resources/app/extensions/simple-browser/dist/extension.js"),
     Path("/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
     Path("/snap/code/current/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
 ]
+
+# ── Elevation ─────────────────────────────────────────────────────────────────
+# GUI askpass helpers (first present wins), so sudo can prompt even with no
+# tty — the GUI installer, an IDE task, an agent session. On a tty the helper
+# still pops a GUI dialog: slightly nicer than a terminal prompt, and the same
+# behaviour in every front end.
+
+ASKPASS_CANDIDATES = [
+    "/usr/libexec/seahorse/ssh-askpass",
+    "/usr/lib/seahorse/ssh-askpass",
+    "/usr/bin/ssh-askpass",
+    "/usr/lib/openssh/gnome-ssh-askpass",
+    "/usr/lib/openssh/ssh-askpass",
+    "/usr/libexec/openssh/ssh-askpass",
+]
+
+def find_askpass():
+    for p in ASKPASS_CANDIDATES:
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+def sudo_argv():
+    """(argv_prefix, env) for an elevated subprocess call.
+
+    Prefers `sudo -A` with a GUI askpass so the call works with or without a
+    tty; falls back to plain `sudo` (tty prompt) when no helper is installed.
+    `env` is a full environment dict when askpass is used, else None.
+    """
+    askpass = find_askpass()
+    if askpass:
+        env = dict(os.environ)
+        env["SUDO_ASKPASS"] = askpass
+        return ["sudo", "-A", "--"], env
+    return ["sudo", "--"], None
 
 def detect_ides():
     ides = []
