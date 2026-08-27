@@ -112,8 +112,27 @@ resolve_remote() {
 # Judge a subcommand by its target. Any candidate resolving offbox condemns
 # the command; a named remote resolving on-box clears it.
 targets_offbox() {
-  local sub="$1" tok u tail saw_target=0
-  tail=$(sed -E "s/.*[[:space:]]${sub}([[:space:]]|$)//" <<<"$cmd")
+  local sub="$1" seg
+  # ONE SEGMENT AT A TIME. The tail used to be cut out of the whole command line
+  # with a greedy match, which had two consequences and the second is the
+  # serious one. Shell text belonging to a LATER command was scanned as part of
+  # this verb's target list, so a `sed` expression containing a colon read as an
+  # scp-style host:path and denied the command. And only the LAST occurrence of
+  # a verb was judged at all: `push <network>; push <local>` examined the local
+  # one, cleared, and published -- the guard's whole purpose defeated by a
+  # semicolon. Every segment that invokes the verb is now judged on its own, and
+  # any one of them leaving the machine condemns the command.
+  while IFS= read -r seg; do
+    grep -qE "(^|[[:space:]])${sub}([[:space:]]|$)" <<<"$seg" || continue
+    segment_offbox "$sub" "$seg" && return 0
+  done < <(sed -E 's/(\&\&|\|\||;|\|)/\n/g' <<<"$cmd")
+  return 1
+}
+
+# 0 = this one invocation reaches off the machine.
+segment_offbox() {
+  local sub="$1" seg="$2" tok u tail saw_target=0
+  tail=$(sed -E "s/.*[[:space:]]${sub}([[:space:]]|$)//" <<<"$seg")
   # EVERY candidate is examined before clearing, never just the first. A
   # `clone . <somewhere>` names a local source and a destination that may not
   # be local, so returning on the first on-box token would clear a command by

@@ -58,6 +58,10 @@ expect allow "push after a read on the backup"    "git -C $BACKUP rev-list --all
 expect allow "file:// destination"                "git push file://$BACKUP"
 expect allow "no git verb at all"                 'ls -la'
 expect allow "local-only git verbs"               'git status --short; git commit -m x'
+# Shell text AFTER the verb is not part of its target list. A sed expression
+# containing a colon was read as an scp-style host:path and denied the command.
+expect allow "push then a pipe"                   "git push --mirror localbak | tee $TMP/log"
+expect allow "push then sed with a colon"         "git push --mirror localbak; sed -E 's/:[0-9]+ / /' $TMP/log"
 
 echo "── must DENY: anything that leaves it ──"
 expect deny  "https push"                         'git push https://example.com/x/y.git'
@@ -75,6 +79,11 @@ expect deny  "bare push, no resolvable upstream"  'git push'
 # network destination — the reason every candidate is examined before clearing,
 # rather than the first one winning.
 expect deny  "local source, network destination"  'git clone . https://example.com/x/y.git'
+# Only the LAST occurrence of a verb was ever judged, because the tail was cut
+# with a greedy match. A network push hidden ahead of a local one went entirely
+# unexamined -- the guard's whole purpose, defeated by a semicolon.
+expect deny  "network push before a local one"    'git push https://example.com/x/y.git; git push --mirror localbak'
+expect deny  "network push before a local clone"  'git clone https://example.com/x/y.git; git clone . /tmp/ok.git'
 
 echo
 if [ "$FAILURES" -eq 0 ]; then
