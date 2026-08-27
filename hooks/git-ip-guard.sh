@@ -83,26 +83,59 @@ is_offbox() {
   esac
 }
 
+# A token that names a place on this filesystem, as opposed to one that might
+# be a remote's NAME. The distinction matters: `origin` is a bare word and could
+# resolve to anything, so it must be looked up; `/mnt/router-usb/...` is a path
+# and needs no lookup to be judged.
+is_local_path() {
+  case "$1" in
+    /*|./*|../*|~/*|file://*) return 0 ;;
+    *) [ -e "$1" ] && return 0 || return 1 ;;
+  esac
+}
+
 # Named remote -> configured URL. Failure to resolve is NOT permission: an
 # unknown name is judged offbox, because unknown provenance is not a reason
 # to allow.
+#
+# Tried in the -C directory first, then the hook's cwd. `dir` is taken from the
+# FIRST `git -C` anywhere in the command line, so in a compound command it can
+# belong to a different invocation entirely — a read against the backup followed
+# by a push to it resolved `router` inside the bare backup repo, found no such
+# remote, and failed closed. Falling back to cwd fixes that without loosening
+# anything: a name that resolves to a network URL still condemns.
 resolve_remote() {
-  git -C "$dir" remote get-url "$1" 2>/dev/null
+  git -C "$dir" remote get-url "$1" 2>/dev/null \
+    || { [ -n "$cwd" ] && git -C "$cwd" remote get-url "$1" 2>/dev/null; }
 }
 
 # Judge a subcommand by its target. Any candidate resolving offbox condemns
 # the command; a named remote resolving on-box clears it.
 targets_offbox() {
-  local sub="$1" tok u tail
+  local sub="$1" tok u tail saw_target=0
   tail=$(sed -E "s/.*[[:space:]]${sub}([[:space:]]|$)//" <<<"$cmd")
+  # EVERY candidate is examined before clearing, never just the first. A
+  # `clone . <somewhere>` names a local source and a destination that may not
+  # be local, so returning on the first on-box token would clear a command by
+  # its own working directory.
   for tok in $tail; do
     case "$tok" in -*|'|'*|';'*|'&'*) continue ;; esac
     is_offbox "$tok" && return 0
+    if is_local_path "$tok"; then
+      saw_target=1
+      continue
+    fi
     if u=$(resolve_remote "$tok") && [ -n "$u" ]; then
       is_offbox "$u" && return 0
-      return 1
+      saw_target=1
     fi
   done
+  # A concrete target was named and nothing about it leaves this machine. This
+  # arm was missing, so a plainly local path fell past the loop into the
+  # fail-closed fallback below — which exists for "no target named at all" and
+  # was condemning "target named, and it was local". That blocked the sanctioned
+  # backup this guard's own comments say it exists to permit.
+  [ "$saw_target" -eq 1 ] && return 1
   # No target named (`git push`, `git fetch`): fall back to the branch's
   # configured upstream remote, else origin.
   local br def
