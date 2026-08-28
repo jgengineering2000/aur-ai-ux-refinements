@@ -56,6 +56,25 @@ else
          "~/develop/aur/tools — content was NOT scanned." >&2
 fi
 
+# ── 1b · commit ids that a history rewrite retired ──────────────────────────
+# Same shape as stage 1, same reason it sits before stage 2: a dead id in an
+# added line is a reference nobody can follow, and after a purge the same
+# fact ends up cited by two ids that look unrelated. Added lines only, so the
+# legacy tail (translated once, in bulk) never re-fires here. A repository
+# with no map under tools/history/ has nothing to check and pays nothing.
+ALIAS=""
+for c in "$HOME/.local/aur/commit-alias.py" \
+         "$HOME/develop/aur/tools/commit-alias.py"; do
+    [ -r "$c" ] && { ALIAS="$c"; break; }
+done
+if [ -n "$ALIAS" ] && ls "$repo"/tools/history/*.commit-map >/dev/null 2>&1; then
+    if ! python3 "$ALIAS" stale "$repo" --staged; then
+        echo "[pre-commit] DEAD COMMIT IDS in added lines — commit blocked;" \
+             "each line above names the live id to cite instead." >&2
+        exit 1
+    fi
+fi
+
 # ── 2 · project-specific gate ───────────────────────────────────────────────
 LOCAL="$repo/scripts/git-hooks/pre-commit"
 if [ -x "$LOCAL" ]; then

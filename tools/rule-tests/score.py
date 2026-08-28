@@ -8,7 +8,7 @@ The delegate never sees the key — it is handed grader-prompt.md and the case
 text only. This scores what came back.
 
 The key is **adjudicated, never invented**. Synthetic cases were deleted in
-1e643d8 because they are written by the same mind being tested, so a case earns
+5babb52 because they are written by the same mind being tested, so a case earns
 `must_flag` / `must_not_flag` only once the owner has ruled on a real sampled
 response. Until then it is UNKEYED: reported so the verdict can be read and
 argued with, but counted as neither a pass nor a failure. A harness that scored

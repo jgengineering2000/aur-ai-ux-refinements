@@ -23,6 +23,7 @@ AUR checkout may not exist. The tools were addressed as `tools/…` here until
 | `~/.local/aur/git-scope.py` | Commit exactly this unit of work; refuse if the index holds anything else |
 | `~/.local/aur/commit-guard.py <repo>` | Scan **added lines** for PII, personal-tree paths, cross-project leakage |
 | `~/.local/aur/scan-hazards.py <roots>` | Tracked absolute symlinks, NUL bytes, CRLF, invalid UTF-8 |
+| `~/.local/aur/commit-alias.py resolve <id>` | A commit id across a history rewrite, either direction |
 
 ```
 python3 ~/.local/aur/git-adopt.py        <dir>    # only for a first `git init`
@@ -140,6 +141,33 @@ deliberate to everyone who reads it later.
   pass. When authorized, say so in the commit message and state what was checked
   instead.
 - **A gate that neither ran nor was skipped is not a pass.** Report it.
+
+## 8a · A history rewrite retires every id outside the commit messages
+
+`git filter-repo` translates the ids it finds in commit MESSAGES through its
+commit-map and touches nothing else — file content, session transcripts,
+worktree names, memories all keep the OLD id. After the 2026-08-26 purge one
+commit was cited as `323e017` by its own doc comment and `0db13bf` by its
+commit body, and they read as two commits.
+
+- **The map is the authority and it is tracked** — `tools/history/*.commit-map`
+  in each project, the filter-repo format verbatim. `.git/filter-repo/` is
+  lost by the first clone. A second rewrite is a second file, chained by the
+  tool, never a second mechanism.
+- **Old → live:** `commit-alias.py resolve <id>`. **Live → old:** `git show`
+  prints a `formerly <old>` note (`commit-alias.py notes` attaches them;
+  `git push router refs/notes/commits` carries them to the backup — notes
+  are a ref and travel only when named).
+- **Unprompted:** the PreToolUse hook `commit-alias-guard.sh` injects the
+  translation whenever a command names a dead id. A cold "not a valid object
+  name" on a 7–40 hex token therefore means the id is from outside every map,
+  not from before a rewrite.
+- **Never in new content:** the universal pre-commit refuses a dead id in an
+  added line (`commit-alias.py stale --staged`); `stale [ref]` audits a whole
+  tree and `translate` rewrites the worktree — run once, in bulk, after a
+  rewrite.
+- **Do not rewrite messages to carry the old ids.** That is a third
+  generation of ids the transcripts also do not know.
 
 ## 9 · Network operations
 
