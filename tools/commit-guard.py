@@ -159,7 +159,13 @@ def main():
         return 2
 
     repo = str(Path(a.repo).expanduser().resolve())
-    if not (Path(repo) / ".git").is_dir():
+    # Ask git, not the filesystem: a linked worktree's .git is a FILE, and the
+    # is_dir() test that stood here refused every worktree as "not a repo" —
+    # exit 2, which the pre-commit hook reads as nothing-staged and waves
+    # through. A guard that cannot run must refuse loudly, not quietly pass.
+    probe = subprocess.run(["git", "-C", repo, "rev-parse", "--is-inside-work-tree"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
         print(f"commit-guard: not a git repo: {repo}", file=sys.stderr)
         return 2
 
