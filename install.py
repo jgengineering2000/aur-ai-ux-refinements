@@ -8,8 +8,12 @@ Interactive installer for all Claude Code UX improvements.
 
 Usage:
     python3 install.py
+
+Exit status: 0 when everything selected was applied; 1 when any patch script
+failed (its output names the reason) — never a "Done" banner over a failure.
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -73,6 +77,7 @@ def ask_choice(prompt, choices, default=None):
 # ── Patch runner ──────────────────────────────────────────────────────────────
 
 def run_patch(script, *args, use_sudo=False):
+    """Run one patch script; return its exit status (0 = success)."""
     cmd = [sys.executable, str(HERE / "patches" / script)] + list(args)
     env = None
     if use_sudo:
@@ -81,11 +86,18 @@ def run_patch(script, *args, use_sudo=False):
         prefix, env = docinfra.sudo_argv()
         cmd = prefix + cmd
     print(f"\n  Running: {Path(script).name} {' '.join(args)}")
-    subprocess.run(cmd, env=env)
+    rc = subprocess.run(cmd, env=env).returncode
+    if rc:
+        print(f"  FAILED: {Path(script).name} exited {rc}")
+    return rc
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # The accepted argument set, in one place: nothing but --help. Everything
+    # else is asked interactively; a stray token is refused, not ignored.
+    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
+
     print()
     print("  Claude Code UX Installer")
     print("  " + "=" * 24)
@@ -198,17 +210,21 @@ def main():
         sys.exit(0)
 
     # ── Execute ───────────────────────────────────────────────────────────────
+    failures = []
     if do_a:
         section("Applying IDE Patches")
-        if do_a1:
-            run_patch("claude-ui-layout.py")
-        if do_a2:
-            run_patch("claude-ui-vocabulary.py", vocab_word)
-        if do_a3:
-            run_patch("simplebrowser-title.py", use_sudo=sb_needs_sudo)
+        if do_a1 and run_patch("claude-ui-layout.py"):
+            failures.append("A1 chat panel layout")
+        if do_a2 and run_patch("claude-ui-vocabulary.py", vocab_word):
+            failures.append("A2 processing vocabulary")
+        if do_a3 and run_patch("simplebrowser-title.py", use_sudo=sb_needs_sudo):
+            failures.append("A3 Simple Browser title")
         if do_a4:
             print("\n  A4  Installing auto-reapply watcher...")
-            subprocess.run([sys.executable, str(HERE / "systemd" / "install-autoreapply.py")])
+            rc = subprocess.run([sys.executable, str(HERE / "systemd" / "install-autoreapply.py")]).returncode
+            if rc:
+                print(f"  FAILED: install-autoreapply.py exited {rc}")
+                failures.append("A4 auto-reapply watcher")
 
     if do_b:
         section("Installing Review Infrastructure")
@@ -222,6 +238,16 @@ def main():
                 install_keybinding(ide, port, log)
 
     # ── Done ──────────────────────────────────────────────────────────────────
+    if failures:
+        section("FAILED")
+        print()
+        for f in failures:
+            print(f"  ✗ {f}")
+        print("\n  See the output above for the reason. Fix, then re-run — every")
+        print("  step is idempotent, so what already succeeded is skipped.")
+        print()
+        sys.exit(1)
+
     section("Done")
     print()
     if do_a and any([do_a1, do_a2, do_a3, do_a4]):

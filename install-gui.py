@@ -6,6 +6,7 @@ Claude Code UX Installer — GUI
 Clickable installer for all Claude Code UX improvements.
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -43,6 +44,8 @@ def run_patch(script, args, use_sudo, log):
     if result.returncode != 0:
         for line in result.stderr.strip().splitlines():
             log(f"    ERROR: {line}")
+        log(f"    FAILED: {Path(script).name} exited {result.returncode}")
+    return result.returncode
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 
@@ -226,20 +229,24 @@ class InstallerApp(tk.Tk):
     def _do_install(self):
         log = self._log
         need_restart = False
+        failures = []
 
         if self.do_a1.get() or self.do_a2.get() or self.do_a3.get():
             log("── IDE Patches ───────────────────────────────────────")
             if self.do_a1.get():
-                run_patch("claude-ui-layout.py", [], False, log)
+                if run_patch("claude-ui-layout.py", [], False, log):
+                    failures.append("A1 chat panel layout")
                 need_restart = True
             if self.do_a2.get():
                 word = self.vocab_choice.get()
                 if word == "__custom__":
                     word = self.custom_entry.get().strip() or "Working"
-                run_patch("claude-ui-vocabulary.py", [word], False, log)
+                if run_patch("claude-ui-vocabulary.py", [word], False, log):
+                    failures.append("A2 processing vocabulary")
                 need_restart = True
             if self.do_a3.get():
-                run_patch("simplebrowser-title.py", [], self.sb_needs_sudo, log)
+                if run_patch("simplebrowser-title.py", [], self.sb_needs_sudo, log):
+                    failures.append("A3 Simple Browser title")
                 need_restart = True
 
         if self.do_b.get():
@@ -258,6 +265,15 @@ class InstallerApp(tk.Tk):
                 for ide in self.ides:
                     install_keybinding(ide, port, log)
 
+        if failures:
+            log("\n── FAILED ────────────────────────────────────────────")
+            for f in failures:
+                log(f"  ✗ {f}")
+            log("See the output above for the reason. Fix, then run again —")
+            log("every step is idempotent, so what already succeeded is skipped.")
+            self.after(0, lambda: self.install_btn.config(text="Failed — run again", state="normal"))
+            return
+
         log("\n── Done ──────────────────────────────────────────────")
         if need_restart:
             log("Restart the extension host to activate IDE patches:")
@@ -271,5 +287,8 @@ class InstallerApp(tk.Tk):
 
 
 if __name__ == "__main__":
+    # The accepted argument set, in one place: nothing but --help. A GUI
+    # launched with a stray token refuses before opening a window.
+    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
     app = InstallerApp()
     app.mainloop()

@@ -8,13 +8,19 @@ Reduces the excessive left/right margins in the Claude Code chat panel,
 moves the timeline dot closer to the left edge, aligns the vertical line
 with the dot, and uses an overlay scrollbar so it doesn't steal content width.
 
-Targets: ~/.antigravity/extensions/anthropic.claude-code-*/webview/index.css
-         (or the equivalent path for standard VS Code)
+Targets: ~/.vscode/extensions/anthropic.claude-code-*/webview/index.css
+         ~/.antigravity/extensions/anthropic.claude-code-*/webview/index.css
+         (whichever exist; both are patched when both are present)
 
 No sudo required — the extension lives in the user's home directory.
 Safe to re-run: detects already-patched files.
+
+Exit status: 0 when every target is patched or already patched; 1 when no
+target exists or any rule was NOT FOUND (the extension changed shape) — so a
+caller, human or systemd, can tell "done" from "silently did nothing".
 """
 
+import argparse
 import glob
 import shutil
 import sys
@@ -71,18 +77,23 @@ def find_css_files():
 
 
 def patch_file(path):
+    """Apply every rule; return (changed, already, missing) message lists.
+
+    `missing` is the failure signal: a rule whose before AND after values are
+    both absent means the extension changed shape and this patch no longer
+    knows where to land.
+    """
     src = Path(path).read_text()
-    changed = []
-    skipped = []
+    changed, already, missing = [], [], []
 
     for old, new, label in PATCHES:
         if new in src:
-            skipped.append(f"  already applied: {label}")
+            already.append(f"  already applied: {label}")
         elif old in src:
             src = src.replace(old, new, 1)
             changed.append(f"  patched: {label}")
         else:
-            skipped.append(f"  NOT FOUND (extension updated?): {label}")
+            missing.append(f"  NOT FOUND (extension updated?): {label}")
 
     if changed:
         backup = path + ".bak"
@@ -90,27 +101,35 @@ def patch_file(path):
         print(f"Backup: {backup}")
         Path(path).write_text(src)
 
-    return changed, skipped
+    return changed, already, missing
 
 
 def main():
+    # The accepted argument set, in one place: nothing but --help. An
+    # unrecognised token prints usage and exits 2 before any file is touched.
+    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
+
     files = find_css_files()
     if not files:
         print("ERROR: Claude Code extension CSS not found.")
         print("Searched:", SEARCH_PATTERNS)
         sys.exit(1)
 
+    failed = 0
     for f in files:
         print(f"\nPatching: {f}")
-        changed, skipped = patch_file(f)
-        for msg in changed:
+        changed, already, missing = patch_file(f)
+        for msg in changed + already + missing:
             print(msg)
-        for msg in skipped:
-            print(msg)
+        if missing:
+            failed += 1
 
-    if any(files):
-        print("\nDone — restart the extension host:")
-        print("  Ctrl+Shift+P → Developer: Restart Extension Host")
+    print("\nDone — restart the extension host:")
+    print("  Ctrl+Shift+P → Developer: Restart Extension Host")
+    if failed:
+        print(f"\nERROR: {failed} of {len(files)} file(s) had rules that were NOT FOUND — "
+              "update PATCHES for the new extension layout.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

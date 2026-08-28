@@ -130,8 +130,16 @@ A1 and A2 still match literals, and that is a known limit: anything the minifier
 free to rename can break them without the behaviour changing. A3 was moved to a
 structural match after exactly that happened — see its section.
 
+**Exit status is the contract.** Every patch script exits 0 only when each
+target is patched or already patched, and 1 when a target is missing, unwritable,
+or no longer matches — and `apply-all.py`, both installers and therefore the
+systemd oneshot propagate that. So `systemctl --user status aur-reapply.service`
+reading `success` means the patches are on disk, not merely that a script ran.
+Every entry point also refuses an unrecognised argument with usage and exit 2
+before touching anything, and accepts `--help`.
+
 When an update breaks a patch:
-1. The patch reports which pattern it could not find.
+1. The patch reports which pattern it could not find, and exits 1.
 2. Examine the new extension file and identify the equivalent CSS rule or JS function.
 3. Update the pattern constants in the patch script (`PATCHES` list for A1,
    `ANCHOR`/`OLD` constants for A2/A3).

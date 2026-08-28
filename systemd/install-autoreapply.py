@@ -26,6 +26,7 @@ Usage:
     python3 install-autoreapply.py --uninstall
 """
 
+import argparse
 import subprocess
 import sys
 from pathlib import Path
@@ -82,11 +83,18 @@ def install():
 
 
 def main():
+    # The accepted argument set, in one place: --uninstall and --help. A typo
+    # is refused with usage, never treated as "install".
+    ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
+    ap.add_argument("--uninstall", action="store_true",
+                    help="disable and remove the units instead of installing them")
+    args = ap.parse_args()
+
     if not AUR_DIR.joinpath("patches", "apply-all.py").exists():
         print(f"ERROR: {AUR_DIR}/patches/apply-all.py not found — run from the "
               "AUR checkout's systemd/ dir.")
         sys.exit(1)
-    if "--uninstall" in sys.argv:
+    if args.uninstall:
         uninstall()
     else:
         install()

@@ -23,8 +23,12 @@ own those files as root, so sudo is needed there. User-local installs
 Usage:
     python3 simplebrowser-title.py          # user-local install
     sudo python3 simplebrowser-title.py     # system (apt) install
+
+Exit status: 0 when every target is patched or already patched; 1 when no
+target exists, one is not writable, or the show() shape was not found.
 """
 
+import argparse
 import re
 import shutil
 import sys
@@ -72,27 +76,31 @@ def _replacement(m):
 
 
 def patch(path):
+    """Return 'patched', 'already', or 'error' — three outcomes, never two."""
     src = path.read_text()
 
     if APPLIED_MARKER in src:
         print(f"  already patched")
-        return False
+        return "already"
 
     m = SHOW_RE.search(src)
     if not m:
         print(f"  ERROR: show() pattern not found — extension may have updated")
         print(f"         Check extension.js manually")
-        return False
+        return "error"
 
     backup = str(path) + ".bak"
     shutil.copy2(path, backup)
     print(f"  backup: {backup}")
     path.write_text(src[:m.start()] + _replacement(m) + src[m.end():])
     print(f"  patched OK (params {m.group('url')},{m.group('opts')})")
-    return True
+    return "patched"
 
 
 def main():
+    # The accepted argument set, in one place: nothing but --help.
+    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
+
     targets = [p for p in CANDIDATES if p.exists()]
 
     if not targets:
@@ -111,16 +119,20 @@ def main():
             print(f"  {p}")
         sys.exit(1)
 
-    any_changed = False
+    outcomes = []
     for target in targets:
         # IDE name for display: '/usr/share/<ide>/…' → parts[3]; '/snap/<ide>/…' → parts[2].
         label = target.parts[2] if target.parts[1] == "snap" else target.parts[3]
         print(f"\n[{label}] {target}")
-        any_changed |= patch(target)
+        outcomes.append(patch(target))
 
-    if any_changed:
+    if "patched" in outcomes:
         print("\nRestart the extension host (no full IDE restart needed):")
         print("  Ctrl+Shift+P → Developer: Restart Extension Host")
+    failed = outcomes.count("error")
+    if failed:
+        print(f"\nERROR: {failed} of {len(targets)} target(s) could not be patched.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
