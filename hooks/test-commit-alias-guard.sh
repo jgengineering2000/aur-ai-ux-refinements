@@ -46,6 +46,20 @@ run() {  # run <label> <command> <expect: context|silent>
 }
 
 run "dead id, short form"   "git show ${OLD:0:7} -- README"      context
+# The shell's cwd is not the command's: the session that first exercised the
+# guard ran `cd <repo> && git show <dead>` from ANOTHER repository and got
+# silence, which read as the hook not firing.
+OTHER="$TMP/other"; git init -q "$OTHER"
+run_from() {  # run_from <label> <cwd> <command> <expect>
+    local label=$1 cwd=$2 cmd=$3 expect=$4 out
+    out=$(jq -cn --arg c "$cmd" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' | bash "$GUARD")
+    if [ "$expect" = context ] && printf '%s' "$out" | grep -q "${LIVE:0:7}"; then echo "ok    $label"
+    elif [ "$expect" = silent ] && [ -z "$out" ]; then echo "ok    $label"
+    else echo "FAIL  $label: got: $out"; FAILURES=$((FAILURES+1)); fi
+}
+run_from "cd into the repo, from elsewhere" "$OTHER" "cd $REPO && git show ${OLD:0:7}" context
+run_from "git -C the repo, from elsewhere"  "$OTHER" "git -C $REPO log ${OLD:0:7}"  context
+run_from "unrelated repo, no cd"            "$OTHER" "git show ${OLD:0:7}"          silent
 run "dead id, full form"    "git log $OLD"                       context
 run "live id"               "git show ${LIVE:0:7}"               silent
 run "no hex at all"         "ls -la"                             silent

@@ -300,19 +300,39 @@ def cmd_hook() -> int:
     toks = set(HEX.findall(cmd))
     if not toks:
         return 0
-    try:
-        m = AliasMap(repo_root(Path(cwd)))
-    except SystemExit:
-        return 0
-    if not m.old2new:
+    # The payload's cwd is the shell's, not the command's: `cd <repo> && git
+    # show <id>` runs in <repo>, and judging it from the shell's directory
+    # resolves the id against the wrong map — silently, which measured as
+    # the hook "not firing". Every cd target in the command is a candidate
+    # repository; `git -C <dir>` likewise.
+    dirs = [Path(cwd)]
+    for mo in re.finditer(r"(?:^|&&|;|\|\|)\s*cd\s+(\S+)|git\s+-C\s+(\S+)", cmd):
+        d = mo.group(1) or mo.group(2)
+        d = os.path.expanduser(d.strip("'\""))
+        dirs.append(Path(d) if os.path.isabs(d) else Path(cwd) / d)
+    maps: dict[Path, AliasMap] = {}
+    for d in dirs:
+        try:
+            root = repo_root(d)
+        except SystemExit:
+            continue
+        if root not in maps:
+            m = AliasMap(root)
+            if m.old2new:
+                maps[root] = m
+    if not maps:
         return 0
     lines = []
     for tok in sorted(toks):
-        c = m.classify(tok)
-        if c and c["state"] == "dead":
-            lines.append(f"{tok} is a PRE-REWRITE id; it is now {c['now'][:7]} — {m.subject(c['now'])}")
-        elif c and c["state"] == "ambiguous":
-            lines.append(f"{tok} is ambiguous among pre-rewrite ids {', '.join(x[:12] for x in c['full'])}")
+        for root, m in maps.items():
+            c = m.classify(tok)
+            tag = f" [{root.name}]" if len(maps) > 1 else ""
+            if c and c["state"] == "dead":
+                lines.append(f"{tok} is a PRE-REWRITE id{tag}; it is now {c['now'][:7]} — {m.subject(c['now'])}")
+                break
+            if c and c["state"] == "ambiguous":
+                lines.append(f"{tok} is ambiguous{tag} among pre-rewrite ids {', '.join(x[:12] for x in c['full'])}")
+                break
     if lines:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
