@@ -178,10 +178,20 @@ def is_map_path(path: str) -> bool:
     return p.parent == MAP_DIR and p.match(MAP_GLOB)
 
 
+ALLOW = "alias-ok"   # a line carrying this token names a dead id ON PURPOSE
+
+
 def scan_blob(m: AliasMap, text: str) -> dict[str, str]:
-    """token → live id, for every dead id in the text."""
+    """token → live id, for every dead id in the text.
+
+    A dead id is sometimes the right thing to write: a directory NAMED by it
+    (the frozen `build/compare/<old id>` arms), a map row, a sentence about the
+    rewrite itself. Such a line says so with the ALLOW token, which is visible
+    and greppable, so an exemption is a statement rather than a gap.
+    """
     hits = {}
-    for tok in set(HEX.findall(text)):
+    kept = "\n".join(l for l in text.split("\n") if ALLOW not in l)
+    for tok in set(HEX.findall(kept)):
         olds = [c for c in m.candidates(tok) if c in m.old2new]
         if len(olds) == 1 and not m.is_live(tok):
             hits[tok] = m.old2new[olds[0]][:len(tok)]
@@ -264,7 +274,9 @@ def cmd_translate(m: AliasMap, paths: list[str]) -> int:
         hits = scan_blob(m, text)
         if not hits:
             continue
-        new = HEX.sub(lambda mo: hits.get(mo.group(0), mo.group(0)), text)
+        new = "\n".join(
+            l if ALLOW in l else HEX.sub(lambda mo: hits.get(mo.group(0), mo.group(0)), l)
+            for l in text.split("\n"))
         if new != text:
             p.write_text(new)
             changed += 1
