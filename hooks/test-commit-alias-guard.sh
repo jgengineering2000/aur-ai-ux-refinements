@@ -15,7 +15,12 @@ TMP=$(mktemp -d) || { echo "cannot create a temp dir" >&2; exit 2; }
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
 REPO="$TMP/repo"
-git init -q "$REPO"
+# --template= : NO hooks. The machine's init template installs the universal
+# post-commit into every new repository, and that hook pushes to a `router`
+# remote a throwaway repo does not have — logged as "[repo] push FAILED" and
+# raised as a critical desktop notification, five times on 2026-08-28, each
+# one a run of this test. A test must not page the owner.
+git init -q --template= "$REPO"
 # --no-verify: the machine's git template installs the universal pre-commit
 # into every new repo, and its content guard has nothing to say about an
 # empty commit except that it is empty.
@@ -49,7 +54,7 @@ run "dead id, short form"   "git show ${OLD:0:7} -- README"      context
 # The shell's cwd is not the command's: the session that first exercised the
 # guard ran `cd <repo> && git show <dead>` from ANOTHER repository and got
 # silence, which read as the hook not firing.
-OTHER="$TMP/other"; git init -q "$OTHER"
+OTHER="$TMP/other"; git init -q --template= "$OTHER"
 run_from() {  # run_from <label> <cwd> <command> <expect>
     local label=$1 cwd=$2 cmd=$3 expect=$4 out
     out=$(jq -cn --arg c "$cmd" --arg d "$cwd" '{tool_input:{command:$c},cwd:$d}' | bash "$GUARD")
