@@ -55,11 +55,25 @@ so `2.10.0` correctly outranks `2.9.0`. Never compare version strings.
 
 ```bash
 cd <aur-checkout>
-pyinstaller --onefile --windowed --name aur-installer install-gui.py
+pyinstaller aur-installer.spec
 # Output: dist/aur-installer
 ```
 
-`dist/` and `build/` are in `.gitignore` — do not commit the binary.
+Always the tracked spec, never `pyinstaller install-gui.py` with flags: the
+binary must carry `server/`, `templates/`, `patches/` and `systemd/` as bundled
+data and the patch scripts' hidden imports, and the spec is the one place that
+list is stated. `dist/` and `build/` are in `.gitignore` — do not commit the
+binary.
+
+Smoke-test the artefact before uploading it — it is the front door for every
+Linux user and it runs in an environment (no Python, no checkout) that a source
+test never exercises:
+
+```bash
+dist/aur-installer --help                                   # exit 0
+dist/aur-installer --run-patch claude-ui-layout             # exit 0: patched / already applied
+dist/aur-installer --run-patch no-such-patch; echo $?       # exit 2, names the accepted set
+```
 
 ### 2. Create the source zip
 

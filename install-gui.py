@@ -6,7 +6,6 @@ Claude Code UX Installer — GUI
 Clickable installer for all Claude Code UX improvements.
 """
 
-import argparse
 import os
 import subprocess
 import sys
@@ -28,8 +27,9 @@ from docinfra import (
 # systemd/ too, not just the doc-infra trees docinfra resolves itself.
 HERE = docinfra.resource_root()
 
-def run_patch(script, args, use_sudo, log):
-    cmd = [sys.executable, str(HERE / "patches" / script)] + args
+def run_patch(name, args, use_sudo, log):
+    """Run one patch via this installer's worker mode; return its exit status."""
+    cmd = docinfra.patch_argv(name, *args)
     env = None
     if use_sudo:
         # Shared elevation policy (docinfra): sudo -A with a GUI askpass. This
@@ -37,14 +37,14 @@ def run_patch(script, args, use_sudo, log):
         # the askpass dialog is the only route to elevation here.
         prefix, env = docinfra.sudo_argv()
         cmd = prefix + cmd
-    log(f"  Running {Path(script).name}...")
+    log(f"  Running {name}...")
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     for line in result.stdout.strip().splitlines():
         log(f"    {line}")
     if result.returncode != 0:
         for line in result.stderr.strip().splitlines():
             log(f"    ERROR: {line}")
-        log(f"    FAILED: {Path(script).name} exited {result.returncode}")
+        log(f"    FAILED: {name} exited {result.returncode}")
     return result.returncode
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
@@ -234,18 +234,18 @@ class InstallerApp(tk.Tk):
         if self.do_a1.get() or self.do_a2.get() or self.do_a3.get():
             log("── IDE Patches ───────────────────────────────────────")
             if self.do_a1.get():
-                if run_patch("claude-ui-layout.py", [], False, log):
+                if run_patch("claude-ui-layout", [], False, log):
                     failures.append("A1 chat panel layout")
                 need_restart = True
             if self.do_a2.get():
                 word = self.vocab_choice.get()
                 if word == "__custom__":
                     word = self.custom_entry.get().strip() or "Working"
-                if run_patch("claude-ui-vocabulary.py", [word], False, log):
+                if run_patch("claude-ui-vocabulary", [word], False, log):
                     failures.append("A2 processing vocabulary")
                 need_restart = True
             if self.do_a3.get():
-                if run_patch("simplebrowser-title.py", [], self.sb_needs_sudo, log):
+                if run_patch("simplebrowser-title", [], self.sb_needs_sudo, log):
                     failures.append("A3 Simple Browser title")
                 need_restart = True
 
@@ -287,8 +287,12 @@ class InstallerApp(tk.Tk):
 
 
 if __name__ == "__main__":
-    # The accepted argument set, in one place: nothing but --help. A GUI
-    # launched with a stray token refuses before opening a window.
-    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
+    # Accepted argument set (shared with the CLI front end, see docinfra):
+    # --help, or the --run-patch worker mode — which is how the frozen binary
+    # runs its own patches, and runs BEFORE any window opens. A stray token
+    # is refused, not ignored.
+    _, args = docinfra.installer_argparser(__doc__)
+    if args.run_patch:
+        sys.exit(docinfra.run_patch_worker(args.run_patch, args.patch_args))
     app = InstallerApp()
     app.mainloop()

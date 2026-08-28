@@ -13,7 +13,6 @@ Exit status: 0 when everything selected was applied; 1 when any patch script
 failed (its output names the reason) — never a "Done" banner over a failure.
 """
 
-import argparse
 import os
 import subprocess
 import sys
@@ -76,27 +75,29 @@ def ask_choice(prompt, choices, default=None):
 
 # ── Patch runner ──────────────────────────────────────────────────────────────
 
-def run_patch(script, *args, use_sudo=False):
-    """Run one patch script; return its exit status (0 = success)."""
-    cmd = [sys.executable, str(HERE / "patches" / script)] + list(args)
+def run_patch(name, *args, use_sudo=False):
+    """Run one patch via this installer's worker mode; return its exit status."""
+    cmd = docinfra.patch_argv(name, *args)
     env = None
     if use_sudo:
         # Shared elevation policy (docinfra): sudo -A with a GUI askpass when
         # one exists, so the same call works with or without a tty.
         prefix, env = docinfra.sudo_argv()
         cmd = prefix + cmd
-    print(f"\n  Running: {Path(script).name} {' '.join(args)}")
+    print(f"\n  Running: {name} {' '.join(args)}")
     rc = subprocess.run(cmd, env=env).returncode
     if rc:
-        print(f"  FAILED: {Path(script).name} exited {rc}")
+        print(f"  FAILED: {name} exited {rc}")
     return rc
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    # The accepted argument set, in one place: nothing but --help. Everything
-    # else is asked interactively; a stray token is refused, not ignored.
-    argparse.ArgumentParser(description=__doc__.strip().splitlines()[0]).parse_args()
+    # Accepted argument set (shared with the GUI front end, see docinfra):
+    # --help, or the --run-patch worker mode; a stray token is refused.
+    _, args = docinfra.installer_argparser(__doc__)
+    if args.run_patch:
+        sys.exit(docinfra.run_patch_worker(args.run_patch, args.patch_args))
 
     print()
     print("  Claude Code UX Installer")
@@ -213,11 +214,11 @@ def main():
     failures = []
     if do_a:
         section("Applying IDE Patches")
-        if do_a1 and run_patch("claude-ui-layout.py"):
+        if do_a1 and run_patch("claude-ui-layout"):
             failures.append("A1 chat panel layout")
-        if do_a2 and run_patch("claude-ui-vocabulary.py", vocab_word):
+        if do_a2 and run_patch("claude-ui-vocabulary", vocab_word):
             failures.append("A2 processing vocabulary")
-        if do_a3 and run_patch("simplebrowser-title.py", use_sudo=sb_needs_sudo):
+        if do_a3 and run_patch("simplebrowser-title", use_sudo=sb_needs_sudo):
             failures.append("A3 Simple Browser title")
         if do_a4:
             print("\n  A4  Installing auto-reapply watcher...")

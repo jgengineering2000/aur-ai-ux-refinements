@@ -79,6 +79,69 @@ def sudo_argv():
         return ["sudo", "-A", "--"], env
     return ["sudo", "--"], None
 
+# ── Patch dispatch — the installer is its own worker ──────────────────────────
+# The patches live in patches/*.py with hyphenated names, run as scripts. From a
+# source checkout an installer could spawn `python3 patches/x.py`; in a frozen
+# (PyInstaller onefile) build there is no Python to spawn — sys.executable IS
+# the installer. So both front ends carry a `--run-patch NAME` worker mode that
+# runs the script in-process, and run_patch() re-invokes sys.executable in that
+# mode. One code path, both deployments; and because A3 may need root, the
+# elevated call is that same argv behind `sudo -A`, which is the only way a
+# frozen binary can elevate at all.
+
+def patch_dir():
+    return resource_root() / "patches"
+
+def patch_names():
+    """The accepted --run-patch set: every patches/*.py except the orchestrator."""
+    return sorted(p.stem for p in patch_dir().glob("*.py") if p.stem != "apply-all")
+
+def run_patch_worker(name, args):
+    """Run patches/<name>.py as __main__ with `args`; return its exit status.
+
+    Validates `name` first (P14): an unknown name is refused with the accepted
+    set, never resolved to a path and executed.
+    """
+    import runpy
+    if name not in patch_names():
+        print(f"unknown patch '{name}'; accepted: {', '.join(patch_names())}",
+              file=sys.stderr)
+        return 2
+    script = patch_dir() / f"{name}.py"
+    saved = sys.argv
+    sys.argv = [str(script)] + list(args)
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        code = e.code
+        return code if isinstance(code, int) else (0 if code is None else 1)
+    finally:
+        sys.argv = saved
+    return 0
+
+def patch_argv(name, *args):
+    """argv that re-invokes THIS installer in worker mode for patch `name`."""
+    self_argv = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, sys.argv[0]]
+    return self_argv + ["--run-patch", name] + list(args)
+
+def installer_argparser(doc):
+    """The one accepted argument set shared by both installer front ends.
+
+    Ordinary use takes no arguments (everything is asked interactively);
+    --run-patch is the worker mode above. Returns (parser, args); the caller
+    dispatches on args.run_patch before doing anything else.
+    """
+    import argparse
+    ap = argparse.ArgumentParser(description=doc.strip().splitlines()[0])
+    ap.add_argument("--run-patch", metavar="NAME",
+                    help="worker mode: run patches/NAME.py in-process and exit with its "
+                         f"status (NAME: {', '.join(patch_names())})")
+    ap.add_argument("patch_args", nargs="*", help="arguments passed to the patch in --run-patch mode")
+    args = ap.parse_args()
+    if args.patch_args and not args.run_patch:
+        ap.error(f"unexpected argument(s): {' '.join(args.patch_args)}")
+    return ap, args
+
 def detect_ides():
     ides = []
     if Path("~/.antigravity").expanduser().exists():

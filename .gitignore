@@ -8,6 +8,8 @@ __pycache__/
 dist/
 build/
 *.spec
+# The release recipe is tracked; PyInstaller's own generated specs are not.
+!aur-installer.spec
 server/server.port
 tools/rule-tests/real-cases.json
 

@@ -52,8 +52,10 @@ The `PROMPTS` array in manifest.html must stay in sync with the triggers defined
 
 When the user triggers `push release`, follow RELEASE.md exactly. Key steps:
 
-1. **Build binary** — `pyinstaller --onefile --windowed --name aur-installer install-gui.py`
-   Output at `dist/aur-installer`. Do not commit it.
+1. **Build binary** — `pyinstaller aur-installer.spec` (the tracked spec: it
+   carries the bundled data trees and hidden imports a bare CLI build omits).
+   Output at `dist/aur-installer`. Do not commit it. Smoke-test it per
+   RELEASE.md §1 before uploading.
 2. **Source zip** — zip `patches/ server/ templates/ keybindings/ install.py install-gui.py
    README.md LICENSE PROJECT.md PROMPTS.md PATCHES.md WORKFLOW.md RELEASE.md`
    excluding `*.bak __pycache__/ *.pyc`. Save to `/tmp/aur-refined-vX.Y.Z-source.zip`.
