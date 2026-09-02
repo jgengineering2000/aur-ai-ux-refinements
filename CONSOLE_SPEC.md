@@ -111,6 +111,21 @@ holds a descriptor, and not-live is the true answer for every command that
 predates the restart. A file that merely stopped growing remains
 indistinguishable from a slow command, and is never treated as ended.
 
+**Capture descriptors are not daemon channels, and adoption never clobbers.**
+Two consequences of holding files open follow from where the spool writes, and
+both were paid for on 2026-09-02. First, the spool tree lives *under* the daemon
+directory, and the daemon list is built by asking which files there a process
+holds open — so every command being captured surfaced as a daemon channel named
+after its task id, offered as a chip that then 404'd because no daemon log of
+that name exists. The descriptor scan therefore excludes the console registry
+subtree: those descriptors are capture machinery, never a daemon writing its
+log. Second, adopting a source that already has a spool file **resumes** it —
+skip the bytes already captured, append the remainder — rather than truncating
+and re-copying. Re-copying a complete source reproduces identical bytes, which
+is why the damage is invisible in the happy case; what it destroys is any spool
+file whose source no longer matches it, and it restamps the mtime that the
+merged history sorts on.
+
 Spool files stay **per command**, never one merged log: concurrent commands
 would interleave on disk, start/duration/size come free from each file's own
 stat, and the §1.2 cursor protocol is keyed per command — the unified stream id

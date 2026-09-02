@@ -406,10 +406,24 @@ class ConsoleSpool:
         self._thread = threading.Thread(target=self._run, name="console-spool",
                                         daemon=True)
         self._thread.start()
+        # The capturing object registers ITSELF as the one every reader
+        # consults. Liveness is "a tailer holds this fd", so the answer lives
+        # in the object that holds it — and binding that to one call site in
+        # __main__ instead meant any other consumer (the contract test, an
+        # embedding) silently read every command as ended, with no error to
+        # say why (P16: discover the running instance, never require a second
+        # place to declare it).
+        global _SPOOL
+        _SPOOL = self
         return True
 
     def stop(self):
         self._stopping = True
+        # Deregister first: a reader arriving during teardown must not be told
+        # a command is live by a spool that is releasing every fd it holds.
+        global _SPOOL
+        if _SPOOL is self:
+            _SPOOL = None
         if self._ino is not None:
             self._ino.close()
         if self._thread is not None:
@@ -559,11 +573,35 @@ class ConsoleSpool:
         dst = dst_dir / (stem + ".log")
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
-            # O_TRUNC, not append: the source is complete from byte 0 for as
-            # long as its name exists, so a recapture after a server restart
-            # re-reads the whole file rather than appending a duplicate tail.
-            dst_fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC |
-                             os.O_CLOEXEC, 0o644)
+            # RESUME, never clobber. The source is complete from byte 0 for as
+            # long as its name exists, so adoption has to reconcile against
+            # whatever a previous generation already spooled: skip the bytes
+            # already captured and append only the remainder. O_TRUNC here
+            # instead — which this did until 2026-09-02 — rewrites a file this
+            # process does not own, and the hardlink design it replaced
+            # explicitly refused to (`if dst.exists(): return`). The damage is
+            # invisible in the happy case, because re-copying a complete source
+            # reproduces identical bytes; what it destroys is every spool file
+            # whose source no longer matches it, and it restamps the mtime of
+            # every one it touches — which is the start-order key the merged
+            # history sorts on.
+            already = dst.stat().st_size if dst.exists() else 0
+            try:
+                source_size = os.fstat(src_fd).st_size
+            except OSError:
+                source_size = 0
+            if already > source_size:
+                # The spool holds MORE than the source: the source was replaced
+                # or truncated under us, so the prior capture describes a
+                # different stream. Start it over rather than appending a
+                # second stream's bytes onto the first.
+                already = 0
+                flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC
+            else:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_CLOEXEC
+            dst_fd = os.open(dst, flags, 0o644)
+            if already:
+                os.lseek(src_fd, already, os.SEEK_SET)
         except OSError as exc:
             os.close(src_fd)
             print(f"[console-spool] spool create failed for session={uuid} "
@@ -1404,8 +1442,16 @@ def _fd_writable(pid, fd) -> bool:
     return False
 
 
-def _log_channels(daemon_dir: Path):
+def _log_channels(daemon_dir: Path, registry: Path = None):
     """Every log under `daemon_dir` a process holds open, classified by fd.
+
+    `registry` names the console spool's own tree, which is EXCLUDED. The
+    spool captures by holding each command's spool file open for writing, and
+    that tree lives under the daemon directory — so without this every command
+    being captured surfaced here as a daemon channel named after its task id,
+    offered as a chip that then 404'd ("stream no longer served") because no
+    daemon log of that name exists. The spool's descriptors are capture
+    machinery, not a daemon writing its log.
 
     Returns `(owners, holder)`:
       owners  pid -> {"name", "captured": {path…}, "own": {path…}}
@@ -1418,6 +1464,8 @@ def _log_channels(daemon_dir: Path):
     skipped, which is correct — we only care about this user's daemons.
     """
     root = os.path.realpath(daemon_dir)
+    spool_root = os.path.realpath(
+        registry if registry is not None else CONSOLE_ROOTS["registry"])
     owners, holder = {}, {}
     try:
         pids = [d for d in os.listdir("/proc") if d.isdigit()]
@@ -1443,6 +1491,9 @@ def _log_channels(daemon_dir: Path):
             if target.endswith(" (deleted)"):
                 continue
             if not target.startswith(root + os.sep):
+                continue
+            # The console spool's own capture descriptors (see the docstring).
+            if target.startswith(spool_root + os.sep):
                 continue
             # The crash log is identified by NAME before fd number, because
             # the handler holds it on an ordinary descriptor for the process's
@@ -1476,7 +1527,7 @@ def _log_channels(daemon_dir: Path):
     return owners, holder
 
 
-def _daemon_rows(daemon_dir: Path, owned=frozenset()):
+def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None):
     """One row per daemon: its process when running, its channels either way.
 
     The row is the DAEMON, not the file. A daemon with two logs used to be two
@@ -1492,7 +1543,7 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset()):
     merge, with a pid suffix when two live processes share a name: folding two
     processes onto one line would be a lie no column could correct.
     """
-    owners, holder = _log_channels(daemon_dir)
+    owners, holder = _log_channels(daemon_dir, registry)
     rows, by_key = [], {}
 
     def _row(key, name):
@@ -1746,7 +1797,7 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     # writes into cells the listing created, so both must derive identity the
     # one way.
     out = {}
-    for row in _daemon_rows(r["daemon_dir"]):
+    for row in _daemon_rows(r["daemon_dir"], registry=r["registry"]):
         # `out`/`log` — the SAME channel vocabulary the listing uses. Two names
         # for one channel across two endpoints is a drift waiting to happen,
         # and the client would have to translate between them per poll.
@@ -2073,7 +2124,7 @@ def console_groups(*, tmp_root=None, projects=None, daemon_dir=None,
     owned = {os.path.realpath(s["path"])
              for sess in sessions for s in sess["streams"] if s.get("path")}
 
-    rows = _daemon_rows(r["daemon_dir"], owned)
+    rows = _daemon_rows(r["daemon_dir"], owned, registry=r["registry"])
 
     recent, older = [], []
     for row in rows:
@@ -2283,12 +2334,22 @@ def find_free_port(preferred: int, limit: int = 100) -> int:
     raise RuntimeError(f"No free port found in {preferred}–{preferred + limit - 1}")
 
 
-def already_running(port: int) -> bool:
-    """True if something is already accepting connections on localhost:port."""
+def instance_running(port, name):
+    """True if the server answering on localhost:port serves <name>'s docs.
+
+    A bare connect is necessary but not sufficient: ports are dynamic, so a
+    stale server.port can name a port ANOTHER project's server now holds —
+    "something answers" then reads as "mine is up", and /goto redirects to the
+    wrong manifest (observed 2026-09-01: one project's stale port file named
+    a port a different project's server had since taken).
+    /meta's subtitle is the identity — the same check, for the same reason, as
+    open-manifest.sh's is_mine().
+    """
     try:
-        with socket.create_connection(("localhost", port), timeout=0.5):
-            return True
-    except OSError:
+        with urllib.request.urlopen(f"http://localhost:{port}/meta",
+                                    timeout=1) as r:
+            return json.load(r).get("subtitle") == f"{name}/aur-docs"
+    except Exception:
         return False
 
 
@@ -2461,7 +2522,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 out.append({"name": proj.name,
                             "self": proj.resolve() == me,
                             "port": port,
-                            "running": bool(port and already_running(port))})
+                            "running": bool(port and
+                                            instance_running(port, proj.name))})
         self._json(out)
 
     def _goto_aur(self):
@@ -2489,7 +2551,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 p = int(port_file.read_text().strip())
             except (OSError, ValueError, AttributeError):
                 return None
-            return p if already_running(p) else None
+            return p if instance_running(p, name) else None
 
         port = live_port()
         started = False
@@ -3022,12 +3084,16 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 
 
 if __name__ == "__main__":
-    # If a port file exists and that port is already answering, a healthy
-    # instance is running — exit rather than start a duplicate.
+    # If a port file exists and that port is answering AS THIS PROJECT, a
+    # healthy instance is running — exit rather than start a duplicate. The
+    # identity half matters: a stale port file can name a port another
+    # project's server now holds, and a bare connect would read that as "mine
+    # is up" and exit, leaving this project permanently unstartable until
+    # someone deletes the file by hand.
     if PORT_FILE.exists():
         try:
             existing = int(PORT_FILE.read_text().strip())
-            if already_running(existing):
+            if instance_running(existing, ROOT.parent.name):
                 print(f"AUR doc server already running on port {existing}.")
                 sys.exit(0)
         except (ValueError, OSError):

@@ -88,7 +88,15 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="spool-test-") as td:
         tmp_root = Path(td) / "tasksroot"
-        registry = Path(td) / "registry"
+        # The registry sits UNDER the daemon directory, as it does in
+        # production (~/.local/share/<project>/consoles). That nesting is what
+        # makes the daemon-row regression below reachable at all: with the
+        # registry parked in a sibling directory, the scan that classifies
+        # open descriptors never looked at the spool's files and the defect
+        # was invisible to this gate.
+        daemon_dir = Path(td) / "share"
+        registry = daemon_dir / "consoles"
+        daemon_dir.mkdir(parents=True, exist_ok=True)
         spool = srv.ConsoleSpool(tmp_root, registry)
         check(spool.start(), "spool starts")
         print(f"  mode: {spool.mode}")
@@ -132,6 +140,30 @@ def main():
                                              now=time.time() + 10 * 86400)
                     check(pruned["dirs"] == 0 and dst.exists(),
                           "prune refuses the session while its tail is live")
+
+                    # The spool captures by HOLDING each spool file open for
+                    # writing, and those files live under the daemon
+                    # directory — so the scan that asks "which files here does
+                    # a process hold open?" saw every command being captured
+                    # and offered it as a daemon channel named after the task
+                    # id. Clicking one 404'd ("stream no longer served"),
+                    # because no daemon log of that name exists. Capture
+                    # descriptors are machinery, never a daemon writing a log.
+                    # Asserted on the holder map, which is where the defect
+                    # actually lives: the row it produced was keyed by the
+                    # HOLDING PROCESS ("python3", the server itself), not by
+                    # the task id, so a check on row keys passes while the
+                    # console still offers the bogus channel.
+                    _, holder = srv._log_channels(daemon_dir, registry)
+                    leaked = [p for p in holder
+                              if str(registry) in str(p)]
+                    check(not leaked,
+                          "no capture descriptor is classified as a daemon "
+                          f"channel (leaked: {leaked})")
+                    rows = srv._daemon_rows(daemon_dir, registry=registry)
+                    check(not rows,
+                          "a captured command produces NO daemon row "
+                          f"(rows: {[r['key'] for r in rows]})")
 
                 # -- the harness's exit sequence: unlink, then final writes --
                 os.unlink(src)
