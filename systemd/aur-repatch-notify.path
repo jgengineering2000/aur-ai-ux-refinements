@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Jonathan George
+#
+# USER unit: the root repair cannot open a dialog on the user's session, so
+# presentation lives here. Watches the event file the root half publishes and
+# fires the notifier, which explains what happened and offers the opt-out.
+
+[Unit]
+Description=Watch the AUR VS Code repatch event; explain it in a session dialog
+
+[Path]
+PathChanged=/var/lib/aur/vscode-repatch-event
+Unit=aur-repatch-notify.service
+
+[Install]
+WantedBy=default.target

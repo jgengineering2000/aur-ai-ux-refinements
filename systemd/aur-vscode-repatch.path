@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Jonathan George
+#
+# SYSTEM unit (not user): /usr/share/code is root-owned, so the re-apply must
+# run as root — a user service could detect the update but never repair it.
+#
+# Watches the one file the A4 patch targets. A VS Code app update (apt/dpkg)
+# replaces it wholesale, which PathChanged catches. The snap path from
+# VSCODE_MAINJS_CANDIDATES is deliberately NOT watched, a ruled deviation from
+# aur-reapply.path's watch-both doctrine: a snap sits on read-only squashfs, so
+# a repair there can only fail — watching it would convert every snap refresh
+# into an error dialog about a file nothing can write.
+
+[Unit]
+Description=Watch VS Code main.js; re-apply the AUR A4 spellcheck patch on app update
+
+[Path]
+PathChanged=/usr/share/code/resources/app/out/main.js
+Unit=aur-vscode-repatch.service
+
+[Install]
+WantedBy=multi-user.target

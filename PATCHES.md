@@ -172,13 +172,38 @@ is updating that checksum entry alongside the patch.
 construction, in two different minifier namings) without touching any target;
 `--check` reports would-patch/already against the real files without writing.
 
-### Known limitation — app updates are not auto-repatched
+### Root auto-repair after VS Code app updates
 
-The `aur-reapply` watcher watches the **extensions** directories; a VS Code
-application update replaces `main.js` without touching those, and the
-unattended oneshot could not elevate anyway. After a VS Code update, run
-`python3 patches/apply-all.py` manually (it prompts via askpass) — the tab
-title patch A3 shares this route when its target is the system install.
+The `aur-reapply` watcher watches the **extensions** directories and cannot
+elevate; a VS Code application update replaces root-owned `main.js` without
+touching those. So A4 carries its own repair, on the root side —
+`systemd/install-root-repatch.py` installs it (one askpass), and `install.py`
+offers it with A4:
+
+- **Root half**: `aur-vscode-repatch.path` (a *system* unit) watches
+  `/usr/share/code/resources/app/out/main.js`; its oneshot runs **root-owned
+  copies** under `/usr/local/lib/aur/` — never the user-writable checkout,
+  which is what makes unattended elevation safe to grant. Boot-time run as a
+  backstop for updates applied while the watcher was down; idempotent, so a
+  no-op repair is silent.
+- **User half**: when a repair actually changed something (or failed), the
+  root half publishes `/var/lib/aur/vscode-repatch-event`, and the user units
+  (`aur-repatch-notify.{path,service}`) raise a session dialog explaining
+  what happened — including a re-apply *failure*, which names the journal to
+  read — with an **"Disable auto-repair"** button.
+- **Opt-out contract**: that button (or the user, preemptively, by hand)
+  creates `~/.config/aur/vscode-repatch.optout`; the root service's
+  `ConditionPathExists=!` refuses to run while it exists. Delete the flag to
+  re-enable. A user-owned flag can only suppress the repair, never grant
+  anything, which is why root may trust it.
+- **Refreshing the root copies**: after the patch script changes in the
+  checkout, re-run `install-root-repatch.py` — the copies do not track the
+  checkout by themselves.
+
+The snap install stays out of scope on both sides: squashfs is read-only even
+for root, so a snap VS Code cannot be patched in place at all. The tab-title
+patch A3, whose system-install target has the same root ownership, still takes
+the manual `apply-all.py` route after updates.
 
 ---
 

@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Jonathan George
+#
+# Oneshot behind aur-repatch-notify.path. __AUR_DIR__ is substituted with the
+# checkout's absolute path by install-root-repatch.py — user context, so the
+# checkout copy is fine here (unlike the root half, which runs only root-owned
+# copies).
+
+[Unit]
+Description=Explain an AUR VS Code auto-repair in a session dialog
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 __AUR_DIR__/systemd/repatch-notify.py
+
+[Install]
+# Login backstop: an event published while nobody was logged in has no edge
+# for the .path unit to see at login — this run catches it via the seen-stamp.
+WantedBy=default.target
