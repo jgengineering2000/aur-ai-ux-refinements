@@ -17,6 +17,7 @@ from pathlib import Path
 import docinfra
 from docinfra import (
     SIMPLEBROWSER_CANDIDATES,
+    VSCODE_MAINJS_CANDIDATES,
     detect_ides,
     install_keybinding,
     install_review_infra,
@@ -58,6 +59,9 @@ class InstallerApp(tk.Tk):
         sb_targets = [p for p in SIMPLEBROWSER_CANDIDATES if p.exists()]
         self.sb_available = bool(sb_targets)
         self.sb_needs_sudo = bool([p for p in sb_targets if not os.access(p, os.W_OK)])
+        sm_targets = [p for p in VSCODE_MAINJS_CANDIDATES if p.exists()]
+        self.sm_available = bool(sm_targets)
+        self.sm_needs_sudo = bool([p for p in sm_targets if not os.access(p, os.W_OK)])
         self._build_ui()
         self._center()
 
@@ -117,6 +121,16 @@ class InstallerApp(tk.Tk):
                         text=f"A3  Simple Browser tab title fix{sudo_note}{not_found}",
                         variable=self.do_a3,
                         state="normal" if self.sb_available else "disabled").grid(
+                            row=r, column=0, columnspan=3, sticky="w")
+        r += 1
+
+        self.do_a4 = tk.BooleanVar(value=self.sm_available)
+        sudo_note = "  (requires sudo)" if self.sm_needs_sudo else ""
+        not_found = "  (not found — skipped)" if not self.sm_available else ""
+        ttk.Checkbutton(body,
+                        text=f"A4  Browser spellcheck suggestions{sudo_note}{not_found}",
+                        variable=self.do_a4,
+                        state="normal" if self.sm_available else "disabled").grid(
                             row=r, column=0, columnspan=3, sticky="w")
         r += 1
 
@@ -231,7 +245,8 @@ class InstallerApp(tk.Tk):
         need_restart = False
         failures = []
 
-        if self.do_a1.get() or self.do_a2.get() or self.do_a3.get():
+        if (self.do_a1.get() or self.do_a2.get() or self.do_a3.get()
+                or self.do_a4.get()):
             log("── IDE Patches ───────────────────────────────────────")
             if self.do_a1.get():
                 if run_patch("claude-ui-layout", [], False, log):
@@ -248,6 +263,12 @@ class InstallerApp(tk.Tk):
                 if run_patch("simplebrowser-title", [], self.sb_needs_sudo, log):
                     failures.append("A3 Simple Browser title")
                 need_restart = True
+            if self.do_a4.get():
+                if run_patch("vscode-spellcheck-menu", [], self.sm_needs_sudo, log):
+                    failures.append("A4 browser spellcheck suggestions")
+                # main.js is the MAIN process: only a full app relaunch
+                # re-reads it, so the extension-host hint does not cover it.
+                log("  A4 patches the main process: quit and relaunch VS Code to activate.")
 
         if self.do_b.get():
             log("\n── Review Infrastructure ─────────────────────────────")

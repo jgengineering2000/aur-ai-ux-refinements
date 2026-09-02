@@ -44,6 +44,16 @@ SIMPLEBROWSER_CANDIDATES = [
     Path("/snap/code/current/usr/share/code/resources/app/extensions/simple-browser/dist/extension.js"),
 ]
 
+# The ONE authority for where the host IDE's main-process bundle lives —
+# the integrated browser's context menu is built there (A4). Antigravity is
+# deliberately absent: its build predates the integrated browser, and listing
+# a target whose anchor cannot exist turns "feature absent" into a reported
+# failure; if a later build ships the same browser, its path joins this list.
+VSCODE_MAINJS_CANDIDATES = [
+    Path("/usr/share/code/resources/app/out/main.js"),
+    Path("/snap/code/current/usr/share/code/resources/app/out/main.js"),
+]
+
 # ── Elevation ─────────────────────────────────────────────────────────────────
 # GUI askpass helpers (first present wins), so sudo can prompt even with no
 # tty — the GUI installer, an IDE task, an agent session. On a tty the helper

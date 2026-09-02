@@ -5,8 +5,8 @@
 Apply all Claude Code UX patches.
 
 Usage:
-    python3 apply-all.py              # all three patches (sudo prompted for A3 if needed)
-    python3 apply-all.py --no-browser # skip A3 (Simple Browser title)
+    python3 apply-all.py              # all patches (sudo prompted for A3/A4 if needed)
+    python3 apply-all.py --no-browser # skip A3 + A4 (the sudo-may-be-needed pair)
 
 Exit status: 0 only when every patch script exited 0. The systemd oneshot
 runs this after an extension update, so its recorded result must mean what
@@ -25,7 +25,9 @@ HERE = Path(__file__).parent
 # Target list and askpass ladder live in ONE place — docinfra — shared with
 # simplebrowser-title.py and both installer front ends.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from docinfra import SIMPLEBROWSER_CANDIDATES as BROWSER_CANDIDATES, find_askpass
+from docinfra import (SIMPLEBROWSER_CANDIDATES as BROWSER_CANDIDATES,
+                      VSCODE_MAINJS_CANDIDATES as MAINJS_CANDIDATES,
+                      find_askpass)
 
 
 def run(script, *args, sudo=False, env=None):
@@ -42,12 +44,38 @@ def run(script, *args, sudo=False, env=None):
     return rc
 
 
-def browser_needs_sudo():
-    """True iff any existing A3 target is not writable by the current user."""
-    targets = [p for p in BROWSER_CANDIDATES if p.exists()]
+def needs_sudo(candidates):
+    """True iff any existing target in `candidates` is not user-writable."""
+    targets = [p for p in candidates if p.exists()]
     if not targets:
         return False  # nothing to patch; let the script report cleanly
     return any(not os.access(p, os.W_OK) for p in targets)
+
+
+def run_maybe_sudo(script, tag, candidates, failures):
+    """Run one browser patch, elevating via askpass when its targets need it.
+
+    The askpass ladder is what lets the systemd-less manual path elevate with
+    no tty; where the target is root-owned and no helper exists, the failure
+    names the exact sudo command to run by hand.
+    """
+    if needs_sudo(candidates) and shutil.which("sudo"):
+        askpass = find_askpass()
+        if not askpass:
+            print(f"\n[{tag}] target is root-owned and no askpass helper "
+                  f"found. Install one (e.g. seahorse) or run:")
+            print(f"  sudo python3 {HERE / script}")
+            failures.append(f"{tag} {script}")
+            return
+        print(f"\n[{tag}] target is root-owned — invoking via sudo -A "
+              f"(askpass: {askpass}).")
+        env = dict(os.environ)
+        env["SUDO_ASKPASS"] = askpass
+        rc = run(script, sudo=True, env=env)
+    else:
+        rc = run(script)
+    if rc:
+        failures.append(f"{tag} {script}")
 
 
 def main():
@@ -56,7 +84,10 @@ def main():
     # rather than silently running the sudo-gated A3 it was meant to skip.
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--no-browser", action="store_true",
-                    help="skip A3 (Simple Browser tab title), the only patch that may need sudo")
+                    help="skip the browser patches (A3 tab title, A4 spellcheck "
+                         "suggestions) — the ones that may need sudo; this is "
+                         "what the unattended systemd oneshot passes, since it "
+                         "cannot answer an askpass prompt")
     skip_browser = ap.parse_args().no_browser
 
     failures = []
@@ -66,22 +97,8 @@ def main():
         failures.append("A2 claude-ui-vocabulary.py")
 
     if not skip_browser:
-        if browser_needs_sudo() and shutil.which("sudo"):
-            askpass = find_askpass()
-            if not askpass:
-                print("\n[A3] Simple Browser target is root-owned and no askpass "
-                      "helper found. Install one (e.g. seahorse) or run:")
-                print(f"  sudo python3 {HERE/'simplebrowser-title.py'}")
-                sys.exit(1)
-            print(f"\n[A3] Simple Browser target is root-owned — invoking via "
-                  f"sudo -A (askpass: {askpass}).")
-            env = dict(os.environ)
-            env["SUDO_ASKPASS"] = askpass
-            rc = run("simplebrowser-title.py", sudo=True, env=env)
-        else:
-            rc = run("simplebrowser-title.py")
-        if rc:
-            failures.append("A3 simplebrowser-title.py")
+        run_maybe_sudo("simplebrowser-title.py", "A3", BROWSER_CANDIDATES, failures)
+        run_maybe_sudo("vscode-spellcheck-menu.py", "A4", MAINJS_CANDIDATES, failures)
 
     print("\n" + "="*50)
     if failures:
@@ -89,6 +106,8 @@ def main():
         sys.exit(1)
     print("Done. Restart the extension host:")
     print("  Ctrl+Shift+P → Developer: Restart Extension Host")
+    if not skip_browser:
+        print("A4 patches the main process: quit and relaunch VS Code to activate.")
 
 
 if __name__ == "__main__":

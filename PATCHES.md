@@ -1,7 +1,8 @@
 # AUR — Patch Specifications
 
-Each patch modifies extension assets in-place. All patches are idempotent (safe to
-re-run), create `.bak` backups before writing, and detect already-applied state.
+Each patch modifies host-IDE assets in-place — extension files (A1–A3) or the
+application bundle itself (A4). All patches are idempotent (safe to re-run),
+create `.bak` backups before writing, and detect already-applied state.
 
 ---
 
@@ -119,16 +120,78 @@ permissions error.
 
 ---
 
+## A4 — Integrated Browser Spellcheck Suggestions
+
+**File:** `patches/vscode-spellcheck-menu.py`
+**Targets (`docinfra.VSCODE_MAINJS_CANDIDATES`):**
+- `/usr/share/code/resources/app/out/main.js`
+- `/snap/code/current/usr/share/code/resources/app/out/main.js`
+**Elevation:** Required on system (apt/dpkg) installs — the file is root-owned.
+**Activation:** Full VS Code relaunch. `main.js` is the **main process**: an
+extension-host restart or window reload never re-reads it.
+
+### What it does
+
+VS Code's integrated browser (`workbench.action.browser.open` — where
+`simpleBrowser.show` forwards localhost URLs since ~1.13x) runs Chromium's
+spellchecker, so misspelled words in a page's text fields are underlined — but
+its right-click menu never offers the corrections. The menu is built in
+`main.js`'s `showContextMenu(view, params)`; `params` is Electron's full
+ContextMenuParams, whose `misspelledWord` and `dictionarySuggestions` arrive on
+every right-click and are dropped unread (neither token occurs anywhere in the
+shipped app — verified 1.135.0).
+
+The patch inserts, at the head of the existing `isEditable` branch and above
+Cut/Copy/Paste: one item per dictionary suggestion clicking
+`webContents.replaceMisspelling()` — Chromium's own replacement primitive — and
+an "Add to Dictionary" item calling `session.addWordToSpellCheckerDictionary()`.
+The dictionary, the checker and the replacement all belong to the mechanism
+that draws the underline; the menu rows are the only addition.
+
+### Pattern matched
+
+Structural, two-stage, all minified names captured and reused via backreference
+(the A3 lesson): stage 1 matches the `showContextMenu` head and captures the
+params and webContents names; stage 2 matches the `isEditable?(…role:"cut"…`
+branch head **using the captured params name**, so the stages cannot pair
+across different functions. Insertion happens inside the branch's
+comma-sequence, which keeps the JS valid without restructuring anything.
+
+### Detection and self-retirement
+
+Already-patched detection is the presence of `replaceMisspelling` — which also
+stands the patch down automatically if a future VS Code consumes the
+suggestions itself, rather than doubling the menu.
+
+`out/main.js` is **not** in `product.json`'s `checksums` list (verified
+1.135.0), so no "installation appears corrupt" handling is needed. If a future
+build adds it, the symptom is a corrupt-install badge after patching; the fix
+is updating that checksum entry alongside the patch.
+
+`--selftest` gates the matcher against synthetic fixtures (of our own
+construction, in two different minifier namings) without touching any target;
+`--check` reports would-patch/already against the real files without writing.
+
+### Known limitation — app updates are not auto-repatched
+
+The `aur-reapply` watcher watches the **extensions** directories; a VS Code
+application update replaces `main.js` without touching those, and the
+unattended oneshot could not elevate anyway. After a VS Code update, run
+`python3 patches/apply-all.py` manually (it prompts via askpass) — the tab
+title patch A3 shares this route when its target is the system install.
+
+---
+
 ## Patch robustness across extension updates
 
-All three patches use **content patterns** (exact CSS value strings, or for A3 a
-structural regex) rather than byte offsets or hashed class names. This makes them
-moderately robust across minor Claude Code updates that don't change the targeted
-behaviour.
+All four patches use **content patterns** (exact CSS value strings, or for A3/A4
+structural regexes) rather than byte offsets or hashed class names. This makes them
+moderately robust across minor updates that don't change the targeted behaviour.
 
 A1 and A2 still match literals, and that is a known limit: anything the minifier is
 free to rename can break them without the behaviour changing. A3 was moved to a
-structural match after exactly that happened — see its section.
+structural match after exactly that happened — see its section; A4 was structural
+from the start for the same reason.
 
 **Exit status is the contract.** Every patch script exits 0 only when each
 target is patched or already patched, and 1 when a target is missing, unwritable,
@@ -162,7 +225,10 @@ never lost (they live here in AUR), but their *applied* state is gone until re-r
   other one is added, and the resulting failure is silent — patches simply stop being
   re-applied there. Watching an absent directory costs nothing.
 - **`aur-reapply.service`** — a oneshot that runs `patches/apply-all.py --no-browser`
-  when the watcher fires.
+  when the watcher fires. `--no-browser` skips A3 and A4, the two patches that may
+  need sudo — an unattended oneshot cannot answer an askpass prompt; those two are
+  re-applied by running `apply-all.py` by hand after the relevant update (see A4's
+  known-limitation section).
 - **`install-autoreapply.py`** — renders the service with this AUR checkout's absolute
   path, installs both units into `~/.config/systemd/user/`, and enables the watcher.
   Run once: `python3 systemd/install-autoreapply.py` (`--uninstall` to remove).

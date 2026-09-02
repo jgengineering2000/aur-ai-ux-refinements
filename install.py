@@ -21,6 +21,7 @@ from pathlib import Path
 import docinfra
 from docinfra import (
     SIMPLEBROWSER_CANDIDATES,
+    VSCODE_MAINJS_CANDIDATES,
     detect_ides,
     install_keybinding,
     install_review_infra,
@@ -122,9 +123,9 @@ def main():
     do_b = sel in ("b", "ab")
 
     # ── Part A: configure ─────────────────────────────────────────────────────
-    do_a1 = do_a2 = do_a3 = do_a4 = False
+    do_a1 = do_a2 = do_a3 = do_a4 = do_a5 = False
     vocab_word = "Working"
-    sb_needs_sudo = False
+    sb_needs_sudo = sm_needs_sudo = False
 
     if do_a:
         section("Part A — IDE Extension Patches")
@@ -133,7 +134,8 @@ def main():
         do_a1 = ask_yn("A1  Chat panel layout  (reduced margins, overlay scrollbar)", default="y")
         do_a2 = ask_yn("A2  Processing vocabulary  (replace cycling word list)", default="y")
         do_a3 = ask_yn("A3  Simple Browser tab title fix", default="y")
-        do_a4 = ask_yn("A4  Auto-reapply patches after extension updates  (systemd watcher)", default="y")
+        do_a4 = ask_yn("A4  Integrated browser spellcheck suggestions  (right-click corrections)", default="y")
+        do_a5 = ask_yn("A5  Auto-reapply patches after extension updates  (systemd watcher)", default="y")
 
         if do_a2:
             print()
@@ -161,6 +163,21 @@ def main():
                     sb_needs_sudo = ask_yn("  Apply A3 with sudo?", default="y")
                     if not sb_needs_sudo:
                         do_a3 = False
+
+        if do_a4:
+            sm_targets = [p for p in VSCODE_MAINJS_CANDIDATES if p.exists()]
+            if not sm_targets:
+                print("\n  A4: no integrated-browser main.js found at known paths — will skip.")
+                do_a4 = False
+            else:
+                unwritable = [p for p in sm_targets if not os.access(p, os.W_OK)]
+                if unwritable:
+                    print("\n  A4 targets require elevated access:")
+                    for p in unwritable:
+                        print(f"    {p}")
+                    sm_needs_sudo = ask_yn("  Apply A4 with sudo?", default="y")
+                    if not sm_needs_sudo:
+                        do_a4 = False
 
     # ── Part B: configure ─────────────────────────────────────────────────────
     project_dir = None
@@ -194,8 +211,9 @@ def main():
         if do_a1: print("    A1  Chat panel layout")
         if do_a2: print(f"    A2  Vocabulary → \"{vocab_word}\"")
         if do_a3: print(f"    A3  Simple Browser title {'(sudo)' if sb_needs_sudo else ''}")
-        if do_a4: print("    A4  Auto-reapply watcher (systemd --user)")
-        if not any([do_a1, do_a2, do_a3, do_a4]):
+        if do_a4: print(f"    A4  Browser spellcheck suggestions {'(sudo)' if sm_needs_sudo else ''}")
+        if do_a5: print("    A5  Auto-reapply watcher (systemd --user)")
+        if not any([do_a1, do_a2, do_a3, do_a4, do_a5]):
             print("    (nothing selected)")
     if do_b:
         print("  Part B — Review infra:")
@@ -220,12 +238,14 @@ def main():
             failures.append("A2 processing vocabulary")
         if do_a3 and run_patch("simplebrowser-title", use_sudo=sb_needs_sudo):
             failures.append("A3 Simple Browser title")
-        if do_a4:
-            print("\n  A4  Installing auto-reapply watcher...")
+        if do_a4 and run_patch("vscode-spellcheck-menu", use_sudo=sm_needs_sudo):
+            failures.append("A4 browser spellcheck suggestions")
+        if do_a5:
+            print("\n  A5  Installing auto-reapply watcher...")
             rc = subprocess.run([sys.executable, str(HERE / "systemd" / "install-autoreapply.py")]).returncode
             if rc:
                 print(f"  FAILED: install-autoreapply.py exited {rc}")
-                failures.append("A4 auto-reapply watcher")
+                failures.append("A5 auto-reapply watcher")
 
     if do_b:
         section("Installing Review Infrastructure")
@@ -251,9 +271,14 @@ def main():
 
     section("Done")
     print()
-    if do_a and any([do_a1, do_a2, do_a3, do_a4]):
+    if do_a and any([do_a1, do_a2, do_a3]):
         print("  Restart extension host to activate IDE patches:")
         print("    Ctrl+Shift+P → Developer: Restart Extension Host")
+        print()
+    if do_a and do_a4:
+        # main.js is the MAIN process — an extension-host or window reload
+        # does not re-read it; only a full application restart does.
+        print("  A4 patches the main process: quit and relaunch VS Code to activate.")
         print()
     if do_b:
         server_path = project_dir / "aur" / "server.py"
