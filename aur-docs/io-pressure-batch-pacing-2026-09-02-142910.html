@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I/O-Pressure Batch Pacing — Design (Deferred)</title>
+<!-- status: DEFERRED | scope: AUR resource scheduler (realized in MTI rust/launcher) | date: 2026-09-02 -->
+<link rel="stylesheet" href="/ann.css">
+<link rel="stylesheet" href="/doc.css">
+<style>
+  main { max-width: 72rem; margin: 0 auto; padding: 1.5rem; }
+  .card { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  h1 { margin: 0 0 .25rem 0; }
+  .status { font-weight: 700; color: var(--warn); }
+  table { border-collapse: collapse; width: 100%; margin: .5rem 0; }
+  th, td { border: 1px solid var(--line); padding: .4rem .6rem; text-align: left; vertical-align: top; }
+  th { background: var(--panel2); }
+  code, pre { background: var(--panel2); border-radius: 4px; }
+  pre { padding: .75rem; overflow-x: auto; }
+  .mut { color: var(--mut); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>I/O-Pressure Batch Pacing</h1>
+<p><span class="status">STATUS: DEFERRED</span> <span class="mut">— design accepted as potentially useful; implementation postponed by owner ruling (2026-09-02) until a less critical phase of development. Nothing here is Implemented or Exercised; every section is Designed only.</span></p>
+
+<div class="card">
+<h2>Owner ruling — why this is parked</h2>
+<p>The owner judged the design <em>potentially useful but quite complex</em>, naming four risk classes: <strong>arbitrary tuning behavior</strong> (the pause threshold and hysteresis have no principled derivation yet, only a measurement plan), <strong>vulnerability to freezes</strong> (a job left frozen by a crashed or wedged gate is a hung build with no visible cause), <strong>performance regressions</strong> (pause time distorting timing bands, batch throughput lost to over-triggering), and <strong>catastrophic cascade failures</strong> (a frozen job holding a lock — cargo's, the harness's, a FUSE mount — while everything behind it queues). Deferred until a less critical phase; the no-root constraint below stands regardless.</p>
+</div>
+
+<div class="card">
+<h2>Problem</h2>
+<p><strong>User scenario:</strong> a video plays (or any latency-sensitive foreground app runs) while gate-admitted batch work — a build, a test run, a benchmark — is executing. Expected: foreground stays smooth, since batch runs at nice 15+. Instead: the video stutters. Why: niceness governs only the CPU scheduler; the batch job's reads and writes queue at the block device ahead of the player's, and nothing in the current scheduler (the <code>MTI_NICE_*</code> band applied by the gates) touches that queue.</p>
+</div>
+
+<div class="card">
+<h2>Constraints and rejected paths — all verified on the real host, 2026-09-02</h2>
+<table>
+<tr><th>Path</th><th>Finding</th><th>Disposition</th></tr>
+<tr><td><code>ionice</code> / <code>ioprio_set</code> (the original request)</td><td>I/O priorities are consumed by the block scheduler. The NVMe runs <code>none</code> (<code>/sys/block/nvme0n1/queue/scheduler</code>), which reads no priorities — the call is inert. Additionally, the kernel already derives BE level <code>(nice+20)/5</code> when no explicit ioprio is set, so the batch band already <em>means</em> BE&nbsp;7; the missing piece was never the call.</td><td>Rejected — inert</td></tr>
+<tr><td>Swap block scheduler to <code>bfq</code>/<code>mq-deadline</code></td><td>Would make priorities bind (bfq: class+level; mq-deadline: class only).</td><td>Ruled out by owner — no direct scheduler changes</td></tr>
+<tr><td>Cgroup io controller (<code>io.latency</code>/<code>io.max</code>) — scheduler-independent, works under <code>none</code></td><td><code>user@1000.service</code> delegates only <code>cpu memory pids</code> (verified in <code>cgroup.subtree_control</code>); enabling <code>io</code> needs a one-time root drop-in.</td><td>Ruled out by owner — <strong>no root dependency is acceptable to improve batch behavior</strong></td></tr>
+<tr><td>PSI-reactive pacing (this design)</td><td>All ingredients verified unprivileged: per-cgroup PSI readable (<code>app.slice/io.pressure</code>), slice placement via <code>systemd-run --user --slice</code> works without delegation, cgroup freezer is core cgroup2 (no controller needed).</td><td>Accepted as the only root-free path; <strong>deferred</strong></td></tr>
+</table>
+<p class="mut">A prerequisite to any future go: the PSI observation run (foreground video + heavy batch job, logging the <code>app.slice/io.pressure</code> stall fraction) to confirm I/O is actually the stutter's cause and to derive the threshold from measurement rather than a guess.</p>
+</div>
+
+<div class="card">
+<h2>Design</h2>
+<p>Everything lands in <strong>mti-gate</strong> (MTI <code>rust/launcher/src/bin/mti-gate.rs</code>), the one gate that already supervises its job (spawn-and-wait); rustc-gate and cc-gate keep their deliberate <code>exec</code> and inherit the behavior via the cgroup when a build stage is itself wrapped by mti-gate. The nice band is untouched — this is a parallel axis.</p>
+<table>
+<tr><th>#</th><th>Change</th><th>Where</th><th>What it does</th></tr>
+<tr><td>1</td><td>Spawn via scope</td><td>mti-gate spawn site</td><td><code>systemd-run --user --scope --slice=mti-batch.slice --quiet -- &lt;cmd…&gt;</code> — the job's subtree lands in its own cgroup, out of <code>app.slice</code>, so foreground pressure stays uncontaminated by the job's own stalls. Exit code propagates unchanged.</td></tr>
+<tr><td>2</td><td>Supervision loop</td><td>replace blocking <code>child.wait()</code></td><td><code>waitpid(WNOHANG)</code> + sleep(<code>policy.poll</code>, 500&nbsp;ms), sampling PSI each iteration; terminates exactly as today with the <code>done … elapsed= exit=</code> event.</td></tr>
+<tr><td>3</td><td>Foreground-stall sensor</td><td>new fn in <code>resources.rs</code></td><td>Read <code>app.slice/io.pressure</code>, take the <code>some total=</code> µs counter; stall fraction = counter delta ÷ poll interval. Sub-second reaction (the <code>avg10</code> field is too slow). Pure /sys read.</td></tr>
+<tr><td>4</td><td>Pause / resume</td><td>supervision loop</td><td>Stall fraction ≥ threshold for 2 consecutive polls → <code>systemctl --user freeze &lt;scope&gt;</code>; ≤ clear level (hysteresis, e.g. half) → <code>thaw</code>. Every transition is an event: <code>pause build zbus fg-io-stall=23%</code> / <code>resume build zbus paused=4.5s</code>.</td></tr>
+<tr><td>5</td><td>Policy knobs</td><td><code>Policy</code> (single point)</td><td><code>MTI_GATE_FG_STALL_PCT</code>, clear ratio; app.slice path inferred from UID, knob only as override.</td></tr>
+<tr><td>6</td><td>Accounting</td><td><code>done</code> event + timing store</td><td>Paused time reported separately (<code>elapsed=42.1s paused=6.0s</code>) so freezes never poison timing bands or read as perf regressions.</td></tr>
+<tr><td>7</td><td>Signal path</td><td>existing handler</td><td>On TERM/INT the loop runs <code>systemctl --user stop &lt;scope&gt;</code> — kills the whole tree, which the current single-PID relay never did.</td></tr>
+</table>
+
+<h3>Conditions — when each command runs</h3>
+<pre>
+mti-gate invoked
+├─ systemd user manager reachable?  (probe once)
+│   ├─ yes → spawn in scope; supervision loop armed
+│   └─ no  → spawn directly as today; event: "note … no slice isolation — pause/resume disabled"
+└─ each 500 ms poll while job runs:
+    ├─ child exited?            → done event, exit
+    ├─ TERM/INT flagged?        → systemctl --user stop &lt;scope&gt;, reap, done event
+    ├─ running &amp; unfrozen:  fg stall ≥ threshold, 2 polls → freeze + pause event
+    └─ running &amp; frozen:    fg stall ≤ clear level        → thaw  + resume event
+</pre>
+<p class="mut">Runtime dependencies added: <code>systemd-run</code>, <code>systemctl</code> (present on any systemd host) and one /sys file — no crates; the launcher stays dependency-free.</p>
+</div>
+
+<div class="card">
+<h2>Known limits (honest scope)</h2>
+<ul>
+<li>Reads and sync writes from batch are paused within ~1&nbsp;s of a foreground stall; a continuous-deprioritization scheme (io.latency) would have needed root.</li>
+<li>Writeback backlog: a freeze stops <em>new</em> dirty pages, but pages already queued drain at full rate for a few seconds — the collision is transient, not eliminated.</li>
+<li>Coverage is only jobs the gates launched; anything started outside them is invisible to this mechanism.</li>
+<li>The freezer suspends processes holding locks (cargo's target-dir lock, the test-harness lock, FUSE requests in flight). Bounded by the thaw in the normal case — this is the owner's cascade-failure risk when the thaw never comes.</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>Resume checklist (for the future session that picks this up)</h2>
+<ul>
+<li>Re-verify the host facts (block scheduler, delegation, PSI paths) — they are environment, not code, and can have moved.</li>
+<li>Run the PSI observation first; derive threshold + hysteresis from the measured stall fraction during real stutter.</li>
+<li>Design the freeze-orphan safeguard before the freeze itself: gate crash must thaw/stop the scope (owner risk #2/#4) — e.g. scope <code>RuntimeMaxSec</code> or a startup census that finds and disposes of stale <code>mti-batch.slice</code> members, per the P8 owner-lifecycle rule.</li>
+<li>Fail-first tests beside the existing gate suites (<code>gate_supervision.rs</code>, <code>gate_reporting.rs</code>); timing-band split (elapsed vs paused) lands with the feature, not after it.</li>
+</ul>
+</div>
+
+</main>
+<script src="/manifest-link.js"></script>
+<script src="/ann.js"></script>
+</body>
+</html>
