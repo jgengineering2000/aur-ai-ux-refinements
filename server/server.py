@@ -25,6 +25,7 @@ import http.server
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import socket
@@ -34,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -256,13 +258,26 @@ def _contained(path: Path, root: Path):
 # unrecoverable by morning, which is precisely what the Console tab was
 # reported to be missing.
 #
-# THE FIX IS ONE SYSCALL. A hard link gives the inode a second name, so the
-# harness's unlink drops a link instead of the data — and because the writer's
-# fd still points at that inode, everything it writes AFTER the unlink lands in
-# the spooled file too. There is no copy, no fd to hold open, no read loop and
-# no byte cap to enforce, because there is still only one copy of the bytes and
-# we have merely kept a name for it. (Verified end to end: a writer appending
-# across an unlink put `line 3 AFTER UNLINK` in the spool.)
+# THE FIX IS A HELD DESCRIPTOR, NOT A LINK. Capture opens each task file the
+# moment it appears, HOLDS the fd, and tails new bytes into a per-command
+# spool file as they arrive; the deletion of the source name — the only
+# terminator the harness gives — is answered by draining to EOF, one grace
+# re-read, and closing both files. Because the writer's fd outlives the
+# unlink, so does ours, and the post-unlink bytes drain like any others.
+#
+# An earlier design hard-linked the task file into the spool instead — one
+# syscall, zero copies, and correct in isolation — and it is the one design
+# this file must never return to. The Claude Code harness (>= 2.1.252)
+# REFUSES to consume any task output whose link count is not 1 ("task output
+# swap refused (not a regular nlink-1 file)") and can SIGKILL the running
+# command ("output file identity changed") — its error text wrongly blames
+# rival-session deletion, which cost four sessions of misdiagnosis. Every
+# Bash command raced the ~15ms linker, so captures died intermittently in
+# every project whose server ran (proven 2026-09-01 with an inotify watch
+# instrumenting the tasks dir). The nlink-1 check is an unconfigurable boundary on
+# the harness's side (P15, privileged-paths class): AUR adapts. Cost
+# accepted: one fd per live command and each byte copied once — the spool
+# alert thresholds below already watch runaways.
 #
 # Winning the race needs the kernel's own signal rather than a poll. A `git
 # status` lives ~50ms, so any polling interval cheap enough to run all day is
@@ -276,15 +291,37 @@ def _contained(path: Path, root: Path):
 # gap is gone. That is an accepted constraint, not an oversight — but an
 # accepted constraint that is invisible is indistinguishable from a bug, so the
 # spool records when it started and the Console tab states it (P11).
+_IN_MODIFY = 0x00000002
 _IN_CREATE = 0x00000100
 _IN_MOVED_TO = 0x00000080
+_IN_DELETE = 0x00000200
 _IN_ISDIR = 0x40000000
 _IN_CLOEXEC = 0o2000000
 _INOTIFY_HDR = struct.Struct("iIII")
 
 
+class _Tail:
+    """One live capture: the held source fd and the spool file it feeds."""
+    __slots__ = ("uuid", "stem", "src_fd", "dst_fd")
+
+    def __init__(self, uuid, stem, src_fd, dst_fd):
+        self.uuid = uuid
+        self.stem = stem
+        self.src_fd = src_fd
+        self.dst_fd = dst_fd
+
+
 class ConsoleSpool:
-    """Hard-links each task output into the registry before the harness unlinks it.
+    """Tails each task output into the registry over a held descriptor.
+
+    The source file's link count is never touched — the harness refuses any
+    task output whose nlink is not 1 (see the block comment above) — so
+    capture holds an fd instead: open on CREATE, drain on MODIFY, and on
+    DELETE of the source name drain to EOF, take one grace re-read, and close.
+    Holding the fd is also the liveness signal every reader consults, which is
+    deliberately in-process state: after a server restart nothing holds a
+    descriptor, and not-live is the true answer for every command that
+    predates the restart.
 
     One watcher, one inotify fd, every session — the tasks directories are all
     under one root, so there is nothing per-session to spawn, reap or orphan.
@@ -295,12 +332,15 @@ class ConsoleSpool:
     """
 
     POLL_S = 0.05                 # fallback cadence; the floor on what it can see
+    SWEEP_S = 2.0                 # orphan-tail backstop cadence under inotify
+    GRACE_S = 0.02                # pause before the one grace re-read at DELETE
 
     def __init__(self, tmp_root: Path, registry: Path):
         self._tmp_root = Path(tmp_root)
         self._registry = Path(registry)
         self._lock = threading.Lock()
         self._wd = {}                 # wd -> (kind, uuid)
+        self._tails = {}              # (uuid, stem) -> _Tail while the fd is held
         self._settle = {}             # sentinel name -> Event
         self._seq = 0
         self._thread = None
@@ -311,28 +351,20 @@ class ConsoleSpool:
         self._woke = threading.Condition(self._lock)
         self.mode = None              # "inotify" | "poll" — reported to the reader
         self.started = time.time()
-        self.missed = 0               # races lost — a command gone before the link
+        self.missed = 0               # races lost — a command gone before the open
+
+    # -- liveness ----------------------------------------------------------
+    def is_live(self, uuid, stem):
+        """True while this tailer holds the source fd — the liveness signal."""
+        with self._lock:
+            return (uuid, stem) in self._tails
+
+    def session_live(self, uuid):
+        """True while ANY command in the session is still being tailed."""
+        with self._lock:
+            return any(u == uuid for u, _ in self._tails)
 
     # -- lifecycle ---------------------------------------------------------
-    def preflight(self):
-        """A hard link cannot cross a filesystem, so prove it can be made.
-
-        Reported rather than silently degraded: a spool that quietly captures
-        nothing is worse than no spool, because the pane still looks
-        authoritative (P10 — an error path that does not log is a silent
-        failure).
-        """
-        self._registry.mkdir(parents=True, exist_ok=True)
-        self._tmp_root.mkdir(parents=True, exist_ok=True)
-        a, b = os.stat(self._tmp_root).st_dev, os.stat(self._registry).st_dev
-        if a != b:
-            print(f"[console-spool] REFUSING: task root {self._tmp_root} (dev "
-                  f"{a}) and spool {self._registry} (dev {b}) are different "
-                  f"filesystems; a hard link would fail EXDEV and foreground "
-                  f"output would be lost silently", file=sys.stderr)
-            return False
-        return True
-
     def start(self):
         """inotify if the kernel will give us an instance, polling if it will not.
 
@@ -350,7 +382,13 @@ class ConsoleSpool:
         where inotify misses nothing; that difference is reported to the reader
         rather than left to be discovered.
         """
-        if not self.preflight():
+        try:
+            self._registry.mkdir(parents=True, exist_ok=True)
+            self._tmp_root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            print(f"[console-spool] REFUSING: cannot create task root "
+                  f"{self._tmp_root} / registry {self._registry}: {exc}",
+                  file=sys.stderr)
             return False
         try:
             self._ino = _Inotify()
@@ -376,6 +414,14 @@ class ConsoleSpool:
             self._ino.close()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
+        # A server shutting down mid-command still owns every held fd (P8 —
+        # every exit path releases every owned resource): drain what has been
+        # written and close. The successor's startup scan re-reads the source
+        # from byte 0, so nothing is lost across the restart.
+        with self._lock:
+            tails = list(self._tails.values())
+        for tail in tails:
+            self._finish(tail)
 
     def settle(self, timeout=5.0):
         """Block until every event queued before this call has been handled.
@@ -421,7 +467,7 @@ class ConsoleSpool:
 
     # -- capture -----------------------------------------------------------
     def scan(self):
-        """Startup recovery — link whatever is already in flight.
+        """Startup recovery — adopt whatever is already in flight.
 
         A task file on disk is COMPLETE from byte 0, because the unlink happens
         only at command exit. So a server starting mid-session captures every
@@ -466,51 +512,156 @@ class ConsoleSpool:
     def _watch(self, path, kind, uuid):
         if self._ino is None:
             return
-        wd = self._ino.add(path, _IN_CREATE | _IN_MOVED_TO)
+        mask = _IN_CREATE | _IN_MOVED_TO
+        if kind == "tasks":
+            # Only the leaf directories carry file traffic: MODIFY drives the
+            # drain and DELETE is the command's one terminator — there is no
+            # "marked for deletion" to see earlier.
+            mask |= _IN_MODIFY | _IN_DELETE
+        wd = self._ino.add(path, mask)
         if wd is not None:
             with self._lock:
                 self._wd[wd] = (kind, uuid)
 
     def _capture(self, uuid, name):
-        """The whole mechanism: one link, and the bytes can no longer be lost."""
+        """CREATE: open the source, hold the fd, start the per-command spool file."""
         if not name.endswith(".output"):
             return
+        stem = name[:-len(".output")]
+        with self._lock:
+            if (uuid, stem) in self._tails:
+                return
         src = self._tmp_root / uuid / "tasks" / name
         # A SYMLINKED task entry is a subagent's transcript, not console output:
         # the harness points those at ~/.claude/projects/…/subagents/*.jsonl.
-        # `os.link` follows symlinks by default, so capturing one silently
-        # hard-linked a growing JSONL transcript into the console and offered
-        # its first line — raw JSON, quotes and all — as a chip label. It is not
-        # output, it is not ours to pin on disk, and it is skipped.
+        # Following one would tail a growing JSONL transcript into the console
+        # and offer its first line — raw JSON, quotes and all — as a chip
+        # label. It is not output, and it is skipped.
         try:
             if src.is_symlink():
                 return
         except OSError:
             return
-        dst_dir = self._registry / uuid / "spool"
-        dst = dst_dir / (name[:-len(".output")] + ".log")
-        if dst.exists():
+        try:
+            src_fd = os.open(src, os.O_RDONLY | os.O_CLOEXEC)
+        except FileNotFoundError:
+            # Lost the race: the command finished and the harness unlinked the
+            # name before the open landed, so the bytes are unrecoverable.
+            # Counted, because a silently dropped stream is the defect this
+            # class exists to end.
+            self.missed += 1
             return
+        except OSError as exc:
+            print(f"[console-spool] open failed for session={uuid} "
+                  f"task={name}: {exc}", file=sys.stderr)
+            return
+        dst_dir = self._registry / uuid / "spool"
+        dst = dst_dir / (stem + ".log")
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
-            os.link(src, dst, follow_symlinks=False)
-        except FileExistsError:
-            pass
-        except FileNotFoundError:
-            # Lost the race: the command finished before the link landed, so
-            # the bytes are already unrecoverable. Counted, because a silently
-            # dropped stream is the defect this class exists to end.
-            self.missed += 1
+            # O_TRUNC, not append: the source is complete from byte 0 for as
+            # long as its name exists, so a recapture after a server restart
+            # re-reads the whole file rather than appending a duplicate tail.
+            dst_fd = os.open(dst, os.O_WRONLY | os.O_CREAT | os.O_TRUNC |
+                             os.O_CLOEXEC, 0o644)
         except OSError as exc:
-            print(f"[console-spool] link failed for session={uuid} "
+            os.close(src_fd)
+            print(f"[console-spool] spool create failed for session={uuid} "
                   f"task={name}: {exc}", file=sys.stderr)
+            return
+        tail = _Tail(uuid, stem, src_fd, dst_fd)
+        with self._lock:
+            self._tails[(uuid, stem)] = tail
+        self._drain(tail)
+
+    def _drain(self, tail):
+        """Copy every byte the source has that the spool does not."""
+        while True:
+            try:
+                chunk = os.read(tail.src_fd, 65536)
+            except OSError as exc:
+                print(f"[console-spool] read failed for session={tail.uuid} "
+                      f"task={tail.stem}: {exc}", file=sys.stderr)
+                return
+            if not chunk:
+                return
+            try:
+                os.write(tail.dst_fd, chunk)
+            except OSError as exc:
+                print(f"[console-spool] spool write failed for "
+                      f"session={tail.uuid} task={tail.stem}: {exc}",
+                      file=sys.stderr)
+                return
+
+    def _touch(self, uuid, name):
+        """MODIFY: new bytes on a tailed source — read them off the held fd."""
+        if not name.endswith(".output"):
+            return
+        with self._lock:
+            tail = self._tails.get((uuid, name[:-len(".output")]))
+        if tail is None:
+            # A source writing that nothing tails: its CREATE was lost (queue
+            # overflow, or it predates this watch). MODIFY proves it is alive
+            # now, so adopt it — the file is complete from byte 0.
+            self._capture(uuid, name)
+            return
+        self._drain(tail)
+
+    def _ended(self, uuid, name):
+        """DELETE of the source name — the only terminator the harness gives."""
+        if not name.endswith(".output"):
+            return
+        with self._lock:
+            tail = self._tails.get((uuid, name[:-len(".output")]))
+        if tail is not None:
+            self._finish(tail)
+
+    def _finish(self, tail):
+        """Drain to EOF, one grace re-read, close both — the end-of-command stamp.
+
+        The writer's fd can outlive the unlink, so after the first drain a
+        short pause and one re-read catch a final in-flight write. Closing is
+        the stamp itself: liveness reads "ended" from the dropped fd, and the
+        spool file's own mtime — its last write — is the end time the history
+        already reports.
+        """
+        self._drain(tail)
+        time.sleep(self.GRACE_S)
+        self._drain(tail)
+        with self._lock:
+            self._tails.pop((tail.uuid, tail.stem), None)
+        for fd in (tail.src_fd, tail.dst_fd):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    def _sweep(self):
+        """Backstop for lost events: finish any tail whose source name is gone.
+
+        inotify can drop events under queue overflow, and polling has no
+        DELETE event at all. `st_nlink == 0` on the HELD fd is the truthful
+        test — the name is gone whatever notified or failed to. Draining
+        first also mops up any MODIFY the queue lost.
+        """
+        with self._lock:
+            tails = list(self._tails.values())
+        for tail in tails:
+            self._drain(tail)
+            try:
+                gone = os.fstat(tail.src_fd).st_nlink == 0
+            except OSError:
+                gone = True
+            if gone:
+                self._finish(tail)
 
     def _run(self):
         if self.mode == "poll":
             return self._run_poll()
+        last_sweep = time.monotonic()
         while not self._stopping:
             try:
-                events = self._ino.read()
+                events = self._ino.read(timeout=self.SWEEP_S)
             except OSError:
                 return
             for wd, mask, name in events:
@@ -531,8 +682,16 @@ class ConsoleSpool:
                 elif kind == "session" and name == "tasks":
                     self._watch(self._tmp_root / uuid / "tasks", "tasks", uuid)
                 elif kind == "tasks":
-                    self._capture(uuid, name)
-
+                    if mask & _IN_DELETE:
+                        self._ended(uuid, name)
+                    elif mask & _IN_MODIFY:
+                        self._touch(uuid, name)
+                    else:
+                        self._capture(uuid, name)
+            now = time.monotonic()
+            if now - last_sweep >= self.SWEEP_S:
+                self._sweep()
+                last_sweep = now
 
     def _run_poll(self):
         """Re-scan the live task directories on a short interval.
@@ -540,11 +699,13 @@ class ConsoleSpool:
         Cheap because it is bounded by what is actually running: only session
         directories whose task dir exists are visited, which is a handful of
         entries per pass, not the ~490-file daemon directory. `scan()` already
-        skips anything already linked, so a pass over an idle tree does no work
-        beyond one `scandir` each.
+        skips anything already tailed, so a pass over an idle tree does no work
+        beyond one `scandir` each; the sweep is what drains live tails and
+        finishes unlinked ones, since polling has no per-file events.
         """
         while not self._stopping:
             self.scan()
+            self._sweep()
             with self._lock:
                 self._cycle += 1
                 self._woke.notify_all()
@@ -566,7 +727,17 @@ class _Inotify:
                                           ctypes.c_uint32(mask))
         return wd if wd >= 0 else None
 
-    def read(self):
+    def read(self, timeout=None):
+        """Next event batch; with a timeout, [] when nothing arrived in time.
+
+        The timeout exists for the caller's sweep cadence — a read that blocked
+        forever would let an orphaned tail (its DELETE lost to queue overflow)
+        hold its fd until the next unrelated filesystem event.
+        """
+        if timeout is not None:
+            ready, _, _ = select.select([self.fd], [], [], timeout)
+            if not ready:
+                return []
         buf = os.read(self.fd, 65536)
         out, off = [], 0
         while off + _INOTIFY_HDR.size <= len(buf):
@@ -585,6 +756,18 @@ class _Inotify:
 
 
 _SPOOL = None                      # the running watcher, for the gap indicator
+
+
+def _spool_live(uuid, stem):
+    """Whether the tailer still holds this command's source fd.
+
+    THE liveness signal for spooled streams, replacing the retired nlink test
+    (a link count above 1 is now impossible by design — see ConsoleSpool). It
+    is in-process state on purpose: after a server restart nothing holds a
+    descriptor, and not-live is the true answer for every command that
+    predates the restart.
+    """
+    return _SPOOL is not None and _SPOOL.is_live(uuid, stem)
 
 
 def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
@@ -667,11 +850,11 @@ def prune_spool(registry: Path, retention_s=CONSOLE_SPOOL_RETENTION_S, now=None)
         newest = max(st.st_mtime for _, st in entries)
         if now - newest <= retention_s:
             continue
-        # A command still linked from its task file is RUNNING. Age says it
-        # should go; a live writer says it must not, and the live writer wins —
-        # deleting under an open descriptor would strand the writer appending
-        # into a file no reader can ever reach.
-        if any(st.st_nlink > 1 for _, st in entries):
+        # A command the tailer still holds a source fd for is RUNNING. Age
+        # says it should go; a live writer says it must not, and the live
+        # writer wins — deleting under the tailer's open descriptors would
+        # strand a capture appending into a file no reader can ever reach.
+        if _SPOOL is not None and _SPOOL.session_live(sd.name):
             continue
         size = sum(st.st_size for _, st in entries)
         try:
@@ -718,7 +901,7 @@ def _spooled(registry: Path, uuid: str):
             # Still named by SOMETHING: the harness never records the command
             # text next to the task id, and inventing a mapping from timestamp
             # order would be a guess presented as fact.
-            "live":  st.st_nlink > 1,
+            "live":  _spool_live(uuid, f.stem),
             # Raw epoch, for the session sort's fallback. The formatted stamps
             # elsewhere are for reading; this one is for comparing.
             "mtime_epoch": st.st_mtime,
@@ -751,7 +934,8 @@ def console_history(registry: Path, uuid: str, cursor=None,
         return {"chunks": [], "cursor": cursor}
     # Start order, not mtime: mtime reorders the row every time an older
     # command writes another line, which would shuffle the history under the
-    # reader. st_ctime is when the link was made, i.e. when the command began.
+    # reader. st_ctime is when the spool file was created, i.e. when the
+    # command began.
     files.sort(key=lambda e: e[1].st_ctime)
 
     chunks, budget = [], cap
@@ -774,10 +958,11 @@ def console_history(registry: Path, uuid: str, cursor=None,
             continue
         cursor[key] = start + len(data)
         budget -= len(data)
-        # A command still linked from its task file has not exited. That is the
-        # honest end-marker here, where there is no pid to ask and a file that
-        # merely stopped growing is indistinguishable from a slow one.
-        ended = st.st_nlink <= 1 and cursor[key] >= st.st_size
+        # A command whose source fd the tailer still holds has not exited.
+        # That is the honest end-marker here, where there is no pid to ask and
+        # a file that merely stopped growing is indistinguishable from a slow
+        # one.
+        ended = not _spool_live(uuid, key) and cursor[key] >= st.st_size
         if not data and not first and not ended:
             continue
         chunk = {
@@ -2012,13 +2197,10 @@ def console_resolve(sid, *, tmp_root=None, projects=None, daemon_dir=None,
                               r["registry"])
             if path is None or not path.is_file():
                 return None
-            # nlink > 1 means the task file still carries its own name, i.e. the
-            # command has not exited — the truthful liveness signal here, where
-            # there is no pid to test.
-            try:
-                live = path.stat().st_nlink > 1
-            except OSError:
-                live = False
+            # A tailer still holding the source fd means the command has not
+            # exited — the truthful liveness signal here, where there is no
+            # pid to test.
+            live = _spool_live(uuid, name)
             return {"path": path, "label": name, "stream_key": name,
                     "pid": None, "rc": None if live else 0, "kind": "spool"}
 

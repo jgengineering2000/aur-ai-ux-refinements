@@ -59,8 +59,8 @@ ends. Two markers, and only these:
 | Command begins | `▶ <time>  <first non-empty line of its output>` |
 | Command ends | `■ ended · <duration> · <size>` |
 
-`<time>` is when the command **started** — the moment its output file was
-linked, never its last-write time. A banner carrying two different clocks is
+`<time>` is when the command **started** — the moment capture opened its output
+file, never its last-write time. A banner carrying two different clocks is
 worse than one carrying none.
 
 The first line stands in for the command text because the harness does not
@@ -85,14 +85,37 @@ desynchronize each other.
 ### 1.3 Retention
 
 A foreground command's output file is appended to live and **unlinked the moment
-the command exits**. Retention is therefore a second hard link, taken while the
-command runs: the harness's unlink drops a link instead of the data, and because
-the writer's descriptor still points at that inode, bytes written after the
-unlink land in the spool too. No copy, no held descriptor, no read loop.
+the command exits**. Retention is therefore a **tail over a held descriptor**,
+taken while the command runs: capture opens the task file the moment it appears,
+holds the descriptor, and appends each new byte to a per-command spool file. The
+deletion of the source name is the terminator — the only one the harness gives —
+answered by draining to end-of-file, one grace re-read, and closing both files.
+The writer's descriptor outlives the unlink, so the held one does too, and bytes
+written after the unlink drain like any others.
 
-A file still carrying more than one link is a command that **has not exited**.
-That is the end-of-command signal; a file that merely stopped growing is
-indistinguishable from a slow command.
+**A second hard link is the one design this section must never return to.** It
+was the original mechanism — one syscall, zero copies — and the AI harness now
+forbids it: from 2.1.252 the harness **refuses to consume any task output whose
+link count is not 1** and can kill the running command when the count rises,
+while its error text wrongly blames another session's deletion. Every command
+raced the linker, so captures died intermittently wherever a server ran (proven
+2026-09-01). The nlink-1 check is an unconfigurable boundary on the harness's
+side, so capture adapts: the source file's link count never changes while the
+file exists. The accepted cost — one descriptor per live command, each byte
+copied once — is watched by the spool row's alert thresholds (§5).
+
+**Liveness is the held descriptor.** A command whose source descriptor capture
+still holds has not exited; one it holds nothing for has. The signal is
+in-process state, and that scope is correct: after a server restart nothing
+holds a descriptor, and not-live is the true answer for every command that
+predates the restart. A file that merely stopped growing remains
+indistinguishable from a slow command, and is never treated as ended.
+
+Spool files stay **per command**, never one merged log: concurrent commands
+would interleave on disk, start/duration/size come free from each file's own
+stat, and the §1.2 cursor protocol is keyed per command — the unified stream id
+was already retired once for resetting readers. The single continuous history
+of §1 is synthesized at read time, unchanged.
 
 ### 1.4 Stated gaps
 
