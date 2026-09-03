@@ -76,6 +76,12 @@ workers' tokens are the bulk of the spend.
 
 ## Delegate briefs
 
+**A brief is tracked content, so the ceiling binds it**: name worktrees by
+branch and paths relative to the project root, never an absolute path. Paid
+for on 2026-09-03 — two briefs carrying the ladder worktree's absolute path
+were refused by the content guard, and the delegate then presented the refusal
+as a policy fork instead of fixing the content.
+
 One brief per phase, **in the repo**, compact and self-contained — never
 re-derived per spawn (PROCESS §1: the second derivation is the signal to
 crystallise). The brief states: the deliverable (files/commits), the

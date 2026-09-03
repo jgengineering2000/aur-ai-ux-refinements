@@ -43,7 +43,11 @@ AUR checkout may not exist. The tools were addressed as `tools/…` here until
 - [ ] **Separate current truth from dated record.** Checkpoints, session
       transcripts, sampled-response corpora and generated documents say the old
       name *because that is what it was called then*. Rewriting them is not
-      migration, it is falsification. Exclude them explicitly.
+      migration, it is falsification. Exclude them explicitly. **This is about
+      NAMES and nothing else** — it is never a PII exemption: a home path, a
+      project's absolute path or a personal basename in a dated record is
+      anonymized like anything else (ai_common.md, the ceiling), because the
+      record's truth lives in the mapping outside git, not in the path.
 - [ ] **Separate paths from published identifiers.** A repository name, a
       released binary, an installed systemd unit and a package are not paths.
       Renaming them in docs while the real thing keeps its name produces

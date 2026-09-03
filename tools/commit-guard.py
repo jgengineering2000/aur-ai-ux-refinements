@@ -24,8 +24,18 @@ Exit 0 clean, 1 findings, 2 usage. Two classes of finding:
   it just has not been noticed yet.
 
 Both are reported with file:line so the finding is actionable rather than a
-verdict. Historical records are exempt: a dated checkpoint states what was true
-then, and rewriting it to satisfy a scanner is falsification.
+verdict.
+
+THE CEILING (ai_common.md, PII): git's world ends at the project's own path,
+and everything above it is PII by construction — the user's home, the machine's
+layout, and the project's OWN absolute location. So the PII scan is content-only
+and covers every added line of every tracked path: no exempt directory class, no
+allowlisted file. Until 2026-09-03 this guard skipped dated records, memory,
+generated documents, transcripts and a list of "user-level config" files on the
+theory that rewriting a record is falsification. It is not: a record's truth is
+preserved by the mapping that lives outside git, and replacing a real path with
+its anonymized name is what the record should have said. Every one of those
+skips was where a path got in.
 """
 
 import argparse
@@ -59,16 +69,13 @@ PII = [
     ("private IPv4", re.compile(r"\b(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+\b")),
 ]
 
-# Paths whose CONTENT is a dated record. A scanner that forces edits here is
-# asking for the record to be falsified.
-EXEMPT = ("checkpoints/", "checkpoints-archive/", "/rule-tests/",
+# Dated records may legitimately NAME a consuming project (a checkpoint says
+# which project the session was in), so the cross-project LEAKAGE check skips
+# them. The PII scan skips nothing — see the docstring.
+LEAKAGE_EXEMPT = ("checkpoints/", "checkpoints-archive/", "/rule-tests/",
           "pending-insights.md", "/.claude/projects/", "aur-docs/",
           "claude-docs/", "/memory/", "transcript")
 
-# Files that legitimately carry a home path because they ARE user-level config
-# or documentation of it.
-EXEMPT_PII_FILES = ("commit-guard.py", "aurshare.py", "debrand.py",
-                    "shared-root-design.md", "git-backup", "install")
 
 
 def tracked_projects():
@@ -116,22 +123,34 @@ def added_lines(repo, mode):
     return {k: v for k, v in files.items() if v}
 
 
+def pii_patterns(repo):
+    """The PII patterns for THIS repository: the fixed set plus the project's
+    own absolute path. A project under $HOME is already caught by the home
+    pattern; one elsewhere (/srv, /mnt, a temp dir) is not, and its own
+    location is above the ceiling all the same."""
+    project = str(Path(repo).resolve())
+    pats = list(PII)
+    if not project.startswith(HOME + "/"):
+        pats.insert(0, ("project path (above the ceiling)",
+                        re.compile(re.escape(project) + r"(/|\b)")))
+    return pats
+
+
 def scan(repo, added, projects, log):
     findings = []
     repo_name = Path(repo).name
+    pats = pii_patterns(repo)
     for rel, lines in added.items():
-        if any(k in f"/{rel}" for k in EXEMPT):
-            continue
-        pii_exempt = any(k in rel for k in EXEMPT_PII_FILES)
+        leak_exempt = any(k in f"/{rel}" for k in LEAKAGE_EXEMPT)
         # Shared infrastructure: anything AUR owns and every project inherits.
-        shared = repo_name == "aur" and not rel.startswith((".claude/", "aur-docs/"))
+        shared = (repo_name == "aur" and not leak_exempt
+                  and not rel.startswith((".claude/", "aur-docs/")))
 
         for n, line in lines:
-            if not pii_exempt:
-                for label, pat in PII:
-                    if pat.search(line):
-                        findings.append(("PII", rel, n, label, line.strip()[:100]))
-                        break
+            for label, pat in pats:
+                if pat.search(line):
+                    findings.append(("PII", rel, n, label, line.strip()[:100]))
+                    break
             if shared:
                 for proj in projects:
                     if proj in ("aur",) or len(proj) < 3:

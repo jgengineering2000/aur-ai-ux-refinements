@@ -112,6 +112,12 @@ deliberate to everyone who reads it later.
 
 ## 6 · What must never be committed
 
+- **Anything above the project's own path.** Git's world ends at
+  `${PROJECT_PATH}`; `$HOME`, the machine's layout and the project's own
+  absolute location are all outside it (ai_common.md, the ceiling). Name
+  worktrees by branch, write paths relative to the root, and expect the guard
+  in EVERY tracked path — dated records, memory, generated docs and briefs
+  included; there is no exempt directory and no allowlisted file.
 - **A symlink's target is its tracked content.** Committing one publishes its
   target string, so an absolute link publishes a home path. Links a tool
   regenerates are output: the generator is tracked, the output is gitignored.
