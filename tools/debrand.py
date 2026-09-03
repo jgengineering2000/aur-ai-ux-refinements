@@ -62,7 +62,10 @@ SKIP_DIRS = {".git", "build", "dist", "__pycache__", "node_modules", ".gradle"}
 # HISTORICAL RECORD — never rewritten. These files say "claude-docs" because that
 # is what it was called on the day they were written. Editing them would make a
 # May checkpoint reference a directory that did not exist until August, which is
-# not a migration, it is falsifying the record. Docs state current truth; a dated
+# not a migration, it is falsifying the record.
+# NAMES ONLY: this is never a PII exemption — a home path or a project's
+# absolute path in a dated record is anonymized like anything else (ai_common.md,
+# the ceiling), and the content guard scans these files like every other. Docs state current truth; a dated
 # record states what was true then.
 SKIP_HISTORICAL = ("checkpoints/", "checkpoints-archive/", "/rule-tests/",
                    "pending-insights.md", "/transcripts/",
