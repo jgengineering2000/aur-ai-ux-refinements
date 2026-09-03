@@ -926,6 +926,9 @@ created files, check `git status --untracked-files=all`.
 
 Patent-IP repos have no remote; backup is manual via `~/.claude/git-backup.sh`
 (archives repos listed in `~/.claude/git-backup-projects.txt` to
-`~/git-backups/`, skip-if-up-to-date). Prompt the user after significant landed
-work: "Run `~/.claude/git-backup.sh` now?" No auto-mirror/post-commit
-hooks/timers without explicit re-authorization.
+`~/git-backups/`, skip-if-up-to-date). **Backup, commit and test-phase nudges
+are a STATUS, never a question** (owner 2026-09-03): one row stating how much
+is outstanding (files, LOC) and how long since the last backup / commit / test
+phase (hours or days) — surfaced only after a long period of no interactions,
+and never first thing in the day. No auto-mirror/post-commit hooks/timers
+without explicit re-authorization.

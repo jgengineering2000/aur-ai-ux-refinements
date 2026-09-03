@@ -143,3 +143,23 @@ one presenter consumed by every harness. The model reasons over the tool's
 findings and trends; it never hand-mines timing or pass/fail output across
 repeated runs — anything iterative or repeated where intelligence is spent on
 multiple invocations of the same extraction is the signal to extend the tool.
+
+## 9. Diverged trees normalize before they merge
+
+When two long-lived trees must become one, no semantic reconciliation happens
+until the trees share a shape. Three ordered steps, each strictly smaller in
+judgment than the next: **(1) renames** — replay every rename one side made
+onto the other, automated through tools (the refactor-rename discipline), never
+by hand; **(2) non-semantic movement** — file and function placement, import
+paths, formatting: mechanical, behaviour-preserving; **(3) the merge itself** —
+the only step that requires thought, now operating on a conflict surface
+reduced to the genuinely semantic residue.
+
+Steps 1 and 2 are proven, not trusted: after normalization the tree must
+**regenerate its approved reference artifact as a pixel-perfect (bit-identical
+where the toolchain permits) match, and that proof is committed as the
+baseline** before the merge begins. A normalization that cannot reproduce its
+own approved output has changed behaviour and is a defect to fix, not a
+variance to explain (P2, P7's behaviour-preserving-refactor corollary). Paid
+for first on 2026-09-03: a two-branch pipeline merge whose ~2,000-line
+conflict surface was mostly one crate rename.
