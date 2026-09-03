@@ -56,6 +56,24 @@ workers' tokens are the bulk of the spend.
   leaves the next session to run everything at whatever it woke up as —
   usually either too expensive or too weak.
 
+## Decisions inside a delegation
+
+- **Strike foreclosed options before surfacing any fork.** Before putting an
+  A/B/C to the owner, delete every option a standing ruling — including the
+  brief's own constraints — already forbids. **If one option remains, it is
+  work: take it and notify.** Paid for on 2026-09-03: a supervisor's first
+  turn posed a three-way merge-location decision in which one option
+  discarded the history the method exists to preserve and another required
+  seizing a second session's uncommitted files, both foreclosed by the very
+  brief it was executing; the only open option then sat blocked on the
+  owner's attention.
+- **Authorized work starts immediately.** "Say the word and I will start"
+  re-asks a go the kickoff already gave; run the authorized steps while any
+  genuine question is in flight, never behind it.
+- **Brief facts are leads, not ground truth.** The delegate re-grounds the
+  brief against the real tree before acting and reports corrections — that
+  part of the same turn was done right, and the corrections stood.
+
 ## Delegate briefs
 
 One brief per phase, **in the repo**, compact and self-contained — never
