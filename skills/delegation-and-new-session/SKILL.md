@@ -74,6 +74,27 @@ workers' tokens are the bulk of the spend.
   brief against the real tree before acting and reports corrections — that
   part of the same turn was done right, and the corrections stood.
 
+## Completion signals inside a delegation
+
+- **A delegate that launches a job through a monitor and yields does not
+  wake on it.** A completion notification is delivered to whoever holds the
+  turn, and a delegate that has returned holds nothing — so the supervisor
+  owns every completion signal for work a delegate started, and a brief that
+  says "launch the build and report when it finishes" asks for something the
+  delegate cannot do. Either the delegate waits on the job in the foreground
+  inside its own turn, or the supervisor launches it and waits. Paid for on
+  2026-09-03: a build launched by a delegate through a monitor finished with
+  nobody listening, and the supervisor found it by polling. This is
+  `ai_common.md` P11's completion-signal corollary — the signal belongs to
+  whoever waits — seen from the delegation side.
+- **A content defect is never a policy fork.** A guard refusal, a home path
+  in a brief, a personal path in a board row: each is a defect in content the
+  delegate produced, and the fix is correct content. Presenting one to the
+  owner as a decision ("the guard blocks this — bypass it?") escalates a
+  mistake as a fork whose other branch the brief already forbids, so the only
+  option left is work (strike foreclosed options, above). The paid instance is
+  under Delegate briefs below.
+
 ## Delegate briefs
 
 **A brief is tracked content, so the ceiling binds it**: name worktrees by
