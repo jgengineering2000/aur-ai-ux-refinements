@@ -260,6 +260,60 @@ body {
 .sysline .sf.bad b { font-weight: 700; }
 .sysline .sf.warn { color: #6ea8d8; opacity: .95; }
 .sysline .sf.gap { color: #d9a441; opacity: .95; }
+
+/* Top aggregated process rows under system metrics */
+.top-grid {
+  display: grid;
+  grid-template-columns:
+    max-content
+    max-content
+    minmax(8ch, max-content)
+    minmax(5.5ch, max-content)
+    max-content
+    max-content
+    max-content;
+  justify-content: start;
+  gap: 1px 5px;
+  margin-top: 5px;
+  margin-inline: calc(-1 * (var(--pad-x) + var(--group-pad-x)));
+  padding-inline: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--bd);
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.top-grid[hidden] { display: none; }
+.top-head, .top-row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  padding: 1px 0;
+  align-items: baseline;
+}
+.top-head {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mu);
+  padding: 2px 0 1px;
+}
+.top-head span { text-align: right; }
+.top-head span.th-left { text-align: left; }
+.top-row .sl { opacity: .55; letter-spacing: .04em; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; text-align: left; }
+.top-row .top-proc { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.top-row .top-n {
+  text-align: right;
+  color: var(--mu);
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.top-row .top-cnt { font-weight: 700; color: var(--tx); }
+.top-row .top-n.bad { color: #d9a441; font-weight: 700; }
+.top-row .top-n.warn { color: #6ea8d8; }
 /* Transcript view. Turns are BLOCKS, not log lines: a conversation is read,
    not scanned, so it wraps and breathes where a console clips and holds its
    columns. */
@@ -1347,6 +1401,7 @@ body {
       const sys = isDaemon
         ? '<div id="crash-panel" hidden></div>'
           + '<div id="sysline" class="sysline"></div>'
+          + '<div id="topline" class="top-grid" hidden></div>'
           + '<div id="spoolline" class="sysline"></div>' : '';
       return `
         <div class="console-group">
@@ -1377,6 +1432,7 @@ body {
     // for the 3-second beat is what made the row disappear for seconds at a
     // time whenever a stream came or went.
     paintSys();
+    paintTop();
     paintSpool();
   }
 
@@ -2423,7 +2479,7 @@ body {
     if (n < 1024) return n + ' B';
     if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + 'K';
     if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + 'M';
-    return (n / 1073741824).toFixed(1) + 'G';
+    return (n / 1073741824).toFixed(n < 10737418240 ? 1 : 0) + 'G';
   }
 
   // Nice is signed and its sign is the whole point — a batch job at +19 and a
@@ -2498,7 +2554,7 @@ body {
   // moment a reader looks at it. So the last rendering is held here and
   // repainted the instant the node is recreated: a line stands until a NEWER
   // one replaces it, never until a poll gets round to it.
-  let sysHtml = '', spoolHtml = '', sysAt = 0;
+  let sysHtml = '', topHtml = '', spoolHtml = '', sysAt = 0;
   // Client-side freshness, alongside the server's own (§4.3). The server can
   // only state staleness in an answer that arrives — a doc server being
   // restarted answers nothing at all, and a held row would otherwise show its
@@ -2516,6 +2572,13 @@ body {
         html += `<span class="sf gap">no sample ${age}s</span>`;
     }
     if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  function paintTop() {
+    const el = document.getElementById('topline');
+    if (!el) return;
+    if (el.innerHTML !== topHtml) el.innerHTML = topHtml;
+    el.hidden = !topHtml;
   }
 
   function paintSpool() {
@@ -2635,6 +2698,41 @@ body {
           : '')
       + (bad ? `<span class="sf bad">over limit — capture continues</span>` : '');
     paintSpool();
+  }
+
+  function renderTop(procs) {
+    if (!procs || !procs.length) {
+      topHtml = '';
+      paintTop();
+      return;
+    }
+    const head = '<div class="top-head">'
+      + '<span class="th-left">type</span>'
+      + '<span>cnt</span>'
+      + '<span class="th-left">process</span>'
+      + '<span>ni</span>'
+      + '<span>load</span>'
+      + '<span>cpu</span>'
+      + '<span>rss</span>'
+      + '</div>';
+    const rows = procs.map(p => {
+      const load = Math.round(p.load || 0);
+      const loadBad = load >= 100;
+      const loadWarn = load >= 50 && !loadBad;
+      const loadCls = loadBad ? ' bad' : (loadWarn ? ' warn' : '');
+      const tag = p.rank ? `<span class="sl">${esc(p.rank)}</span>` : '<span class="sl"></span>';
+      return `<div class="top-row">`
+        + tag
+        + `<span class="top-n top-cnt">${p.count}</span>`
+        + `<span class="top-proc">${esc(p.name)}</span>`
+        + `<span class="top-n">${esc(p.nice)}</span>`
+        + `<span class="top-n${loadCls}">${load}%</span>`
+        + `<span class="top-n">${esc(p.cputime)}</span>`
+        + `<span class="top-n">${fmtBytes(p.rss)}</span>`
+        + `</div>`;
+    }).join('');
+    topHtml = head + rows;
+    paintTop();
   }
 
   // ── One-shot report table ─────────────────────────────────────────────────
@@ -2775,6 +2873,7 @@ body {
     const rows = [...document.querySelectorAll('#console-list .dmn-row')];
     fetch('/procstats').then(r => r.json()).then(resp => {
       renderSys(resp.system);
+      renderTop(resp.top);
       renderSpool(resp.spool);
       const m = resp.rows || {};
       rows.forEach(row => {
@@ -2809,6 +2908,7 @@ body {
       // retry storm on top of every beat. The row is repainted either way,
       // which is what ages the held line toward its `no sample` marker.
       paintSys();
+      paintTop();
       if (!isRetry && sysRetry === null)
         sysRetry = setTimeout(() => {
           sysRetry = null;

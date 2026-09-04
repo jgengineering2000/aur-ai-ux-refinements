@@ -295,6 +295,7 @@ _IN_MODIFY = 0x00000002
 _IN_CREATE = 0x00000100
 _IN_MOVED_TO = 0x00000080
 _IN_DELETE = 0x00000200
+_IN_CLOSE_WRITE = 0x00000008
 _IN_ISDIR = 0x40000000
 _IN_CLOEXEC = 0o2000000
 _INOTIFY_HDR = struct.Struct("iIII")
@@ -528,14 +529,46 @@ class ConsoleSpool:
             return
         mask = _IN_CREATE | _IN_MOVED_TO
         if kind == "tasks":
-            # Only the leaf directories carry file traffic: MODIFY drives the
-            # drain and DELETE is the command's one terminator — there is no
-            # "marked for deletion" to see earlier.
-            mask |= _IN_MODIFY | _IN_DELETE
+            # Leaf directories carry file traffic: MODIFY drives the
+            # drain, and CLOSE_WRITE (process closed output) or DELETE
+            # is the command's terminator.
+            mask |= _IN_MODIFY | _IN_DELETE | _IN_CLOSE_WRITE
         wd = self._ino.add(path, mask)
         if wd is not None:
             with self._lock:
                 self._wd[wd] = (kind, uuid)
+
+    def _has_writer(self, tail):
+        """Check if any process on the machine has this task file open for writing."""
+        target_suffix = f"/{tail.uuid}/tasks/{tail.stem}.output"
+        my_uid = os.getuid()
+        try:
+            pids = [d for d in os.listdir("/proc") if d.isdigit()]
+        except OSError:
+            return False
+        for pid in pids:
+            try:
+                if os.stat(f"/proc/{pid}").st_uid != my_uid:
+                    continue
+                fds = os.listdir(f"/proc/{pid}/fd")
+            except OSError:
+                continue
+            for fd in fds:
+                try:
+                    dest = os.readlink(f"/proc/{pid}/fd/{fd}")
+                    if dest.endswith(target_suffix):
+                        try:
+                            with open(f"/proc/{pid}/fdinfo/{fd}", "r") as fh:
+                                for line in fh:
+                                    if line.startswith("flags:"):
+                                        flags = int(line.split()[1], 8)
+                                        if (flags & 3) in (os.O_WRONLY, os.O_RDWR):
+                                            return True
+                        except OSError:
+                            return True
+                except OSError:
+                    pass
+        return False
 
     def _capture(self, uuid, name):
         """CREATE: open the source, hold the fd, start the per-command spool file."""
@@ -587,9 +620,19 @@ class ConsoleSpool:
             # history sorts on.
             already = dst.stat().st_size if dst.exists() else 0
             try:
-                source_size = os.fstat(src_fd).st_size
+                st_src = os.fstat(src_fd)
+                source_size = st_src.st_size
+                source_mtime = st_src.st_mtime
             except OSError:
                 source_size = 0
+                source_mtime = 0
+
+            # If the file is already completely captured and was not modified recently,
+            # it is a finished command from a previous run. Do not hold it open.
+            if already >= source_size and already > 0 and (time.time() - source_mtime > 5.0):
+                os.close(src_fd)
+                return
+
             if already > source_size:
                 # The spool holds MORE than the source: the source was replaced
                 # or truncated under us, so the prior capture describes a
@@ -611,6 +654,11 @@ class ConsoleSpool:
         with self._lock:
             self._tails[(uuid, stem)] = tail
         self._drain(tail)
+
+        # If this capture caught up on an inactive file that stopped writing > 5s ago,
+        # finish and close descriptors immediately rather than holding them open.
+        if (time.time() - source_mtime > 5.0) and not self._has_writer(tail):
+            self._finish(tail)
 
     def _drain(self, tail):
         """Copy every byte the source has that the spool does not."""
@@ -646,7 +694,7 @@ class ConsoleSpool:
         self._drain(tail)
 
     def _ended(self, uuid, name):
-        """DELETE of the source name — the only terminator the harness gives."""
+        """CLOSE_WRITE or DELETE of the source name — command has completed."""
         if not name.endswith(".output"):
             return
         with self._lock:
@@ -675,7 +723,7 @@ class ConsoleSpool:
                 pass
 
     def _sweep(self):
-        """Backstop for lost events: finish any tail whose source name is gone.
+        """Backstop for lost events: finish any tail whose source name is gone or writer closed.
 
         inotify can drop events under queue overflow, and polling has no
         DELETE event at all. `st_nlink == 0` on the HELD fd is the truthful
@@ -684,13 +732,19 @@ class ConsoleSpool:
         """
         with self._lock:
             tails = list(self._tails.values())
+        now = time.time()
         for tail in tails:
             self._drain(tail)
             try:
-                gone = os.fstat(tail.src_fd).st_nlink == 0
+                st = os.fstat(tail.src_fd)
+                gone = st.st_nlink == 0
+                inactive = (now - st.st_mtime) > 10.0
             except OSError:
                 gone = True
+                inactive = True
             if gone:
+                self._finish(tail)
+            elif inactive and not self._has_writer(tail):
                 self._finish(tail)
 
     def _run(self):
@@ -720,7 +774,7 @@ class ConsoleSpool:
                 elif kind == "session" and name == "tasks":
                     self._watch(self._tmp_root / uuid / "tasks", "tasks", uuid)
                 elif kind == "tasks":
-                    if mask & _IN_DELETE:
+                    if mask & (_IN_DELETE | _IN_CLOSE_WRITE):
                         self._ended(uuid, name)
                     elif mask & _IN_MODIFY:
                         self._touch(uuid, name)
@@ -808,35 +862,49 @@ def _spool_live(uuid, stem):
     return _SPOOL is not None and _SPOOL.is_live(uuid, stem)
 
 
+_SPOOL_STATS_CACHE = {}  # session_name -> (st_mtime_ns, sess_sizes)
+_spool_stats_lock = threading.Lock()
+
+
 def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
                 alert_single=CONSOLE_SPOOL_ALERT_SINGLE):
     """Total spooled bytes, and the largest single command, with alert flags.
 
-    Shown ALWAYS, not only when breached. A limit that appears at the moment it
-    is crossed teaches a reader nothing about where they normally sit, so the
-    first time they see it they cannot tell "unusual" from "Tuesday" — and this
-    exists precisely to make an `ltrace` writing gigabytes obvious while it is
-    still writing.
-
-    Nothing here caps or stops anything. Capture continues past the threshold
-    because losing output silently is the defect the spool was built to fix;
-    the row goes amber, names the command responsible, and the operator decides.
+    Cached per session directory mtime: dormant/closed sessions (the vast
+    majority) do not change and are reused instantly without stat'ing thousands
+    of historical files on every 3-second beat. Sessions with live commands are
+    always refreshed.
     """
     sizes = []
     try:
         sessions = list(Path(registry).iterdir())
     except OSError:
         sessions = []
-    for sd in sessions:
-        try:
-            entries = list((sd / "spool").glob("*.log"))
-        except OSError:
-            continue
-        for f in entries:
+    with _spool_stats_lock:
+        for sd in sessions:
+            spool = sd / "spool"
             try:
-                sizes.append(f.stat().st_size)
+                st = spool.stat()
             except OSError:
                 continue
+            is_live = _SPOOL is not None and _SPOOL.session_live(sd.name)
+            cached = _SPOOL_STATS_CACHE.get(sd.name)
+            if not is_live and cached is not None and cached[0] == st.st_mtime_ns:
+                sizes.extend(cached[1])
+                continue
+            sess_sizes = []
+            try:
+                entries = list(spool.glob("*.log"))
+            except OSError:
+                continue
+            for f in entries:
+                try:
+                    sess_sizes.append(f.stat().st_size)
+                except OSError:
+                    continue
+            _SPOOL_STATS_CACHE[sd.name] = (st.st_mtime_ns, sess_sizes)
+            sizes.extend(sess_sizes)
+
     total = sum(sizes)
     biggest = max(sizes, default=0)
     return {
@@ -910,6 +978,10 @@ def prune_spool(registry: Path, retention_s=CONSOLE_SPOOL_RETENTION_S, now=None)
     return {"dirs": removed_dirs, "bytes": removed_bytes}
 
 
+_SPOOLED_CACHE = {}  # uuid -> (st_mtime_ns, spooled_entries)
+_spooled_lock = threading.Lock()
+
+
 def _spooled(registry: Path, uuid: str):
     """Per-command streams the spool captured, newest first.
 
@@ -918,19 +990,33 @@ def _spooled(registry: Path, uuid: str):
     stale survivor the moment a command exited, and flapped between two streams
     whenever two ran at once — resetting the reader's offset on every flip.
     Naming each command separately removes the expression that produced both.
+
+    Cached by session spool directory mtime for closed sessions, avoiding
+    re-reading dozens of completed files on every console listing poll.
     """
-    out = []
     d = registry / uuid / "spool"
+    try:
+        st = d.stat()
+    except OSError:
+        return []
+
+    is_live = _SPOOL is not None and _SPOOL.session_live(uuid)
+    with _spooled_lock:
+        cached = _SPOOLED_CACHE.get(uuid)
+        if not is_live and cached is not None and cached[0] == st.st_mtime_ns:
+            return list(cached[1])
+
+    out = []
     try:
         entries = [(f, f.stat()) for f in d.glob("*.log")]
     except OSError:
         return out
-    for f, st in sorted(entries, key=lambda e: -e[1].st_mtime):
+    for f, f_st in sorted(entries, key=lambda e: -e[1].st_mtime):
         out.append({
             "id":    f"session:{uuid}:spool:{f.stem}",
-            "label": _spool_label(f, st),
+            "label": _spool_label(f, f_st),
             "path":  str(f),
-            "size":  st.st_size,
+            "size":  f_st.st_size,
             # The harness redirects BOTH streams into one file — verified by
             # emitting to each and finding the lines interleaved. The pane says
             # so, because a reader who assumes otherwise goes hunting for an
@@ -942,8 +1028,10 @@ def _spooled(registry: Path, uuid: str):
             "live":  _spool_live(uuid, f.stem),
             # Raw epoch, for the session sort's fallback. The formatted stamps
             # elsewhere are for reading; this one is for comparing.
-            "mtime_epoch": st.st_mtime,
+            "mtime_epoch": f_st.st_mtime,
         })
+    with _spooled_lock:
+        _SPOOLED_CACHE[uuid] = (st.st_mtime_ns, list(out))
     return out
 
 
@@ -1471,7 +1559,13 @@ def _log_channels(daemon_dir: Path, registry: Path = None):
         pids = [d for d in os.listdir("/proc") if d.isdigit()]
     except OSError:
         return owners, holder
+    my_uid = os.getuid()
     for pid in pids:
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != my_uid:
+                continue
+        except OSError:
+            continue
         fd_dir = f"/proc/{pid}/fd"
         try:
             fds = os.listdir(fd_dir)
@@ -1816,6 +1910,7 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     # than a timer of its own: a runaway command is only worth watching while
     # someone is watching, and this is the poll that means they are.
     return {"rows": out, "system": system_stats(),
+            "top": top_process_groups(),
             "spool": spool_stats(r["registry"])}
 
 
@@ -2013,6 +2108,125 @@ def _proc_stats(pid, sample=True):
 
     return {"pid": pid, "state": state, "nice": nice, "load": load,
             "cputime": ticks / _HZ, "rss": rss_pages * _PAGE}
+
+
+_TOP_PROC_CACHE = {}      # pid -> (ticks, monotonic)
+_top_proc_lock = threading.Lock()
+
+
+def top_process_groups():
+    """Top 2 CPU load process groups, plus top 1 RSS group (or 3rd CPU group if covered).
+
+    Aggregates processes sharing the same executable name:
+      count, executable name, representative nice, total %CPU, total CPU time (TIME+), total RSS.
+    Example line: 7 rustc +11 478% 59:25.33 19G
+    """
+    try:
+        pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
+    except OSError:
+        return []
+
+    now = time.monotonic()
+    raw_procs = []
+    for pid in pids:
+        try:
+            with open(f"/proc/{pid}/stat", "r") as fh:
+                raw = fh.read()
+            cut = raw.rfind(")")
+            if cut < 0:
+                continue
+            comm = raw[raw.find("(") + 1:cut]
+            parts = raw[cut + 2:].split()
+            if len(parts) < 17:
+                continue
+            utime = int(parts[11])
+            stime = int(parts[12])
+            nice = int(parts[16])
+            ticks = utime + stime
+
+            with open(f"/proc/{pid}/statm", "r") as fh:
+                rss_pages = int(fh.read().split()[1])
+            rss_bytes = rss_pages * _PAGE
+            raw_procs.append((pid, comm, nice, ticks, rss_bytes))
+        except (OSError, IndexError, ValueError):
+            continue
+
+    with _top_proc_lock:
+        current_pids = set()
+        groups = {}
+        for pid, comm, nice, ticks, rss in raw_procs:
+            current_pids.add(pid)
+            prev = _TOP_PROC_CACHE.get(pid)
+            _TOP_PROC_CACHE[pid] = (ticks, now)
+            load = 0.0
+            if prev and now > prev[1]:
+                delta_ticks = ticks - prev[0]
+                delta_time = now - prev[1]
+                if delta_ticks > 0 and delta_time > 0:
+                    load = (delta_ticks / _HZ) / delta_time * 100.0
+
+            g = groups.get(comm)
+            if g is None:
+                g = groups[comm] = {
+                    "name": comm,
+                    "count": 0,
+                    "nices": [],
+                    "load": 0.0,
+                    "ticks": 0,
+                    "rss": 0,
+                }
+            g["count"] += 1
+            g["nices"].append(nice)
+            g["load"] += load
+            g["ticks"] += ticks
+            g["rss"] += rss
+
+        # Evict dead PIDs to prevent unbounded memory growth
+        dead_pids = set(_TOP_PROC_CACHE.keys()) - current_pids
+        for dead in dead_pids:
+            _TOP_PROC_CACHE.pop(dead, None)
+
+    by_cpu = sorted(groups.values(), key=lambda x: (x["load"], x["ticks"]), reverse=True)
+    by_rss = sorted(groups.values(), key=lambda x: x["rss"], reverse=True)
+
+    g1 = by_cpu[0] if len(by_cpu) > 0 else None
+    g2 = by_cpu[1] if len(by_cpu) > 1 else None
+
+    covered = {g["name"] for g in (g1, g2) if g}
+    top_rss = by_rss[0] if len(by_rss) > 0 else None
+
+    if top_rss and top_rss["name"] not in covered:
+        g3 = top_rss
+        g3_tag = "rss#1"
+    else:
+        g3 = by_cpu[2] if len(by_cpu) > 2 else None
+        g3_tag = "cpu#3"
+
+    def _fmt(tag, g):
+        total_sec = g["ticks"] / _HZ
+        m = int(total_sec // 60)
+        s = total_sec % 60
+        unique_nices = sorted(set(g["nices"]))
+        ni_str = ",".join(f"+{n}" if n > 0 else str(n) for n in unique_nices) if unique_nices else "0"
+        return {
+            "rank": tag,
+            "count": g["count"],
+            "name": g["name"],
+            "nice": ni_str,
+            "load": g["load"],
+            "cputime": f"{m}:{s:05.2f}",
+            "cputime_s": total_sec,
+            "rss": g["rss"],
+        }
+
+    out = []
+    if g1:
+        out.append(_fmt("cpu#1", g1))
+    if g2:
+        out.append(_fmt("cpu#2", g2))
+    if g3:
+        out.append(_fmt(g3_tag, g3))
+    return out
 
 
 def _live_sessions(r, now, live_window):
