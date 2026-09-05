@@ -30,10 +30,15 @@ workers' tokens are the bulk of the spend.
 - **Supervisor:** heaviest model, effort 3+, thinking on. Thin by
   construction — if the supervisor's own context is filling with work
   product, a delegation was skipped.
-- **Design / integration / anything requiring thought:** the second-tier
-  model (e.g. Opus), effort ~4, thinking on.
-- **Locked-plan mechanical work:** a mid model (e.g. Sonnet), effort 2–3,
-  thinking off, driving crystallised tools (PROCESS §1).
+- **The default delegate is the mid model (e.g. Sonnet), effort 2–3,
+  thinking off** — locked-plan mechanical work, driving crystallised tools
+  (PROCESS §1). Owner ruling 2026-09-05: Sonnet is the default, Opus is
+  the escalation rung, not the default.
+- **The second-tier model (e.g. Opus), effort ~4, thinking on, for a step
+  only** — where a Sonnet result has failed verification once (the
+  escalation rule below), or where the supervisor judges up front that the
+  step genuinely needs thought (design, integration, re-creating a lost
+  tool from evidence). The judgement is made per step, never per session.
 - **Rote extraction, reporting, distillation:** the lightest model.
 - **Escalation rule:** a delegate whose output fails verification ONCE is
   escalated one rung, not retried at the same rung with a longer prompt.
