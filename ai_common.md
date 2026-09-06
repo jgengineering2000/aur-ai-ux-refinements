@@ -237,7 +237,12 @@ added the first time one is.
   keyboard, and on a desktop the OOM killer takes the compositor, not the
   compiler. Admit work against *live* readings, not a precomputed count, and run
   all batch work niced — headroom decides whether work starts, niceness decides
-  what it costs the person watching (P7, P12-adjacent).
+  what it costs the person watching (P7, P12-adjacent). Foreground first; the
+  gate adapts the rest. The interactive session takes what it wants and is
+  never admitted against anything; batch and delegate work is admitted against
+  the pool live after the foreground's share, and re-admitted as that share
+  moves. Swap is the overage buffer for a bad estimate, never a planned
+  resource.
 - **Realization windows.** A resource that has been *started* is not yet
   *usable*, and the gap between the two is where correct-looking code behaves
   randomly. A process whose window, bus name, socket or connection is not yet
@@ -906,6 +911,32 @@ destination. The "it's only local" exemption that invites this is usually a
 fiction as well: the router backup mount is a CIFS share, and a path's shape
 says nothing about who can read it.
 
+**The ceiling: git's world ends at the project's own path, and everything
+above it is PII by construction.** Every git project is its own world, rooted
+at `${PROJECT_PATH}` — the directory the repository lives in — and nothing
+tracked may name anything outside that world: not the user's home, not the
+machine's layout, and **not the project's own absolute location** (`~/develop/x`
+names `$HOME` as surely as `~/Pictures` does; "it is only the project
+directory" is precisely the exemption that lets the home path in). Inside the
+world, three classes never reach git, with no exception: **user-supplied
+image files and their metadata contents** (EXIF, embedded previews, basenames
+— anything the file could be identified from); **logs**, which record what
+was on the machine; and **any configuration that maps to local directories or
+files**, because those mappings exist *specifically* to hold the local half of
+the anonymization, and they hold it outside git. What does reach git is the
+anonymized form: test data under renamed test directories with anonymous
+stems, worktrees and machines named by branch or role, paths written relative
+to the project root, and the *shape* of a mapping (`local_config.example.json`)
+rather than its values. **There is no historical-record exemption.** A dated
+record carrying a path is anonymized like anything else — its truth is
+preserved by the mapping that lives outside git, not by the path — and the
+"falsification" objection is misapplied: falsification is changing what a
+record *said*; replacing a real path with its anonymized name is what the
+record should have said. Corollary for the guard: it is content-only and
+scans every added line of every tracked path — no exempt directory class, no
+file allowlist. An exemption class is an unexamined setting (P16), and every
+one that existed was where a path got in.
+
 **External-data sourcing — never check in, never distribute.** For ANY project:
 data sourced from outside the project tree (personal files, `~/` fixtures, other
 repos, local-system tool output) and its derivatives (manifests, indexes, paths,
@@ -925,10 +956,12 @@ created files, check `git status --untracked-files=all`.
 ## Backup
 
 Patent-IP repos have no remote; backup is manual via `~/.claude/git-backup.sh`
-(archives repos listed in `~/.claude/git-backup-projects.txt` to
-`~/git-backups/`, skip-if-up-to-date). **Backup, commit and test-phase nudges
-are a STATUS, never a question** (owner 2026-09-03): one row stating how much
-is outstanding (files, LOC) and how long since the last backup / commit / test
-phase (hours or days) — surfaced only after a long period of no interactions,
-and never first thing in the day. No auto-mirror/post-commit hooks/timers
-without explicit re-authorization.
+(archives repos listed in `~/.claude/git-backup-projects.txt` to the
+directory the script names, skip-if-up-to-date). **Backup, commit, test-phase and
+pending-ruling nudges are a STATUS, never a question** (owner 2026-09-03):
+one row stating how much is outstanding (files,
+LOC), how long since the last backup / commit / test phase (hours or days),
+and how many rulings are pending from how many sessions (`pending 3 rulings,
+3 sessions`) — surfaced only after a long period of no interactions, never
+first thing in the day, and never as a decision point that blocks progress.
+No auto-mirror/post-commit hooks/timers without explicit re-authorization.
