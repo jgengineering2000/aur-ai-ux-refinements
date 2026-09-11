@@ -223,6 +223,40 @@ def _sync_version_file():
 SKILLS_CONSUMER = Path.home() / ".claude" / "skills"
 
 
+# ── the universal hook ───────────────────────────────────────────────────────
+# `~/.claude/git-templates/hooks/pre-commit` resolves through the shared root
+# to `hooks/pre-commit`, so every repository on the machine runs THIS file
+# before every commit. On 2026-09-08 a project's own gate script was copied
+# over it (a `cp` through the symlink), and for three days every commit on
+# the machine ran that project's test gate and no content guard — invisibly,
+# because the hook still exited 0. A copy in the wrong place is the drift
+# this whole layout exists to prevent, so the root checks the one file whose
+# job is to check everything else. Report only: the content is evidence of
+# what was copied, and `git checkout -- hooks/pre-commit` is the repair.
+UNIVERSAL_HOOK_MARK = "Universal pre-commit"
+
+
+def hook_is_universal(path):
+    """True when `path` opens with the universal hook's own header."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            head = "".join(fh.readline() for _ in range(3))
+    except OSError:
+        return False
+    return UNIVERSAL_HOOK_MARK in head
+
+
+def check_universal_hook(findings):
+    hook = SHARE / "hooks" / "pre-commit"
+    if not hook.exists():
+        findings.append(f"MISSING {hook} — no repository on this machine is running a content guard")
+    elif not hook_is_universal(hook):
+        findings.append(
+            f"DRIFT {hook} is not the universal hook (header lacks {UNIVERSAL_HOOK_MARK!r}) — "
+            f"something was copied over it; every commit on this machine is running it. "
+            f"Restore it from the checkout: git checkout -- hooks/pre-commit")
+
+
 def link_skills(findings):
     """Every skill under the shared root has a consumer link; each repair is reported."""
     root = SHARE / "skills"
@@ -335,6 +369,8 @@ def verify_and_heal(log=print):
                                 f"-> {Path(f).readlink()}")
 
     link_skills(findings)
+
+    check_universal_hook(findings)
 
     synced = _sync_version_file()
     if synced:
