@@ -163,3 +163,22 @@ own approved output has changed behaviour and is a defect to fix, not a
 variance to explain (P2, P7's behaviour-preserving-refactor corollary). Paid
 for first on 2026-09-03: a two-branch pipeline merge whose ~2,000-line
 conflict surface was mostly one crate rename.
+
+## 10. A silent log is the first fix — never the reason for a probe
+
+The log is read first (the SOP). When it cannot answer the question, the next
+action is **the line that would have** — not a re-run, a probe, a constructed
+test or a trace. Those answer this instance once, at the cost of reproducing
+it; the line answers every future instance for free, and P17 says the fix must
+carry it anyway. Order: (1) read the log; (2) name the fact it lacks and the
+**exposure** that lost it — a spawn that logs no argv, a report computed and
+dropped, a sink switched off with nothing beneath it; (3) land that line at
+every site with the same exposure, found by grepping the *mechanism* (every
+`.output()`, every `let _rep`, every sink switch), never the symptom (P3 hoist,
+P17 class); (4) re-run the REAL scenario once and read the line; (5) only then
+probe or trace, with the log now able to record what the probe finds. **The
+checkable moment is typing a reproduction command**: if the log has not first
+been made able to answer, that command is the wrong next step. Owner
+2026-09-11, paid for the same day: a two-way re-run of an enhancer binary established
+a routing defect that a spawn-argv line plus a produced-dimensions line would
+have shown in the log already written — and will show in the next one.

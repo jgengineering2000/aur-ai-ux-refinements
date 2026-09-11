@@ -131,6 +131,7 @@ Every log line must be self-explanatory and contain full context:
 - **Timestamp Format**: Exactly `YYYY-MM-DD_HH:MM:SS.ms` (e.g. `2026-07-14_01:28:08.123`).
 - **Context fields**: `[Level]`, `[PID:nnn]`, `[Thread:name/ThreadId(n)]`, `[component]`
 - **State**: Variable values, identifiers, sizes, and loop/iteration counters.
+- **Precedent** (P10, owner 2026-09-11): the branch taken and what selected it — the flag that implied a mode, the gate's verdict, the compared values, the caller's role — and what was *produced*, never only what was *asked for*. A receipt that names the request (`target=2560`) and not the result (`1280x960 via the standalone route, selected by --reveal without -r`) says where the code is and not how it got there, which is the half a reader cannot recover from source.
 
 ### Log Line Format
 
@@ -157,6 +158,10 @@ The log filename is derived from the binary/component name, **not** the host pro
 
 - **File (Mandatory)**: Appended to the process-specific log file. Parent directories are auto-created.
 - **Console (Optional/stderr)**: Written to locked standard error (enabled by default, can be disabled by setting `MTI_LOG_CONSOLE=0` or `MTI_LOG_CONSOLE=false`).
+
+**The console switch means "do not duplicate", never "drop".** The console-off switch (the Routing bullet above) is honoured only while a file sink is open. A process with no file sink — a one-shot CLI, a test binary, a child that inherited the switch from the daemon that spawned it — writes to stderr regardless: the last rung of the ladder is never removable (P16). Paid for 2026-09-11: a daemon ran console-off, the enhancer children it spawned inherited that, had no file sink by design, and their ERROR lines went nowhere — four failures reached the parent's log as `exit status 1: Process exiting cleanly`, the crash handler's raw exit line being the only stderr left.
+
+**A captured child's sink is its parent.** Whoever spawns a transient child and captures its stderr owns that child's record, through ONE helper per codebase (P3): Debug at spawn carrying the full argv and cwd (this is the scope ENTRY line), and at exit the status, the duration and the stderr tail — Error on failure, with the child's own first error line as the one-line reason handed to any UI and the rest in the log. A call site that reads `.output()` inline and formats its own message is the drift this rule names; a parent that shows a child's entire stderr in a status label has shipped its log to the user (P20's audiences, crossed).
 
 Note the interaction with service managers: a process run under systemd whose unit does not set `StandardError=` has its console sink captured by the journal, so every line is stored **twice**. Either set the unit's stream disposition deliberately or disable the console sink for that component — silently paying double is not a third option.
 
@@ -298,7 +303,7 @@ Any point where the expected (happy) path cannot proceed must emit **at least on
 
 **Placement**: At the point of failure, before any early return or fallback.
 
-**Content**: The operation that failed, the error value, and enough context to identify the specific call site (function name, target path).
+**Content**: The operation that failed, the error value, and enough context to identify the specific call site (function name, target path). A runtime failure never carries usage text: usage answers a bad argument (P14), and appended to a runtime error it buries the reason under a page that any UI will show verbatim — measured 2026-09-11, when "no donor available for repair" arrived in a window's status label as the full CLI help.
 
 ```
 [Error] [sidecar] run_manual_cleanup: failed to spawn fast_pass.sh: No such file or directory (os error 2)

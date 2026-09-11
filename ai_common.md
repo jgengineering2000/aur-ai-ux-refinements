@@ -129,11 +129,22 @@ opposite ends; (2) every message carries the identifier, values,
 iteration/index, and phase that make it self-explanatory — "decode failed for
 md5=… tier=2 size=… (iteration 3/8): <cause>", never "failed to decode". Test:
 the log line alone, without the running system, must say what happened, to what,
-in what state, why. Applies in every language and layer. Levels are
-runtime-switchable — injected through the component's most robust existing input
-event interface, plus an environment variable for startup — and gated output
-never goes to /dev/null: what's unimportant is turned off; what's on is readable
-from a file. Full field/injection/sink contract: the **logging-discipline skill**.
+in what state, why. **The "why" is the precedent, not the position** (owner
+2026-09-11): a line names the route execution took to reach it — the branch
+taken and what selected it (the flag that implied a mode, the gate's verdict,
+the compared values, the caller's role) and what was *produced*, never only
+what was *asked for* — because where the code is can be read from the source
+and how it got there cannot. Second test: from the line alone, can a reader
+reconstruct the route without opening source? Paid for 2026-09-11: a receipt
+reading `target=2560` while the child had produced 1280 px by a different
+route passed the first test and cost a re-run. Applies in every language and
+layer. Levels are runtime-switchable — injected through the component's most
+robust existing input event interface, plus an environment variable for
+startup — and gated output never goes to /dev/null: what's unimportant is
+turned off; what's on is readable from a file, and **a switch that silences
+one sink never silences the last one** (P16's ladder: a child that inherits
+"console off" from a daemon and has no file of its own still writes to
+stderr). Full field/injection/sink contract: the **logging-discipline skill**.
 
 **11. Every non-trivial task carries a proof-of-progress; silence is not
 success.** Absence-of-output looks identical to a hang, so decide the liveness
