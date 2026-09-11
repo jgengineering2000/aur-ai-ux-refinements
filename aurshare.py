@@ -211,6 +211,41 @@ def _sync_version_file():
     return None
 
 
+# ── the consumer's skills directory ─────────────────────────────────────────
+# Skills are consumed from `~/.claude/skills/<name>` — a path the vendor reads,
+# so it is literal here (tools/debrand.py leaves it alone for the same reason).
+# Each entry is a symlink to the shared root's `skills/<name>`, so it resolves
+# through the stable name like every other asset. Until 2026-09-11 these links
+# were made by hand, one per skill, which is how a skill committed on
+# 2026-08-09 was still not loadable a month later: tracked, deployed, and
+# invisible to the consumer, with nothing reporting the gap. Healed here with
+# the other stable names, and reported like them.
+SKILLS_CONSUMER = Path.home() / ".claude" / "skills"
+
+
+def link_skills(findings):
+    """Every skill under the shared root has a consumer link; each repair is reported."""
+    root = SHARE / "skills"
+    if not root.is_dir():
+        return
+    SKILLS_CONSUMER.mkdir(parents=True, exist_ok=True)
+    for skill in sorted(p for p in root.iterdir() if (p / "SKILL.md").is_file()):
+        link = SKILLS_CONSUMER / skill.name
+        target = root / skill.name  # through the stable name, never a checkout
+        if link.is_symlink():
+            if link.exists():
+                continue  # resolves — healthy, or a deliberate alternative; left alone
+            link.unlink()
+            link.symlink_to(target)
+            findings.append(f"repointed dangling skill link {skill.name} -> {target}")
+        elif link.exists():
+            findings.append(f"DRIFT {link} is a real directory, not a link into {root} "
+                            f"— left in place; it will not receive updates")
+        else:
+            link.symlink_to(target)
+            findings.append(f"linked skill {skill.name} -> {target}")
+
+
 def verify_and_heal(log=print):
     """Check the shared root and repair what is repairable.
 
@@ -298,6 +333,8 @@ def verify_and_heal(log=print):
                     not str(Path(f).readlink()).startswith(str(SHARE)):
                 findings.append(f"DRIFT {f} links outside the shared root "
                                 f"-> {Path(f).readlink()}")
+
+    link_skills(findings)
 
     synced = _sync_version_file()
     if synced:
