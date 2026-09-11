@@ -157,7 +157,7 @@ The log filename is derived from the binary/component name, **not** the host pro
 ### Routing
 
 - **File (Mandatory)**: Appended to the process-specific log file. Parent directories are auto-created.
-- **Console (Optional/stderr)**: Written to locked standard error (enabled by default, can be disabled by setting `MTI_LOG_CONSOLE=0` or `MTI_LOG_CONSOLE=false`).
+- **Console (stderr)**: **Error always; everything else only when verbosity was asked for** (`-v/--verbose`, or the console-force variable for a process with no CLI). Owner ruling 2026-09-11: stderr is where a person launched the process, so it carries what a person must see — a failure — and the file carries the record. Neither "on by default" nor "on when there is no file" discriminates the case that paid for this (an in-process extension printing its whole Info/Debug stream onto the terminal its host was launched from); the level does. The console-off switch keeps one narrow meaning: no duplicated errors while a file sink is open (a service unit whose journal already captures stderr).
 
 **The console switch means "do not duplicate", never "drop".** The console-off switch (the Routing bullet above) is honoured only while a file sink is open. A process with no file sink — a one-shot CLI, a test binary, a child that inherited the switch from the daemon that spawned it — writes to stderr regardless: the last rung of the ladder is never removable (P16). Paid for 2026-09-11: a daemon ran console-off, the enhancer children it spawned inherited that, had no file sink by design, and their ERROR lines went nowhere — four failures reached the parent's log as `exit status 1: Process exiting cleanly`, the crash handler's raw exit line being the only stderr left.
 
