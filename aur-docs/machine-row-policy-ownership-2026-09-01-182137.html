@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine Row &amp; Policy Ownership — Implementation Plan</title>
+<link rel="stylesheet" href="/ann.css">
+<link rel="stylesheet" href="/doc.css">
+<style>
+  body { max-width: 62rem; margin: 0 auto; padding: 1.5rem 2rem 4rem; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  h1 { font-size: 1.5rem; }
+  h2 { border-bottom: 1px solid var(--line); padding-bottom: .3rem; margin-top: 2rem; }
+  code { background: var(--panel2); padding: .1em .35em; border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; margin: .75rem 0; }
+  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--mut); font-weight: 600; }
+  .own-aur { color: var(--ok); font-weight: 600; }
+  .own-proj { color: var(--accent); font-weight: 600; }
+  .status { color: var(--mut); font-size: .9em; }
+</style>
+</head>
+<body>
+
+<h1>Machine Row &amp; Policy Ownership — Implementation Plan</h1>
+<p class="status">Status: DRAFT for owner review · 2026-09-01 · Scope: AUR (primary) + MTI (consumer) · Trigger: AUR manifest machine row "unavailable — no sysinfo binary configured"</p>
+
+<div class="card">
+<h2 style="margin-top:0">§0 The ruling this plan realises</h2>
+<p>Owner, 2026-09-01. The machine row (top-like readings) is <b>infrastructure, owned by AUR</b> — a project binary must never be the thing that lights it. <b>Scheduling thresholds are standard across the board</b>: free-resource requirements and warning-vs-block levels are one definition, identical for every project. <b>Typical rustc compile overhead is likewise a standard</b> figure. Only <b>expected-overhead projections</b> — what a specific job is anticipated to cost — are project-local. And <b>each doc-server instance lists its own server process in its own Console tab</b>: AUR's console shows the doc server; MTI's shows the doc server alongside the MTI daemons.</p>
+</div>
+
+<h2>§1 What happens today</h2>
+<div class="card">
+<p>The manifest's machine row is fed by <code>SysinfoStream</code> (<code>server/server.py:1609</code>), which spawns whatever binary the project's <code>server.config.json</code> names under <code>sysinfo_bin</code>. MTI names <code>tools/bin/mti-tier</code>, whose <code>sysinfo</code> subcommand streams readings <i>and</i> the thresholds from <code>resources::Policy</code> (<code>rust/launcher/src/resources.rs:568</code>) — the same policy MTI's admission gates (<code>rustc-gate</code>, <code>mti-gate</code>, <code>cc-gate</code>) apply. AUR ships no such binary, so its own manifest — the infrastructure project's — is the one that says "unavailable". The thresholds are thus defined in a <i>project</i>, and the infrastructure borrows them: ownership inverted relative to the ruling. Separately, the doc server itself appears in no console, and its ensure-script launches it with <code>&gt;/dev/null 2&gt;&amp;1</code>, so a mid-session death (observed today, MTI instance, post-reboot) leaves zero evidence.</p>
+</div>
+
+<h2>§2 Target ownership</h2>
+<table>
+<tr><th>Thing</th><th>Owner</th><th>Where it lives after this plan</th></tr>
+<tr><td>Machine readings (load, CPU us/ni/id/wa, MemAvailable, swap in/out rate)</td><td class="own-aur">AUR</td><td>Sampler thread inside <code>server.py</code>, reading /proc directly; zero configuration, every project's manifest gets the row</td></tr>
+<tr><td>Scheduling thresholds (free-resource requirements, warn vs block levels)</td><td class="own-aur">AUR</td><td>Standard policy file at the shared root, <code>~/.local/aur/policy.json</code> (version-suffixed behind a stable name, like every shared asset)</td></tr>
+<tr><td>Typical rustc compile overhead</td><td class="own-aur">AUR</td><td>Same policy file</td></tr>
+<tr><td>Nice ladder (low / normal / priority / serve)</td><td class="own-aur">AUR</td><td>Same policy file — it is a scheduling threshold in the ruling's sense</td></tr>
+<tr><td>Expected overhead projections (per-job demand: cores, RAM, disk)</td><td class="own-proj">Project</td><td>Unchanged — MTI's <code>Demand</code>, supplied per invocation (<code>resources.rs:341</code>)</td></tr>
+<tr><td>Daemon roster, console registry, one-shot conventions</td><td class="own-proj">Project</td><td>Unchanged — <code>server.config.json</code></td></tr>
+</table>
+
+<h2>§3 AUR work items</h2>
+
+<div class="card">
+<h3 style="margin-top:0">A1 — Built-in /proc sampler replaces the spawned binary</h3>
+<p><b>Before:</b> no <code>sysinfo_bin</code> → no machine row. <b>After:</b> every manifest renders the row, unconfigured.</p>
+<p>A sampler thread in <code>server.py</code> reads /proc itself on the existing 3-second interval: load and runnable from <code>/proc/loadavg</code>, CPU percentages as a delta between successive <code>/proc/stat</code> reads (the reason the current design is long-lived holds identically for a thread), <code>MemAvailable</code>/<code>MemTotal</code> from <code>/proc/meminfo</code>, swap <code>si</code>/<code>so</code> as a <i>rate</i> from <code>/proc/vmstat</code> deltas — the P11 watch-the-machine field set. It feeds the same <code>_SYSINFO</code> dict in the same <code>k=v</code> field shape, so <code>system_stats()</code>, staleness handling and the row's rendering are untouched. Pure Python, no build step, inherited by every project instantly through the shared-root symlink.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">A2 — Standard policy file at the shared root</h3>
+<p><code>~/.local/aur/policy.json</code>, authored in AUR, deployed version-suffixed behind the stable name by the same mechanism as <code>ann.js</code>. Contents: memory reserve, free-core requirement, disk reserve, <code>min_idle_pct</code>, <code>max_iowait_pct</code>, warn-vs-block levels for the row's colouring, the nice ladder, and typical rustc per-unit overhead. Initial values are MTI's current measured ones (owner-settled 2026-07-31: 15% idle, 0.8% iowait) — the values move home; nothing is re-derived.</p>
+<p><code>server.py</code> judges the row against this file directly (warn/block colouring), replacing the threshold fields the spawned binary used to embed in its stream.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">A3 — Server self-registration + a real log</h3>
+<p><b>Before:</b> the doc server appears in no console and dies without evidence. <b>After:</b> each instance's Console tab carries a "doc-server" row — name, pid, log — and the log doubles as the crash evidence that was missing today.</p>
+<p>Two halves, one item because the row needs a log to point at: (1) the ensure-script and the folderOpen task redirect the server's output to a logfile beside <code>server.port</code> instead of <code>/dev/null</code>; (2) on bind, the server writes a descriptor for itself into its own console registry and removes it on clean shutdown (P8 — it owns its lifecycle end to end). AUR's instance, whose <code>daemon_dir</code>/<code>registry</code> are unset, gets a default registry under its own state dir so the row renders there too.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">A4 — Retire the <code>sysinfo_bin</code> knob</h3>
+<p>Remove the key from the config schema and <code>SysinfoStream</code>'s binary path. A config file still carrying it gets one WARNING naming the key as retired (P14's spirit: never silently reinterpret), then is served normally. The knob's justification — "the project owns the policy" — is exactly what the ruling reversed, so no override survives.</p>
+</div>
+
+<h2>§4 MTI work items</h2>
+
+<div class="card">
+<h3 style="margin-top:0">M1 — <code>resources::Policy</code> consumes the shared policy file</h3>
+<p><code>Policy::from_env()</code> becomes a P16 ladder: shared-root <code>policy.json</code> → environment override (existing <code>env_num</code>/<code>env_pct</code> knobs, kept for experiments) → compiled default (last rung; a missing shared root must never make a gate refuse to gate). Gate behaviour is bit-identical on day one because the file's values are the ones the code compiles in today; what changes is which definition is authoritative when a knob next moves.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">M2 — Retire <code>mti-tier sysinfo</code> and MTI's <code>sysinfo_bin</code> config line</h3>
+<p>The subcommand's only consumer was the doc server. Remove it, its usage lines, and the <code>sysinfo_bin</code> entry in <code>aur/server.config.json</code>. <code>Demand</code>, the gates, and every other <code>mti-tier</code> mode are untouched.</p>
+</div>
+
+<div class="card">
+<h3 style="margin-top:0">M3 — Tests (fail-first, both repos)</h3>
+<p>AUR: sampler unit checks (field presence, delta correctness against a fixture pair of /proc snapshots, staleness), policy-file parse + ladder fallback, self-registration row appearing in <code>/consoles</code> and disappearing on shutdown — extending <code>tests/test_console_streams.py</code>'s pattern. MTI: <code>Policy</code> ladder precedence (file beats default, env beats file), and a red-first test that the retired knob warns. Timing recorded per PROCESS §8.</p>
+</div>
+
+<h2>§5 Sequencing and risk</h2>
+<div class="card">
+<p><b>Order:</b> A1→A2 land together (the row must not go dark between them); A3, A4 follow; then M1, M2, M3. AUR-first means MTI's manifest row switches source the moment its server restarts — before M1/M2 land, MTI briefly has both the new row and the still-working old policy code, which is safe overlap, not conflict.</p>
+<p><b>Environment hazards named (P15):</b> the policy file is a session-shared resource — a half-written file must never be read (write-temp-then-rename); the sampler adds one thread to a long-lived server (readings only, no locks beyond the existing <code>_sys_lock</code>); self-registration touches the console registry other tooling reads (same descriptor format <code>console-register.sh</code> already writes). No irreversible or outward-facing actions anywhere in scope.</p>
+<p><b>Explicitly out of scope:</b> per-process top-consumers in the machine row (worth doing, separate item — needs a presentation decision), and any change to gate admission behaviour.</p>
+</div>
+
+<script src="/manifest-link.js"></script>
+<script src="/ann.js"></script>
+</body>
+</html>
