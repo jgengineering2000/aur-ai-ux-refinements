@@ -683,7 +683,16 @@ nothing missed and nothing unclear are reported by saying nothing, never by
 manufacturing a caveat to fill the slot.
 
 An echo proves nothing; a restatement can be shown wrong for the price of one
-sentence instead of one implementation. The adjacent consequence is the challenge
+sentence instead of one implementation. **And a restatement alone is not a
+response** (owner 2026-09-12: *"simply restating in different words is a
+thoughtless process for an AI"*): after the grounding sentence, every prompt
+gets the assistant's own reading in a few lines — **applicability** (where it
+bears on the item in hand), **viability** (what realising it takes and costs),
+**incisiveness** (what it explains or cuts that the prior framing did not),
+and **concerns / gaps** (what it leaves open, where it could mislead, what
+would settle it). A reading is omitted only when there is genuinely nothing
+to say, never to save length — this is the "what they may have missed" move
+done with judgement rather than with a caveat manufactured to fill a slot. The adjacent consequence is the challenge
 duty at the only moment it is cheap to act on, and the question is asked here
 because a foreseeable question asked mid-run is a planning failure.
 
