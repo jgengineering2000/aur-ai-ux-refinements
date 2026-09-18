@@ -1401,6 +1401,7 @@ body {
       const sys = isDaemon
         ? '<div id="crash-panel" hidden></div>'
           + '<div id="sysline" class="sysline"></div>'
+          + '<div id="gatesline" class="sysline" hidden></div>'
           + '<div id="topline" class="top-grid" hidden></div>'
           + '<div id="spoolline" class="sysline"></div>' : '';
       return `
@@ -2554,7 +2555,7 @@ body {
   // moment a reader looks at it. So the last rendering is held here and
   // repainted the instant the node is recreated: a line stands until a NEWER
   // one replaces it, never until a poll gets round to it.
-  let sysHtml = '', topHtml = '', spoolHtml = '', sysAt = 0;
+  let sysHtml = '', topHtml = '', spoolHtml = '', gatesHtml = '', sysAt = 0;
   // Client-side freshness, alongside the server's own (§4.3). The server can
   // only state staleness in an answer that arrives — a doc server being
   // restarted answers nothing at all, and a held row would otherwise show its
@@ -2584,6 +2585,29 @@ body {
   function paintSpool() {
     const el = document.getElementById('spoolline');
     if (el && el.innerHTML !== spoolHtml) el.innerHTML = spoolHtml;
+  }
+
+  function paintGates() {
+    const el = document.getElementById('gatesline');
+    if (!el) return;
+    if (el.innerHTML !== gatesHtml) el.innerHTML = gatesHtml;
+    el.hidden = !gatesHtml;
+  }
+
+  // One row per blocked gate, read from /procstats' `gates` array — the SAME
+  // entries `tools/procstats_tick.py`'s GATE-BLOCKED line reads, so a reason
+  // seen here and one seen on a supervisor's tick are the identical fact
+  // (AUR P17: who is blocked and why, without opening the gate's own
+  // stderr). No entries, no rows — this is silent on the common case.
+  function renderGates(gates) {
+    if (!gates || !gates.length) { gatesHtml = ''; paintGates(); return; }
+    gatesHtml = gates.map(g =>
+      `<div class="gate-row"><span class="sf bad">`
+      + `<b>${esc(g.gate)}</b> waiting to ${esc(g.verb)} ${esc(g.target)}`
+      + ` · ${esc(String(g.waited_s))}s · blocked by ${esc(g.blocked_by)}`
+      + `</span></div>`
+    ).join('');
+    paintGates();
   }
 
   function renderSys(s) {
@@ -2873,6 +2897,7 @@ body {
     const rows = [...document.querySelectorAll('#console-list .dmn-row')];
     fetch('/procstats').then(r => r.json()).then(resp => {
       renderSys(resp.system);
+      renderGates(resp.gates);
       renderTop(resp.top);
       renderSpool(resp.spool);
       const m = resp.rows || {};
@@ -2908,6 +2933,7 @@ body {
       // retry storm on top of every beat. The row is repainted either way,
       // which is what ages the held line toward its `no sample` marker.
       paintSys();
+      paintGates();
       paintTop();
       if (!isRetry && sysRetry === null)
         sysRetry = setTimeout(() => {

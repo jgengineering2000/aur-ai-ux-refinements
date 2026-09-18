@@ -1873,6 +1873,74 @@ def console_delete_oneshots(names, *, daemon_dir=None):
     return {"deleted": gone, "refused": refused}
 
 
+def _gate_state_dirs():
+    """The tmpfs directories a project's admission gates (a `rustc-gate`,
+    `cc-gate`, or a project's own resource gate — each project's launcher
+    crate owns its `GateState`) write their per-pid blocked-reason files
+    under: `/dev/shm` when it is a writable directory, `/tmp` otherwise, then
+    every `<project>-gate-<user>` directory there.
+
+    Inferred the SAME way the Rust side chooses the base (its `tmpfs_base`),
+    never configured — the answer is always derivable from the running system
+    (AUR P16) — and discovered by shape, never by a project's name, so one doc
+    server reads every project's gates and a second, independently-tunable
+    copy of this choice cannot drift.
+    """
+    shm = Path("/dev/shm")
+    base = shm if shm.is_dir() and os.access(shm, os.W_OK) else Path("/tmp")
+    user = os.environ.get("USER", "default")
+    return sorted(d for d in base.glob(f"*-gate-{user}") if d.is_dir())
+
+
+def _read_gate_entries(dir_path=None):
+    """Every live blocked-gate entry under `_gate_state_dirs()`, pruning
+    (deleting) any file whose pid is no longer alive and skipping — logged,
+    left in place — anything that fails to parse.
+
+    This is the Python half of the rule the writer's own reader states on the
+    Rust side (`read_gate_entries` in the project's launcher crate): same
+    schema, same pruning-by-pid-liveness rule, so a monitor reading this
+    endpoint and the project's own tests can never disagree about which
+    entries are live. Only the read is reimplemented here — the gates
+    themselves, and the only writers of these files, are the Rust binaries.
+    """
+    dirs = [Path(dir_path)] if dir_path is not None else _gate_state_dirs()
+    out = []
+    for path in sorted(p for d in dirs if d.is_dir() for p in d.glob("*.json")):
+        try:
+            entry = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            print(f"[gate-state] malformed entry {path}: {exc}", file=sys.stderr)
+            continue
+        pid = entry.get("pid")
+        if not isinstance(pid, int):
+            print(f"[gate-state] malformed entry {path}: missing/bad pid",
+                  file=sys.stderr)
+            continue
+        if not Path(f"/proc/{pid}").exists():
+            # The owning process is gone without running its own cleanup
+            # (kill -9) — this reader is the one place that reaps the file,
+            # same as the Rust reader, rather than leaving a stale reading for
+            # a human to notice.
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            continue
+        out.append({
+            "gate": entry.get("gate", ""),
+            "pid": pid,
+            "verb": entry.get("verb", ""),
+            "target": entry.get("target", ""),
+            "since": entry.get("since", 0),
+            "waited_s": entry.get("waited_s", 0),
+            "blocked_by": entry.get("blocked_by", ""),
+            "demand": entry.get("demand", ""),
+            "criteria": entry.get("criteria", ""),
+        })
+    return out
+
+
 def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
                       registry=None):
     """Just the numbers for the daemon rows, refreshed on top(1)'s cadence.
@@ -1911,7 +1979,8 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     # someone is watching, and this is the poll that means they are.
     return {"rows": out, "system": system_stats(),
             "top": top_process_groups(),
-            "spool": spool_stats(r["registry"])}
+            "spool": spool_stats(r["registry"]),
+            "gates": _read_gate_entries()}
 
 
 _sys_lock = threading.Lock()
