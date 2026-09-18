@@ -174,12 +174,20 @@ separate defect class with its own failures — work running unniced, a priority
 knob saturated at its stop, memory draining toward the OOM killer's choice of
 victim, swap thrashing, a zombie nobody reaped. None of it appears in the job's
 log, because none of it is the job's business; it is P15's shared-system hazard
-observed while it happens rather than planned for in advance. So sample the
-machine on a cadence while any long job runs — load, `us/ni/id/wa`, free versus
-*available*, swap `si`/`so` **rate** (occupancy is a stale high-water mark and
-says nothing), and the top consumers **with their nice values**. Read it even
-when the job looks healthy: this class is invisible precisely when nothing is
-wrong with the work. The instrument is one crystallised sampler (PROCESS §1), not
+observed while it happens rather than planned for in advance. So **the monitor is
+the health model — every field, every process, every shared budget, judged
+statistically** (owner 2026-09-18): one instrument samples everything the
+system publishes on a fixed cadence into a store — per process its state,
+nice, load, cputime, RSS and each log channel's size and liveness; system-wide
+the load, `us/ni/id/wa`, free versus *available*, swap `si`/`so` **rate**
+(occupancy is a stale high-water mark and says nothing), storage against the
+admission reserve, runnable against cores, and the top consumers **with their
+nice values** — and judges each reading against that field's own baseline
+(rolling median/MAD), never against a threshold typed per session. A departure
+is an alert carrying its evidence; a stall is named on the tick it appears,
+never at a timeout; a healthy hour costs nothing. Read it even when the job
+looks healthy: this class is invisible precisely when nothing is wrong with the
+work, and a one-line tick is the floor, never the monitor. The instrument is one crystallised sampler (PROCESS §1), not
 an incantation retyped per session — retyping it drifts the field set between
 samples, which is how a comparison across two readings quietly stops being one.
 
