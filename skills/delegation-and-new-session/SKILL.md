@@ -115,3 +115,19 @@ verification the supervisor will run (a crystallised script where one
 exists), the boundaries (what is out of scope, what must not be touched),
 and the escalation trigger. The supervisor verifies against the real
 artifact (P9), never against the delegate's report of it.
+
+**Every brief declares its expectation on the health model, and a brief
+without one is refused** (owner 2026-09-18, P11's corollary). A delegate is
+a spawn like any other, so before its first long step the brief states what
+"sane" looks like on the machine monitor while that step runs — the class
+that must be carrying load and within how many seconds (rustc within 20 s of
+a build), the process that must be present during a batch (the renderer
+during a corpus), the log that must grow, the RSS that is nominal — and the
+delegate ticks the monitor every 15 s or better against that expectation,
+reporting `state`/`wchan` of the blocked pid the tick it fails. Where a
+watcher process exists, the brief arms it with the same declaration
+(`tools/procstats_watch.py expect --job <label> …`, then
+`tools/procstats_arm.sh <label>`) and the supervisor reads its alerts; where
+it does not, the one-line tick is the floor. A brief that says only "build it
+and report" has asked for the 11-minute stall that was paid for the day this
+rule was written.
