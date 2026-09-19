@@ -778,6 +778,17 @@ writer omits is segmentation the reader is forced to perform.
   words, never structure, and terse phrasing the owner must decode costs more
   attention than length that reads at a glance.
 
+**The checkable moment is the paragraph.** This rule measured fine and still
+lapsed, because "several elements" is judged over the whole turn and a
+paragraph is written one at a time. So the check is per paragraph, at the
+moment it is typed: **in a turn carrying more than one element, no paragraph
+and no table cell runs past two sentences** — a third sentence means the
+paragraph holds a list, and it becomes one. Paid for 2026-09-19: a design
+turn with Rule 0's five slots each written as a dense paragraph, and its
+options as multi-clause table cells; the owner: *"unreadable"*. The same
+content re-sent as nested bullets, one clause per line, was accepted at a
+glance.
+
 Distinct from P13, which governs alignment and typography in produced artifacts
 and product UI; this governs the structure of written text.
 
