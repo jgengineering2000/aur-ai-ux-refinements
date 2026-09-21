@@ -12,7 +12,9 @@
 # pre-push, which can.
 set -u
 
-"$HOME/.claude/git-templates/router-backup-push.sh"
+# Through the shared root like every other stable name — a copy of this
+# script under ~/.claude/git-templates/ went stale for two months (2026-09-21).
+"$HOME/.local/aur/hooks/router-backup-push.sh"
 
 repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 LOCAL="$repo/scripts/git-hooks/post-commit"

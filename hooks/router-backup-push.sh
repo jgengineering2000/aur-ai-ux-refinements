@@ -17,6 +17,14 @@
 LOCAL_CONF="$HOME/develop/git_access.local"
 [ -r "$LOCAL_CONF" ] || exit 0
 
+# A repository with no `router` remote is not a backup target — a scratch
+# clone, a test fixture's throwaway repo, a project not yet adopted — and
+# pushing it is not-applicable, never a failure: on 2026-09-18/19 a test
+# suite's fixture repos (seeded with this hook by the init template) raised
+# 66 "push FAILED … 'router' does not appear to be a git repository" alarms
+# in two evenings, and the real backup was fine the whole time.
+git remote get-url router >/dev/null 2>&1 || exit 0
+
 TARGET_MAC=$(grep -oiE '([0-9a-f]{2}:){5}[0-9a-f]{2}' "$LOCAL_CONF" | head -1)
 [ -n "$TARGET_MAC" ] || exit 0
 
