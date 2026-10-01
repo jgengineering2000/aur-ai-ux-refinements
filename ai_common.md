@@ -649,6 +649,13 @@ written and rules without one sat at 0–3 % for three and a half weeks.
 >   artifact. **"SHIPPED", "done" and "works" all collapse these three**, which is
 >   how a behavioural promise nobody has ever watched run comes to read as a
 >   guarantee.
+> - **Owner-performed verification** — a step the OWNER must run is a question put
+>   to them, and owes the same characterisation as any other: a **step table**
+>   naming what they do, what they should see, where confirmation lands (the exact
+>   log line or file), and what failure looks like. A command handed over without
+>   those four asks the owner to design the test you are asking them to run, and
+>   its result is unreadable either way — they cannot report a pass they were
+>   never told the shape of, and a silent failure looks identical to a success.
 > - **What happens today** — present-tense observable behaviour, not the code's
 >   shape.
 > - **Options, against the status quo** — each with what it gives AND what it
