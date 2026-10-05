@@ -2910,6 +2910,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 pass
 
     def _get_docs(self):
+        import html
         import re
         reads = {}
         with _doc_lock:
@@ -2926,11 +2927,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 content = f.read_text(encoding="utf-8", errors="ignore")
                 title_m = re.search(r"<title>([^<]+)</title>", content, re.IGNORECASE)
                 title = title_m.group(1).strip() if title_m else f.stem
+                # The regex above lifts the title as raw SOURCE text, so every
+                # entity in it is still written out.  Decode the whole set, not
+                # one entity by hand: the client renders this through
+                # textContent, which re-escapes whatever survives, so an
+                # undecoded `&mdash;` reaches the reader as those eight
+                # literal characters.  Decoding FIRST also lets the date
+                # strippers below see a real em dash.
+                title = html.unescape(title)
                 title = re.sub(r"\(\d{4}-\d{2}-\d{2},\s*", "(", title)
                 title = re.sub(r"\s*[·•]\s*\d{4}-\d{2}-\d{2}\s*$", "", title)
                 title = re.sub(r"\s*—\s*\d{4}-\d{2}-\d{2}\s*$", "", title)
                 title = re.sub(r"\s+\d{4}-\d{2}-\d{2}\s*$", "", title)
-                title = title.replace("&amp;", "&").strip()
+                title = title.strip()
 
                 ann_count = 0
                 ann_file = ANNOTATIONS_DIR / f"{f.stem}.json"
