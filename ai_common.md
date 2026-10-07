@@ -447,6 +447,24 @@ context that is generally deterministic — so an interface with no response
 channel is the defect to fix before anything is built on top of it (P15's
 cross-boundary corollary, from the other end).
 
+**21. Preserved means write-protected; a cleanup never forces** (owner
+2026-10-06). The standard way to keep something is `chmod -R a-w` on the
+directory and its contents, and that is the whole mechanism: the filesystem
+enforces it against every tool, so no protect-list, naming convention or
+per-tool exemption is needed. The other half binds every cleanup — script,
+sweep, prune, harness teardown of shared state: delete the way `rm -r` does
+**without `-f`**. Never chmod to get past a protection, never force, never
+ignore errors; a write-protected entry is kept and reported, and the run
+carries on rather than aborting at the first one. Corollaries:
+
+- **A refusal is an answer** (P20). A deletion run with errors ignored is a
+  silent failure (P10) that also reports bytes it never freed.
+- **Relocating is not cleaning.** A mover may grant write deliberately,
+  because renaming a directory rewrites its own `..`, but it restores the
+  exact mode afterwards and never leaves a preserved set writable.
+- **One deletion routine per project** (P3), so the rule cannot fork across
+  the copies each tool would otherwise grow.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
