@@ -465,6 +465,36 @@ carries on rather than aborting at the first one. Corollaries:
 - **One deletion routine per project** (P3), so the rule cannot fork across
   the copies each tool would otherwise grow.
 
+**22. Reuse the data before the memory; allocate each kind of resource once,
+by design** (owner 2026-10-07). Where a step leaves a valid result behind —
+a pixel buffer, a decoded frame, a derived plane — the next step reads it
+**by reference**, or the architecture remembers that it is still valid; it
+is never recreated as a copy. Validity is tracked **by design**, not by
+convention: a derived result records what it was derived from, the step that
+changes the source invalidates it, so a stale one cannot be read as current
+and a valid one is never computed twice. Then the memory: every functionally
+similar or identical resource — buffer, worker process, socket, connection —
+is allocated once, held by its owner for as long as it will be needed again,
+and reused **picture to picture, request to request**; it is never freed
+while the same run will need it soon after, because that buys a transient
+dip in RSS with cycles and no net gain. Corollaries:
+
+- **Compensation is scaffolding, not the design.** An allocator policy that
+  keeps freed blocks resident, an OS page cache, a runtime's pooling — each
+  makes free-then-reallocate cheaper, and none is a reason to write it. The
+  design must stand with the scaffolding taken down; that is checkable (run
+  without the compensation and count the page faults or spawns it was
+  hiding).
+- **Do not replace the system's memory manager.** Holding named resources by
+  role is the architecture; carving a home-made allocator out of one block
+  is a second memory manager wearing a pool's clothes (P1). Held memory is
+  the sum of the distinct kinds, so it is reduced by removing kinds — work in
+  place, data by reference, similar resources unified by role (P3) — never by
+  freeing what comes back.
+- **Free at the owner's end of need, not at a stage's.** Release belongs to
+  the point where the owner knows no further use is coming (a window
+  closing, a process exiting) — the P8 owner, deciding once.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
