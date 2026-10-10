@@ -108,7 +108,10 @@ def added_lines(repo, mode):
         args += mode[len("range:"):].split()
     else:
         args += ["HEAD"]
-    out = subprocess.run(args, capture_output=True, text=True).stdout
+    # A binary with no NUL byte diffs as text; its bytes need not be UTF-8, and
+    # a decode error here would end the scan with no verdict at all.
+    out = subprocess.run(args, capture_output=True, text=True,
+                         errors="replace").stdout
     files, cur, lineno = {}, None, 0
     for line in out.splitlines():
         if line.startswith("+++ b/"):
