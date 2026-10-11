@@ -53,6 +53,7 @@ def main():
         git("add", "README", cwd=repo, env=env)
         git("commit", "-q", "-m", "seed", cwd=repo, env=env)
 
+        T, D, PD = "~", "$", "Pictures"   # parts: no literal home path in this file
         home_path = f"{fake_home}/photos/holiday/IMG_0001.jpg"
         proj_path = f"{repo}/rust/enhance/src/pipeline.rs"
 
@@ -74,6 +75,25 @@ def main():
             # pattern can catch it.
             ("research/brief.md", f"Worktree: {proj_path}\n", True),
             (".claude/briefs/phase.md", f"never touch {repo}/scratch\n", True),
+            # Home-relative forms: a tilde-slash path and the HOME variable
+            # name the user's home exactly as the absolute path does. Allowed:
+            # the claude config dir (the guard's pre-existing treatment) and
+            # the repository's OWN XDG dirs, <name> or <name>-<suffix>, with
+            # <name> derived from the repo directory ("proj" here). Strings
+            # are built from parts so this file carries no literal home path.
+            ("src/a.rs", f"// scans {T}/{PD}/x\n", True),
+            ("docs/brief.md", f"the sample folder {T}/rescue holds them\n", True),
+            ("tools/run.sh", f"cp x {D}HOME/foo\n", True),
+            ("tools/run2.sh", f"cp x {D}{{HOME}}/foo\n", True),
+            ("aur-docs/h.html", f"<p>{T}/rescue/img</p>\n", True),
+            (".claude/memory/m.md", f"see {T}/rescue\n", True),
+            ("src/b.rs", f"// {T}/.config/other\n", True),
+            ("src/b2.rs", f"// {T}/.cache/projfoo/x\n", True),
+            ("src/b3.rs", f"// {T}/.cache/proj-previews {T}/.config/proj-x/y {T}/.local/share/proj-z\n", False),
+            ("src/c.rs", f"// {T}/.config/proj {T}/.local/share/proj/x {T}/.cache/proj\n", False),
+            ("src/d.rs", f"// {D}HOME/.config/proj and {D}{{HOME}}/.cache/proj/x\n", False),
+            ("docs/claude.md", f"see {T}/.claude/CLAUDE.md\n", False),
+            ("docs/tilde.md", f"approx {T}5 ms; https://h/{T}/x; foo{T}/bar; a {T}/ b\n", False),
         ]
         for rel, content, must_flag in cases:
             p = repo / rel

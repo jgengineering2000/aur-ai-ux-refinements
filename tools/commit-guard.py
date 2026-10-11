@@ -133,6 +133,18 @@ def pii_patterns(repo):
     location is above the ceiling all the same."""
     project = str(Path(repo).resolve())
     pats = list(PII)
+    # Home-relative forms (a tilde-slash path, the HOME variable in either
+    # brace form) name the user's home as surely as the absolute path. Allowed
+    # under it: the claude config dir (not flagged before this pattern existed)
+    # and the repository's OWN XDG dirs, <name> or <name>-<suffix>, with <name>
+    # taken from the repo directory so no project is hard-coded. The lookbehind
+    # leaves URLs, "foo" glued to a tilde, and "~5 ms" alone; a bare tilde-slash
+    # with no path after it is prose.
+    own = re.escape(Path(repo).resolve().name)
+    pats.append(("home-relative path",
+                 re.compile(rf"(?<![\w/.~$}}-])(?:~|\$HOME|\$\{{HOME\}})/"
+                            rf"(?!(?:\.claude(?![\w-])|(?:\.config|\.local/share|\.cache)"
+                            rf"/{own}(?!\w)))(?=[\w.])")))
     if not project.startswith(HOME + "/"):
         pats.insert(0, ("project path (above the ceiling)",
                         re.compile(re.escape(project) + r"(/|\b)")))
