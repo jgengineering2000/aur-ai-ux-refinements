@@ -72,6 +72,39 @@ def tool_result(ts, images):
             "toolUseResult": {"type": "image", "file": {"base64": "AAAA"}}}
 
 
+def boundary(ts, trigger, pre, post):
+    """The record Claude Code writes where a conversation is compacted."""
+    return {"type": "system", "subtype": "compact_boundary",
+            "content": "Conversation compacted", "level": "info", "timestamp": ts,
+            "compactMetadata": {"trigger": trigger, "preTokens": pre,
+                                "postTokens": post}}
+
+
+def compact_summary(ts):
+    """The harness's summary of what was dropped, typed `user` but not a request."""
+    return {"type": "user", "isCompactSummary": True, "isVisibleInTranscriptOnly": True,
+            "timestamp": ts,
+            "message": {"role": "user", "content":
+                        "This session is being continued from a previous conversation "
+                        "that ran out of context. The summary below covers it."}}
+
+
+def call(mid, ts, ctx, model=OPUS):
+    """One API call whose context (input + cache write + cache read) is `ctx`."""
+    return assistant(mid, "r" + mid, ts, model, 1, 0, ctx - 1, 1)
+
+
+def write_agent(fx, session, name, records, meta=None, raw_meta=None):
+    """A delegate transcript under `session`, with its sibling `.meta.json`
+    holding `meta` (a dict), or `raw_meta` verbatim, or nothing."""
+    d = fx.root / session / "subagents"
+    write_jsonl(d / f"agent-{name}.jsonl", records)
+    if raw_meta is not None:
+        (d / f"agent-{name}.meta.json").write_text(raw_meta)
+    elif meta is not None:
+        (d / f"agent-{name}.meta.json").write_text(json.dumps(meta))
+
+
 def write_jsonl(path, records, compact=True, extra_raw=()):
     path.parent.mkdir(parents=True, exist_ok=True)
     sep = (",", ":") if compact else None
@@ -189,6 +222,8 @@ def build_standard(fx):
         assistant("m2", "r2", "2026-10-02T09:00:10.000Z", OPUS, 2, 500, 1003, 20),
         assistant("d3", "q3", "2026-10-05T10:00:00.000Z", SONNET, 1, 1, 1, 1),
     ])
+    (fx.root / MAIN1 / "subagents" / f"{AGENT}.meta.json").write_text(json.dumps(
+        {"agentType": "delegate", "description": "the thing", "spawnDepth": 1}))
     (fx.root / "sidecar.meta.json").write_text("{}")  # not a transcript
 
     # An in-window record in a file last written before the window: never opened.
@@ -314,6 +349,12 @@ class WindowedTotals(unittest.TestCase):
         self.assertEqual(len(by[MAIN2]["first_prompt"]), 100)
         self.assertEqual(by[AGENT]["first_prompt"], "Delegate brief: do the thing")
         self.assertEqual(by[AGENT]["session"], MAIN1)
+
+    def test_a_delegate_row_carries_its_agent_type_and_a_main_row_none(self):
+        by = {r["transcript"]: r for r in self.w["transcripts"]}
+        self.assertEqual(by[AGENT]["agent_type"], "delegate")
+        self.assertIsNone(by[MAIN1]["agent_type"])
+        self.assertEqual(list(self.w["by_type"]), ["delegate"])
 
     def test_meta_accounts_for_what_was_skipped(self):
         m = self.res["meta"]
@@ -580,6 +621,290 @@ class Refusals(unittest.TestCase):
             self.assertEqual(r.returncode, 0)
             for option in ("--project", "--since", "--until", "--compare", "--top", "--json"):
                 self.assertIn(option, r.stdout)
+
+
+# The split fixture, worked by hand (window 2026-10-02..2026-10-04). A call is
+# named by its context, in thousands where the number is large.
+#
+#   MAINA  began in the window. Calls 1000, 200000, 280000; an auto compaction
+#          (harness count 283000, 15000 after); calls 16000, 100000, 250000; a
+#          manual compaction (255000, 17000 after); call 20000. Peak 280000.
+#          Two compact summaries, one real prompt.
+#   MAINB  calls 5000, 340000, no compaction: the one transcript over the ceiling.
+#          One prompt, a bare "go".
+#   MAINC  begins with a compact summary, then a real prompt. Calls 1000, 330000:
+#          a peak exactly at the ceiling is not above it.
+#   MAIND  began before the window. Call 255000 and a boundary the day before
+#          (not counted); call 261000 at 23:59 the day before, then a boundary in
+#          the window (auto, harness 264000) whose last call lies before the
+#          window: pre-compaction context 261000; call 100000 in the window; a
+#          call and a boundary after the window (not counted).
+#   Delegates, by type (calls by context):
+#     delegate     D1 3000, 8000 (began in window); D7 began the day before
+#                      (500) then 9000 in the window.
+#     general-purpose  D2 20000, 50000; D3 40000, 60000.
+#     Explore          D8 10000, 300000, an auto compaction (305000), 12000.
+#     unknown          D4 no metadata, 7000; D5 metadata that is not JSON, 6000;
+#                      D6 metadata with no agentType, 5000.
+#   Re-read: MAINA 867000, MAINB 345000, MAINC 331000, MAIND 100000 = 1643000
+#            delegate 11000 + 9000 = 20000; general-purpose 70000 + 100000 =
+#            170000; Explore 322000; unknown 18000 = 530000. Total 2173000,
+#            25 calls, 12 transcripts. Owner messages: MAINA's prompt, MAINB's
+#            "go", MAINC's prompt = 3 (compact summaries are not requests).
+CEILING = 330_000
+
+
+def build_split(fx):
+    write_jsonl(fx.root / f"{MAIN1}.jsonl", [
+        prompt("2026-10-02T00:30:00.000Z", "Do the thing"),
+        call("a1", "2026-10-02T01:00:00.000Z", 1000),
+        call("a2", "2026-10-02T02:00:00.000Z", 200000),
+        call("a3", "2026-10-02T03:00:00.000Z", 280000),
+        boundary("2026-10-02T03:00:30.000Z", "auto", 283000, 15000),
+        compact_summary("2026-10-02T03:00:29.000Z"),
+        call("a4", "2026-10-02T04:00:00.000Z", 16000),
+        call("a5", "2026-10-02T05:00:00.000Z", 100000),
+        call("a6", "2026-10-02T06:00:00.000Z", 250000),
+        boundary("2026-10-02T06:00:30.000Z", "manual", 255000, 17000),
+        compact_summary("2026-10-02T06:00:29.000Z"),
+        call("a7", "2026-10-02T07:00:00.000Z", 20000),
+        # A tool result that merely quotes the marker is not a compaction.
+        {"type": "user", "timestamp": "2026-10-02T08:00:00.000Z",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "t9", "content": [
+                 {"type": "text", "text": '{"type":"system","subtype":"compact_boundary"}'}]}]}},
+    ])
+    write_jsonl(fx.root / f"{MAIN2}.jsonl", [
+        prompt("2026-10-03T08:00:00.000Z", "go"),
+        call("b1", "2026-10-03T09:00:00.000Z", 5000),
+        call("b2", "2026-10-03T10:00:00.000Z", 340000),
+    ])
+    write_jsonl(fx.root / "44444444-aaaa-bbbb-cccc-000000000004.jsonl", [
+        compact_summary("2026-10-02T09:00:00.000Z"),
+        prompt("2026-10-02T09:00:01.000Z", "C real prompt"),
+        call("c1", "2026-10-02T09:01:00.000Z", 1000),
+        call("c2", "2026-10-02T09:02:00.000Z", CEILING),
+    ])
+    write_jsonl(fx.root / "55555555-aaaa-bbbb-cccc-000000000005.jsonl", [
+        call("e0", "2026-10-01T20:00:00.000Z", 255000),
+        boundary("2026-10-01T20:01:00.000Z", "auto", 258000, 9000),
+        call("e1", "2026-10-01T23:59:00.000Z", 261000),
+        boundary("2026-10-02T00:00:30.000Z", "auto", 264000, 12000),
+        call("e2", "2026-10-02T00:10:00.000Z", 100000),
+        call("e3", "2026-10-05T01:00:00.000Z", 270000),
+        boundary("2026-10-05T02:00:00.000Z", "auto", 273000, 11000),
+    ])
+    g = lambda mid, ts, ctx: call(mid, ts, ctx, SONNET)
+    write_agent(fx, MAIN1, "d1", [g("d1a", "2026-10-02T10:00:00.000Z", 3000),
+                                  g("d1b", "2026-10-02T10:01:00.000Z", 8000)],
+                meta={"agentType": "delegate", "description": "x"})
+    write_agent(fx, MAIN1, "d7", [g("d7a", "2026-10-01T10:00:00.000Z", 500),
+                                  g("d7b", "2026-10-02T11:00:00.000Z", 9000)],
+                meta={"agentType": "delegate"})
+    write_agent(fx, MAIN1, "d2", [g("d2a", "2026-10-03T10:00:00.000Z", 20000),
+                                  g("d2b", "2026-10-03T10:01:00.000Z", 50000)],
+                meta={"agentType": "general-purpose"})
+    write_agent(fx, MAIN1, "d3", [g("d3a", "2026-10-03T11:00:00.000Z", 40000),
+                                  g("d3b", "2026-10-03T11:01:00.000Z", 60000)],
+                meta={"agentType": "general-purpose"})
+    write_agent(fx, MAIN1, "d8", [g("d8a", "2026-10-03T12:00:00.000Z", 10000),
+                                  g("d8b", "2026-10-03T12:01:00.000Z", 300000),
+                                  boundary("2026-10-03T12:02:00.000Z", "auto", 305000, 8000),
+                                  g("d8c", "2026-10-03T12:03:00.000Z", 12000)],
+                meta={"agentType": "Explore"})
+    write_agent(fx, MAIN1, "d4", [g("d4a", "2026-10-03T13:00:00.000Z", 7000)])
+    write_agent(fx, MAIN1, "d5", [g("d5a", "2026-10-03T13:01:00.000Z", 6000)],
+                raw_meta="{not json")
+    write_agent(fx, MAIN1, "d6", [g("d6a", "2026-10-03T13:02:00.000Z", 5000)],
+                meta={"description": "no type"})
+
+
+def row_of(w, name):
+    return next(r for r in w["transcripts"] if r["transcript"].endswith(name))
+
+
+class AgentTypes(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fx = Fixture()
+        build_split(cls.fx)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            cls.res = cls.fx.result("--since", "2026-10-02", "--until", "2026-10-04")
+        cls.w = cls.res["windows"][0]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fx.close()
+
+    @property
+    def bt(self):
+        return self.w["by_type"]
+
+    def test_the_totals_the_fixture_was_worked_out_to(self):
+        t = self.w["totals"]
+        self.assertEqual((t["calls"], t["reread"], t["transcripts"]), (25, 2173000, 12))
+
+    def test_types_are_listed_by_reread_and_unknown_is_a_type(self):
+        self.assertEqual(list(self.bt),
+                         ["Explore", "general-purpose", "delegate", "unknown"])
+        self.assertEqual([self.bt[k]["reread"] for k in self.bt],
+                         [322000, 170000, 20000, 18000])
+        self.assertEqual([self.bt[k]["calls"] for k in self.bt], [3, 4, 3, 3])
+        self.assertEqual([self.bt[k]["transcripts"] for k in self.bt], [1, 2, 2, 3])
+        self.assertAlmostEqual(self.bt["Explore"]["share"], 322000 / 2173000)
+
+    def test_nothing_is_dropped_a_type_split_adds_up_to_the_delegates(self):
+        k = self.w["by_kind"]["delegate"]
+        self.assertEqual(sum(v["transcripts"] for v in self.bt.values()), k["transcripts"])
+        self.assertEqual(sum(v["calls"] for v in self.bt.values()), k["calls"])
+        self.assertEqual(sum(v["reread"] for v in self.bt.values()), k["reread"])
+
+    def test_starting_size_per_type_counts_only_transcripts_that_began_in_the_window(self):
+        slim = self.bt["delegate"]
+        self.assertEqual(slim["started_in_window"], 1)      # D7 began the day before
+        self.assertEqual(slim["start"], {"p10": 3000, "p50": 3000, "p90": 3000, "max": 3000})
+        gp = self.bt["general-purpose"]
+        self.assertEqual((gp["started_in_window"], gp["start"]["p50"], gp["start"]["max"]),
+                         (2, 40000, 40000))
+        unk = self.bt["unknown"]
+        self.assertEqual((unk["started_in_window"], unk["start"]["p50"], unk["start"]["max"]),
+                         (3, 6000, 7000))
+        ex = self.bt["Explore"]
+        self.assertEqual((ex["started_in_window"], ex["start"]["p50"]), (1, 10000))
+
+    def test_peak_per_type(self):
+        self.assertEqual((self.bt["delegate"]["peak"]["p50"],
+                          self.bt["delegate"]["peak"]["max"]), (9000, 9000))
+        self.assertEqual((self.bt["general-purpose"]["peak"]["p50"],
+                          self.bt["general-purpose"]["peak"]["max"]), (60000, 60000))
+        self.assertEqual(self.bt["Explore"]["peak"]["max"], 300000)
+        self.assertEqual((self.bt["unknown"]["peak"]["p50"],
+                          self.bt["unknown"]["peak"]["max"]), (6000, 7000))
+
+    def test_rows_carry_their_type(self):
+        self.assertEqual(row_of(self.w, "agent-d1")["agent_type"], "delegate")
+        self.assertEqual(row_of(self.w, "agent-d8")["agent_type"], "Explore")
+        for name in ("agent-d4", "agent-d5", "agent-d6"):
+            self.assertEqual(row_of(self.w, name)["agent_type"], "unknown", name)
+        self.assertIsNone(row_of(self.w, MAIN1)["agent_type"])
+
+    def test_missing_and_unusable_metadata_is_counted_and_the_unusable_one_logged(self):
+        m = self.res["meta"]
+        self.assertEqual(m["delegate_metadata_missing"], 1)   # D4
+        self.assertEqual(m["delegate_metadata_unusable"], 2)  # D5 not JSON, D6 no agentType
+        seen = []
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.fx.run("--json", "--since", "2026-10-02", "--until", "2026-10-04",
+                        progress=seen.append)
+        self.assertTrue(any("agent-d5.meta.json" in x and "unknown" in x for x in seen), seen)
+        self.assertTrue(any("agent-d6.meta.json" in x and "agentType" in x for x in seen), seen)
+
+    def test_text_report_has_the_by_type_section(self):
+        rc, text = self.fx.run("--since", "2026-10-02", "--until", "2026-10-04")
+        self.assertEqual(rc, 0)
+        self.assertIn("== delegates by agent type", text)
+        section = text.split("== delegates by agent type")[1].split("\n==")[0]
+        for needle in ("Explore", "general-purpose", "delegate", "unknown"):
+            self.assertIn(needle, section)
+        self.assertIn("3 delegate(s) without a usable agent type, counted as unknown", text)
+
+
+class Compactions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fx = Fixture()
+        build_split(cls.fx)
+        with contextlib.redirect_stderr(io.StringIO()):
+            cls.res = cls.fx.result("--since", "2026-10-02", "--until", "2026-10-04")
+        cls.w = cls.res["windows"][0]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fx.close()
+
+    @property
+    def c(self):
+        return self.w["compactions"]
+
+    def test_summary_counts_the_window_and_names_the_largest(self):
+        self.assertEqual(self.c["count"], 4)
+        self.assertEqual(self.c["largest_pre_context"], 300000)
+        self.assertEqual(self.c["ceiling"], CEILING)
+
+    def test_a_transcript_lists_each_compaction_with_the_context_before_it(self):
+        ev = row_of(self.w, MAIN1)["compactions"]
+        self.assertEqual([(e["trigger"], e["pre_context"], e["harness_pre_tokens"],
+                           e["post_tokens"]) for e in ev],
+                         [("auto", 280000, 283000, 15000), ("manual", 250000, 255000, 17000)])
+        self.assertEqual([e["ts"] for e in ev],
+                         ["2026-10-02T03:00:30.000Z", "2026-10-02T06:00:30.000Z"])
+        self.assertEqual(row_of(self.w, "agent-d8")["compactions"][0]["pre_context"], 300000)
+        self.assertEqual(row_of(self.w, MAIN2)["compactions"], [])
+
+    def test_the_context_before_may_come_from_before_the_window(self):
+        ev = row_of(self.w, "55555555-aaaa-bbbb-cccc-000000000005")["compactions"]
+        self.assertEqual(len(ev), 1)           # the day-before and day-after ones are outside
+        self.assertEqual(ev[0]["pre_context"], 261000)
+        self.assertEqual(ev[0]["harness_pre_tokens"], 264000)
+
+    def test_a_quoted_marker_in_a_tool_result_is_not_a_compaction(self):
+        self.assertEqual(len(row_of(self.w, MAIN1)["compactions"]), 2)
+        self.assertEqual(self.c["count"], 4)
+
+    def test_counts_per_kind_and_per_type(self):
+        self.assertEqual(self.w["by_kind"]["main"]["compactions"], 3)
+        self.assertEqual(self.w["by_kind"]["delegate"]["compactions"], 1)
+        self.assertEqual(self.w["by_type"]["Explore"]["compactions"], 1)
+        self.assertEqual(self.w["by_type"]["general-purpose"]["compactions"], 0)
+
+    def test_a_peak_above_the_ceiling_without_a_compaction_is_flagged_by_name(self):
+        flagged = self.c["peak_over_ceiling_without_compaction"]
+        self.assertEqual([f["transcript"] for f in flagged], [MAIN2])
+        self.assertEqual(flagged[0]["peak"], 340000)
+        self.assertEqual(flagged[0]["kind"], "main")
+        # MAINC peaks exactly at the ceiling, MAINA compacted, the rest are small.
+
+    def test_compact_summaries_are_not_owner_messages_or_first_prompts(self):
+        t = self.w["totals"]
+        self.assertEqual((t["owner_messages"], t["owner_confirmations"]), (3, 1))
+        self.assertEqual(row_of(self.w, "44444444-aaaa-bbbb-cccc-000000000004")["first_prompt"],
+                         "C real prompt")
+
+    def test_text_report_states_the_summary_and_names_the_flagged_transcript(self):
+        rc, text = self.fx.run("--since", "2026-10-02", "--until", "2026-10-04")
+        self.assertEqual(rc, 0)
+        self.assertIn("== compactions", text)
+        section = text.split("== compactions")[1].split("\n==")[0]
+        self.assertIn("4 compactions in the window; largest pre-compaction context 300k", section)
+        self.assertIn("peak above 330k with no compaction: 1 transcript", section)
+        self.assertIn(MAIN2[:14], section)
+        self.assertIn("340k", section)
+
+    def test_no_compaction_and_nothing_flagged_says_so(self):
+        fx = Fixture(with_git=False)
+        try:
+            write_jsonl(fx.root / f"{MAIN1}.jsonl", [
+                prompt("2026-10-02T00:00:00.000Z", "hello"),
+                call("a", "2026-10-02T00:00:01.000Z", 1000)])
+            rc, text = fx.run("--since", "2026-10-02")
+            self.assertEqual(rc, 0)
+            section = text.split("== compactions")[1].split("\n==")[0]
+            self.assertIn("0 compactions in the window; largest pre-compaction context -", section)
+            self.assertIn("peak above 330k with no compaction: none", section)
+            c = fx.result("--since", "2026-10-02")["windows"][0]["compactions"]
+            self.assertEqual((c["count"], c["largest_pre_context"]), (0, None))
+        finally:
+            fx.close()
+
+    def test_compare_carries_the_compaction_rows(self):
+        rc, text = self.fx.run("--compare", "2026-10-02..2026-10-04", "2026-10-05..2026-10-05")
+        self.assertEqual(rc, 0)
+        # Window B holds only MAIND's compaction after window A, 270000 before it.
+        self.assertRegex(text, r"(?m)^compactions\s+4\s+1\s")
+        self.assertRegex(text, r"(?m)^largest pre-compaction context\s+300k\s+270k\s")
+        self.assertRegex(text, r"(?m)^peak above 330k, no compaction\s+1\s+0\s")
 
 
 class Timed(unittest.TextTestResult):

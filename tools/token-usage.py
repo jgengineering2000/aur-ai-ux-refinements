@@ -23,8 +23,24 @@ Definitions, fixed so two runs are comparable:
   call                one API request; streamed chunks repeat a request's usage
                       record and are collapsed on (message id, request id)
   owner message       a genuine user prompt in a main transcript, as read by
-                      transcript.py (tool results, harness injections and IDE
-                      notices are not requests)
+                      transcript.py (tool results, harness injections, IDE
+                      notices and the summary a compaction leaves behind are
+                      not requests)
+  agent type          the `agentType` in the `.meta.json` beside a delegate's
+                      transcript (`<transcript>.meta.json`); a delegate with no
+                      such file, an unparseable one, or one without an
+                      `agentType` is type `unknown`, counted, never dropped
+  compaction          a `system` record whose `subtype` is `compact_boundary`
+                      (its `compactMetadata` names the trigger, `auto` or
+                      `manual`, and the harness's own pre/post token counts);
+                      counted when its timestamp is inside the window
+  context before a    the context of the last call before the boundary in the
+  compaction          same transcript, in the same units as a peak, even when
+                      that call lies before the window; the harness's own
+                      `preTokens` is carried beside it, never mixed with it
+  ceiling             330k, the 300k compaction window plus 10%: a transcript
+                      whose peak is above it and which did not compact in the
+                      window is named in the compactions section
 
 Window bounds are UTC, as the transcripts record them. A date-only --until
 covers that whole day. A transcript file last written before --since cannot
@@ -64,6 +80,9 @@ PROGRESS_EVERY_S = 10.0
 PROMPT_CHARS = 100
 SYNTHETIC_MODEL = "<synthetic>"
 PCTS = (10, 50, 90)
+COMPACT_WINDOW = 300_000                 # CLAUDE_CODE_AUTO_COMPACT_WINDOW in .claude/settings.json
+CEILING = COMPACT_WINDOW + COMPACT_WINDOW // 10
+UNKNOWN_TYPE = "unknown"
 
 
 # ---------------------------------------------------------------- windows
@@ -173,6 +192,9 @@ class Scan:
         self.usage = []          # [fid, ts, model, input, cache_write, cache_read, output]
         self.images = []         # (fid, ts, count)
         self.asks = []           # (fid, ts, is_confirmation)
+        self.compactions = []    # dicts: fid, ts, trigger, pre_context, harness_pre_tokens, post_tokens
+        self.meta_missing = 0    # delegates with no `.meta.json`
+        self.meta_unusable = []  # (relative path, reason): present, but no agent type in it
         self.skipped_mtime = 0
         self.unreadable = []     # (relative path, reason)
         self.bad_lines = 0
@@ -208,6 +230,8 @@ def scan_file(path, fid, info, lo, hi, seen, scan):
             elif b'"user"' in line:
                 if b'"tool_result"' in line and b'"image"' not in line:
                     continue
+            elif b'"compact_boundary"' in line:
+                pass
             else:
                 continue
             try:
@@ -239,13 +263,26 @@ def scan_file(path, fid, info, lo, hi, seen, scan):
                 if info["first_ts"] is None:
                     info["first_ts"] = ts
                     info["first_ctx"] = inp + cw + cr
+                info["last_ctx"] = inp + cw + cr
                 ev = None
                 if in_window(ts):
                     ev = [fid, ts, msg.get("model") or "?", inp, cw, cr, out]
                     scan.usage.append(ev)
                 if key is not None:
                     seen[key] = ev
+            elif kind == "system":
+                if rec.get("subtype") != "compact_boundary" or not in_window(ts):
+                    continue
+                cm = rec.get("compactMetadata")
+                cm = cm if isinstance(cm, dict) else {}
+                scan.compactions.append({
+                    "fid": fid, "ts": ts, "trigger": cm.get("trigger") or "?",
+                    "pre_context": info["last_ctx"],
+                    "harness_pre_tokens": cm.get("preTokens"),
+                    "post_tokens": cm.get("postTokens")})
             elif kind == "user":
+                if rec.get("isCompactSummary"):
+                    continue    # the harness's account of what it dropped, not a request
                 content = msg.get("content")
                 if isinstance(content, list) and any(
                         isinstance(b, dict) and b.get("type") == "tool_result"
@@ -261,6 +298,31 @@ def scan_file(path, fid, info, lo, hi, seen, scan):
                     info["first_prompt"] = " ".join(text.split())[:PROMPT_CHARS]
                 if is_main and in_window(ts):
                     scan.asks.append((fid, ts, is_confirmation(text)))
+
+
+def agent_type_of(path, root, scan, progress):
+    """The `agentType` in the `.meta.json` beside a delegate's transcript, or
+    `unknown` with the reason counted (and, when the file is there but unusable,
+    logged with its path)."""
+    meta = path.with_name(path.stem + ".meta.json")
+    rel = str(meta.relative_to(root))
+    try:
+        with open(meta, "rb") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        scan.meta_missing += 1
+        return UNKNOWN_TYPE
+    except (OSError, ValueError) as e:
+        reason = f"{type(e).__name__}: {str(e)[:80]}"
+    else:
+        typ = data.get("agentType") if isinstance(data, dict) else None
+        if isinstance(typ, str) and typ.strip():
+            return typ.strip()
+        reason = "no agentType in it"
+    scan.meta_unusable.append((rel, reason))
+    if progress:
+        progress(f"{rel}: {reason}; the delegate is counted as type {UNKNOWN_TYPE}")
+    return UNKNOWN_TYPE
 
 
 def scan_project(root, windows, progress=None):
@@ -287,7 +349,9 @@ def scan_project(root, windows, progress=None):
     for i, (path, kind, session, size) in enumerate(todo):
         info = {"kind": kind, "session": session, "transcript": path.stem,
                 "first_ts": None,
-                "first_ctx": 0, "first_prompt": None,
+                "first_ctx": 0, "last_ctx": None, "first_prompt": None,
+                "agent_type": (agent_type_of(path, root, scan, progress)
+                               if kind == "delegate" else None),
                 "path": str(path.relative_to(root))}
         fid = len(scan.files)
         scan.files.append(info)
@@ -365,6 +429,7 @@ def aggregate(scan, window, project=None):
         if t is None:
             info = scan.files[fid]
             t = per[fid] = dict(blank_usage(), kind=info["kind"],
+                                agent_type=info["agent_type"],
                                 session=info["session"],
                                 transcript=info["transcript"], peak=0,
                                 models=collections.Counter(),
@@ -391,16 +456,21 @@ def aggregate(scan, window, project=None):
     owner = sum(1 for fid, ts, c in scan.asks if window.contains(ts))
     confirms = sum(1 for fid, ts, c in scan.asks if window.contains(ts) and c)
 
+    events = sorted((e for e in scan.compactions if window.contains(e["ts"])),
+                    key=lambda e: (e["ts"], e["fid"]))
     transcripts = []
     for fid, t in per.items():
         if not t["calls"]:
             continue
         model = t["models"].most_common(1)[0][0]
-        row = {k: t[k] for k in ("kind", "session", "transcript", "calls", "input", "cache_write",
-                                 "cache_read", "output", "reread", "images", "peak",
-                                 "first_prompt", "began_in_window")}
+        row = {k: t[k] for k in ("kind", "agent_type", "session", "transcript", "calls", "input",
+                                 "cache_write", "cache_read", "output", "reread", "images",
+                                 "peak", "first_prompt", "began_in_window")}
         row["start"] = t["start_ctx"] if t["began_in_window"] else None
         row["model"] = model
+        row["compactions"] = [{k: e[k] for k in ("ts", "trigger", "pre_context",
+                                                 "harness_pre_tokens", "post_tokens")}
+                              for e in events if e["fid"] == fid]
         transcripts.append(row)
     transcripts.sort(key=lambda r: (-r["reread"], r["transcript"]))
 
@@ -427,6 +497,50 @@ def aggregate(scan, window, project=None):
         by_kind[kind]["transcripts"] = len(rows)
         by_kind[kind]["share"] = (by_kind[kind]["reread"] / totals["reread"]
                                   if totals["reread"] else None)
+        by_kind[kind]["compactions"] = sum(
+            1 for e in events if scan.files[e["fid"]]["kind"] == kind)
+
+    # Delegates by type. A type is listed if any delegate of it made a call or
+    # compacted in the window, so the split always adds up to the delegates.
+    type_of = lambda fid: scan.files[fid]["agent_type"]
+    types = {r["agent_type"] for r in transcripts if r["kind"] == "delegate"}
+    types |= {type_of(e["fid"]) for e in events if scan.files[e["fid"]]["kind"] == "delegate"}
+    by_type = {}
+    for typ in types:
+        rows = [r for r in transcripts if r["kind"] == "delegate" and r["agent_type"] == typ]
+        acc = blank_usage()
+        for r in rows:
+            for f in acc:
+                acc[f] += r[f]
+        started = [r for r in rows if r["start"] is not None]
+        by_type[typ] = dict(
+            acc, transcripts=len(rows), started_in_window=len(started),
+            share=(acc["reread"] / totals["reread"]) if totals["reread"] else None,
+            compactions=sum(1 for e in events if scan.files[e["fid"]]["kind"] == "delegate"
+                            and type_of(e["fid"]) == typ),
+            start=percentiles([r["start"] for r in started]),
+            peak=percentiles([r["peak"] for r in rows]))
+    by_type = dict(sorted(by_type.items(), key=lambda kv: (-kv[1]["reread"], kv[0])))
+
+    # Compactions. A transcript that peaked above the ceiling and did not
+    # compact in the window is the evidence that the window did not fire.
+    named = lambda fid: scan.files[fid]
+    pre = [e["pre_context"] for e in events if e["pre_context"] is not None]
+    compactions = {
+        "count": len(events),
+        "largest_pre_context": max(pre) if pre else None,
+        "ceiling": CEILING,
+        "events": [dict({k: e[k] for k in ("ts", "trigger", "pre_context",
+                                           "harness_pre_tokens", "post_tokens")},
+                        kind=named(e["fid"])["kind"], agent_type=named(e["fid"])["agent_type"],
+                        session=named(e["fid"])["session"],
+                        transcript=named(e["fid"])["transcript"]) for e in events],
+        "peak_over_ceiling_without_compaction": sorted(
+            ({k: r[k] for k in ("kind", "agent_type", "session", "transcript", "peak",
+                                "reread", "first_prompt")}
+             for r in transcripts if r["peak"] > CEILING and not r["compactions"]),
+            key=lambda r: (-r["peak"], r["transcript"])),
+    }
     return {
         "window": {"since": window.since_text, "until": window.until_text,
                    "label": window.label()},
@@ -437,8 +551,10 @@ def aggregate(scan, window, project=None):
                        reread_per_commit=(totals["reread"] / commits) if commits else None),
         "by_model": dict(sorted(by_model.items(), key=lambda kv: -kv[1]["reread"])),
         "by_kind": by_kind,
+        "by_type": by_type,
         "by_day": {d: by_day[d] for d in sorted(by_day)},
         "distribution": dist,
+        "compactions": compactions,
         "transcripts": transcripts,
     }
 
@@ -481,6 +597,50 @@ def short_model(m):
     return m[len("claude-"):] if m.startswith("claude-") else m
 
 
+def plural(n, one, many=None):
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def type_label(kind, agent_type):
+    return kind if agent_type is None else f"{kind} {agent_type}"
+
+
+def render_compactions(c, top):
+    """Lines for the compactions section: the summary, the events (largest
+    context first, `top` of them), and the transcripts over the ceiling that
+    never compacted."""
+    events = sorted(c["events"], key=lambda e: (-(e["pre_context"] or 0), e["ts"]))
+    big = max((e for e in events if e["pre_context"] is not None),
+              key=lambda e: e["pre_context"], default=None)
+    head = (f"   {plural(c['count'], 'compaction')} in the window; largest pre-compaction "
+            f"context {tok(c['largest_pre_context'])}")
+    if big is not None:
+        head += f" ({type_label(big['kind'], big['agent_type'])} {big['transcript'][:14]})"
+    out = [head]
+    if events:
+        out.append(table(["kind", "type", "transcript", "at (UTC)", "trigger", "context before",
+                          "harness count", "after"],
+            [[e["kind"], e["agent_type"] or "-", e["transcript"][:14],
+              e["ts"][:16].replace("T", " "), e["trigger"], tok(e["pre_context"]),
+              tok(e["harness_pre_tokens"]), tok(e["post_tokens"])]
+             for e in events[:top]], left=(0, 1, 2, 3, 4)))
+        if len(events) > top:
+            out.append(f"   ({len(events) - top} more in --json)")
+    flagged = c["peak_over_ceiling_without_compaction"]
+    label = f"peak above {tok(c['ceiling'])} with no compaction"
+    if not flagged:
+        out.append(f"   {label}: none")
+    else:
+        out.append(f"   {label}: {plural(len(flagged), 'transcript')}")
+        out.append(table(["kind", "type", "transcript", "session", "peak", "re-read", "first prompt"],
+            [[f["kind"], f["agent_type"] or "-", f["transcript"][:14], f["session"][:8],
+              tok(f["peak"]), tok(f["reread"]), f["first_prompt"] or ""]
+             for f in flagged[:top]], left=(0, 1, 2, 3, 6)))
+        if len(flagged) > top:
+            out.append(f"   ({len(flagged) - top} more in --json)")
+    return out
+
+
 def render_window(res, top, project_name):
     t = res["totals"]
     out = [f"== window {res['window']['label']} (UTC)  project {project_name}",
@@ -505,10 +665,19 @@ def render_window(res, top, project_name):
           tok(v["cache_write"]), tok(v["output"])]
          for m, v in res["by_model"].items()]))
     out.append("\n== main sessions vs delegates")
-    out.append(table(["", "transcripts", "calls", "re-read", "share", "cache written", "output", "images"],
-        [[k, v["transcripts"], v["calls"], tok(v["reread"]), pct(v["share"]),
+    out.append(table(["", "transcripts", "calls", "re-read", "share", "compactions",
+                      "cache written", "output", "images"],
+        [[k, v["transcripts"], v["calls"], tok(v["reread"]), pct(v["share"]), v["compactions"],
           tok(v["cache_write"]), tok(v["output"]), v["images"]]
          for k, v in res["by_kind"].items()]))
+    out.append("\n== delegates by agent type (starting size counts only transcripts that began "
+               "in the window)")
+    out.append(table(["type", "transcripts", "calls", "re-read", "share", "compactions",
+                      "start n", "start p50", "start max", "peak p50", "peak max"],
+        [[typ, v["transcripts"], v["calls"], tok(v["reread"]), pct(v["share"]), v["compactions"],
+          v["started_in_window"], tok(v["start"]["p50"]), tok(v["start"]["max"]),
+          tok(v["peak"]["p50"]), tok(v["peak"]["max"])]
+         for typ, v in res["by_type"].items()]))
     out.append("\n== by day (UTC)")
     out.append(table(["day", "calls", "re-read", "main", "delegate", "cache written", "output"],
         [[d, v["main"]["calls"] + v["delegate"]["calls"],
@@ -531,6 +700,8 @@ def render_window(res, top, project_name):
     out.append(table(["", "", "p10", "p50", "p90", "max", "n"], rows, left=(0, 1)))
     out.append("   share of re-reads that is the starting size repeated: " +
                ", ".join(f"{k} {pct(d['start_share'])}" for k, d in res["distribution"].items()))
+    out.append("\n== compactions")
+    out.extend(render_compactions(res["compactions"], top))
     out.append(f"\n== {min(top, len(res['transcripts']))} costliest transcripts")
     rows = []
     for r in res["transcripts"][:top]:
@@ -557,6 +728,10 @@ def metric_rows(res):
         ("output", t["output"], tok),
         ("images viewed", t["images"], str),
         ("owner messages", t["owner_messages"], str),
+        ("compactions", res["compactions"]["count"], str),
+        ("largest pre-compaction context", res["compactions"]["largest_pre_context"], tok),
+        (f"peak above {tok(res['compactions']['ceiling'])}, no compaction",
+         len(res["compactions"]["peak_over_ceiling_without_compaction"]), str),
         ("commits", t["commits"], str),
         ("re-read per owner message", t["reread_per_owner_message"], tok),
         ("re-read per commit", t["reread_per_commit"], tok),
@@ -664,6 +839,8 @@ def run(argv, out=sys.stdout, progress=None):
     meta = {"project": name, "transcript_files": len(scan.files),
             "files_skipped_by_mtime": scan.skipped_mtime,
             "unreadable_files": len(scan.unreadable), "bad_lines": scan.bad_lines,
+            "delegate_metadata_missing": scan.meta_missing,
+            "delegate_metadata_unusable": len(scan.meta_unusable),
             "duplicate_records": scan.duplicates, "bytes_read": scan.bytes,
             "duration_s": round(duration, 2)}
     if args.json:
@@ -679,6 +856,10 @@ def run(argv, out=sys.stdout, progress=None):
             notes.append(f"{len(scan.unreadable)} unreadable file(s) skipped")
         if scan.bad_lines:
             notes.append(f"{scan.bad_lines} malformed line(s) skipped")
+        untyped = scan.meta_missing + len(scan.meta_unusable)
+        if untyped:
+            notes.append(f"{untyped} delegate(s) without a usable agent type, "
+                         f"counted as {UNKNOWN_TYPE}")
         out.write(f"\n{meta['transcript_files']} files read ({scan.bytes / 1e9:.2f} GB), "
                   f"{scan.skipped_mtime} skipped as older than the window, "
                   f"{scan.duplicates} duplicate stream records collapsed"
