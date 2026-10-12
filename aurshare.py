@@ -57,6 +57,9 @@ SHARED_ASSETS = {
     # had never been runnable from any of them.
     "git-scope.py":     "tools/git-scope.py",
     "git-adopt.py":     "tools/git-adopt.py",
+    "policy.json":      "policy.json",
+    "libaur.so":        "server/libaur.so",
+    "aur-gate":         "gate/aur-gate",
     "scan-hazards.py":  "tools/scan-hazards.py",
 }
 

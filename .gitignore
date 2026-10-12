@@ -25,3 +25,5 @@ aur-docs/ann.js
 aur-docs/manifest-link.js
 aur-docs/manifest.html
 aur-docs/doc.css
+gate/aur-gate
+gate/target/

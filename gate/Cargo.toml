@@ -1,0 +1,11 @@
+[package]
+name = "aur-gate"
+version = "3.0.0"
+edition = "2021"
+
+[[bin]]
+name = "aur-gate"
+path = "src/main.rs"
+
+[dependencies]
+# Zero external dependencies for instantaneous build and minimal startup latency.
