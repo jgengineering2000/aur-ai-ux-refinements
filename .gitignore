@@ -12,6 +12,7 @@ build/
 !aur-installer.spec
 server/server.port
 tools/rule-tests/real-cases.json
+*.so
 
 # AUR's own doc assets link through the shared root like every other project.
 # They were stale copies for three months — the exact fork this architecture

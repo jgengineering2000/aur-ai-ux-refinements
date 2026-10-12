@@ -303,13 +303,35 @@ _INOTIFY_HDR = struct.Struct("iIII")
 
 class _Tail:
     """One live capture: the held source fd and the spool file it feeds."""
-    __slots__ = ("uuid", "stem", "src_fd", "dst_fd")
+    __slots__ = ("uuid", "stem", "src_fd", "dst_fd", "last_sweep_check", "last_sweep_mtime")
 
     def __init__(self, uuid, stem, src_fd, dst_fd):
         self.uuid = uuid
         self.stem = stem
         self.src_fd = src_fd
         self.dst_fd = dst_fd
+        self.last_sweep_check = 0.0
+        self.last_sweep_mtime = 0.0
+
+
+_FDUSER_BIN = shutil.which("fduser") or str(Path.home() / ".local" / "bin" / "fduser")
+if not os.path.exists(_FDUSER_BIN):
+    _FDUSER_BIN = None
+
+_LIB_FDUSER = None
+for _so_name in ("libfduser.so", "libfileholder.so"):
+    _cand = _HERE / _so_name
+    if _cand.exists():
+        try:
+            _lib = ctypes.CDLL(str(_cand))
+            fn = getattr(_lib, "fduser_has_writer", None) or getattr(_lib, "fileholder_has_writer", None)
+            if fn is not None:
+                fn.argtypes = [ctypes.c_char_p]
+                fn.restype = ctypes.c_int
+                _LIB_FDUSER = fn
+                break
+        except OSError:
+            pass
 
 
 class ConsoleSpool:
@@ -540,6 +562,28 @@ class ConsoleSpool:
 
     def _has_writer(self, tail):
         """Check if any process on the machine has this task file open for writing."""
+        src_path = self._tmp_root / tail.uuid / "tasks" / f"{tail.stem}.output"
+        target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{tail.src_fd}"
+
+        # 1. Ultra-fast path: in-process C shared library (zero IPC, GIL released, ~3.8ms)
+        if _LIB_FDUSER is not None:
+            try:
+                res = _LIB_FDUSER(target.encode())
+                if res in (0, 1):
+                    return res == 1
+            except Exception:
+                pass
+
+        # 2. CLI fallback path: native fduser binary
+        if _FDUSER_BIN:
+            try:
+                res = subprocess.run([_FDUSER_BIN, "-q", "-w", target], check=False)
+                if res.returncode in (0, 1):
+                    return res.returncode == 0
+            except OSError:
+                pass
+
+        # 3. Fallback path: procfs scan in Python
         target_suffix = f"/{tail.uuid}/tasks/{tail.stem}.output"
         my_uid = os.getuid()
         try:
@@ -744,8 +788,14 @@ class ConsoleSpool:
                 inactive = True
             if gone:
                 self._finish(tail)
-            elif inactive and not self._has_writer(tail):
-                self._finish(tail)
+            elif inactive:
+                # If inactive, only re-scan /proc if the file was modified since
+                # the last check, or after a backoff interval (15s) has elapsed.
+                if (st.st_mtime != tail.last_sweep_mtime) or (now - tail.last_sweep_check >= 15.0):
+                    tail.last_sweep_check = now
+                    tail.last_sweep_mtime = st.st_mtime
+                    if not self._has_writer(tail):
+                        self._finish(tail)
 
     def _run(self):
         if self.mode == "poll":
@@ -1031,7 +1081,8 @@ def _spooled(registry: Path, uuid: str):
             "mtime_epoch": f_st.st_mtime,
         })
     with _spooled_lock:
-        _SPOOLED_CACHE[uuid] = (st.st_mtime_ns, list(out))
+        if not is_live:
+            _SPOOLED_CACHE[uuid] = (st.st_mtime_ns, list(out))
     return out
 
 
@@ -1530,6 +1581,11 @@ def _fd_writable(pid, fd) -> bool:
     return False
 
 
+_LOG_CHANNELS_CACHE = {}
+_LOG_CHANNELS_TTL = 3.0  # seconds
+_log_channels_lock = threading.Lock()
+
+
 def _log_channels(daemon_dir: Path, registry: Path = None):
     """Every log under `daemon_dir` a process holds open, classified by fd.
 
@@ -1554,6 +1610,22 @@ def _log_channels(daemon_dir: Path, registry: Path = None):
     root = os.path.realpath(daemon_dir)
     spool_root = os.path.realpath(
         registry if registry is not None else CONSOLE_ROOTS["registry"])
+    now = time.monotonic()
+    with _log_channels_lock:
+        cached = _LOG_CHANNELS_CACHE.get((root, spool_root))
+        if cached is not None and (now - cached[0]) < _LOG_CHANNELS_TTL:
+            cached_owners, cached_holder = cached[1]
+            still_valid = True
+            for pid in cached_owners:
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    still_valid = False
+                    break
+            if still_valid:
+                return ({p: {k: set(v) if isinstance(v, set) else v for k, v in r.items()}
+                         for p, r in cached_owners.items()}, dict(cached_holder))
+
     owners, holder = {}, {}
     try:
         pids = [d for d in os.listdir("/proc") if d.isdigit()]
@@ -1618,6 +1690,12 @@ def _log_channels(daemon_dir: Path, registry: Path = None):
             holder.setdefault(target, ipid)
     for pid, rec in owners.items():
         rec["name"] = _proc_name(pid) or str(pid)
+    with _log_channels_lock:
+        _LOG_CHANNELS_CACHE[(root, spool_root)] = (
+            now,
+            ({p: {k: set(v) if isinstance(v, set) else v for k, v in r.items()}
+              for p, r in owners.items()}, dict(holder))
+        )
     return owners, holder
 
 
@@ -2180,6 +2258,8 @@ def _proc_stats(pid, sample=True):
 
 
 _TOP_PROC_CACHE = {}      # pid -> (ticks, monotonic)
+_TOP_PROC_RESULT_CACHE = {"at": 0.0, "data": []}
+_TOP_PROC_INTERVAL_S = 2.0
 _top_proc_lock = threading.Lock()
 
 
@@ -2190,12 +2270,16 @@ def top_process_groups():
       count, executable name, representative nice, total %CPU, total CPU time (TIME+), total RSS.
     Example line: 7 rustc +11 478% 59:25.33 19G
     """
+    now = time.monotonic()
+    with _top_proc_lock:
+        if (now - _TOP_PROC_RESULT_CACHE["at"]) < _TOP_PROC_INTERVAL_S:
+            return list(_TOP_PROC_RESULT_CACHE["data"])
+
     try:
         pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
     except OSError:
         return []
 
-    now = time.monotonic()
     raw_procs = []
     for pid in pids:
         try:
@@ -2213,8 +2297,7 @@ def top_process_groups():
             nice = int(parts[16])
             ticks = utime + stime
 
-            with open(f"/proc/{pid}/statm", "r") as fh:
-                rss_pages = int(fh.read().split()[1])
+            rss_pages = int(parts[21]) if len(parts) >= 22 else 0
             rss_bytes = rss_pages * _PAGE
             raw_procs.append((pid, comm, nice, ticks, rss_bytes))
         except (OSError, IndexError, ValueError):
@@ -2295,6 +2378,9 @@ def top_process_groups():
         out.append(_fmt("cpu#2", g2))
     if g3:
         out.append(_fmt(g3_tag, g3))
+    with _top_proc_lock:
+        _TOP_PROC_RESULT_CACHE["at"] = now
+        _TOP_PROC_RESULT_CACHE["data"] = list(out)
     return out
 
 
