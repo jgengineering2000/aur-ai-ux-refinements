@@ -185,6 +185,35 @@ ALLOW = [
     ("make status --foo", "allow-file prefix extends"),
     ("timeout 5 python3 tools/procstats_watch.py status", "allow-file prefix under a wrapper"),
     ("nice -n 10 make status | head", "allow-file prefix in a pipeline"),
+    # AUR's own tools, invoked through the shared root. The root is spelled with
+    # placeholders (see expand): the home-relative spellings are what the content
+    # guard flags in tracked text, and the table is about those very spellings.
+    ("python3 @TILDE@/@ROOT@/git-scope.py status /r", "AUR tool, ~ form"),
+    ("python3 -I @TILDE@/@ROOT@/commit-guard.py /r", "AUR tool, ~ form, isolated interpreter"),
+    ("python3 @TILDE@/@ROOT@/token-usage.py --help", "AUR tool, ~ form"),
+    ("python3 @HOME@/@ROOT@/git-scope.py begin /r", "AUR tool, expanded HOME"),
+    ("python3 -I @HOME@/@ROOT@/token-usage.py", "AUR tool, expanded HOME, -I"),
+    ("python3 @VAR@/@ROOT@/commit-guard.py /r", "AUR tool, $HOME form"),
+    ("python3 \"@BRACED@/@ROOT@/commit-guard.py\" /r", "AUR tool, quoted ${HOME} form"),
+    ("nice -n 10 python3 @TILDE@/@ROOT@/token-usage.py | head", "AUR tool under a wrapper, in a pipeline"),
+    ("printf '%s\\n' msg | python3 @TILDE@/@ROOT@/git-scope.py commit /r -F -", "AUR tool reading stdin"),
+    # Shell structure is not a command: only the commands inside it are judged.
+    ("for b in A B; do ls -la \"$b\"; done", "all-allowed for loop"),
+    ("for b in A B; do make status; done", "for loop whose body is a project allow-file prefix"),
+    ("for f in *.txt\ndo\n  grep x \"$f\"\ndone", "multi-line for loop"),
+    ("for x in a b; do for y in c d; do echo $x$y; done; done", "nested for loops"),
+    ("for x in a; do ls; done | head -3", "pipeline after done"),
+    ("for x in a; do ls; done 2>&1", "fd duplication after done"),
+    ("for x in make rm sleep; do echo $x; done", "the in-list is data, not commands"),
+    ("if [ -f x ]; then echo y; else echo n; fi", "if/then/else/fi"),
+    ("if ! grep -q x f; then echo y; elif test -d d; then echo z; fi", "if ! / elif"),
+    ("if ls; then\n  git status\nfi", "multi-line if"),
+    ("if make status; then ls; fi", "if condition that is a project allow-file prefix"),
+    ("while test -f x; do ls; done", "while with an allowed condition"),
+    ("until test -f x; do ls; done", "until with an allowed condition"),
+    ("{ ls; git status; }", "brace group"),
+    ("ls do done then fi", "keywords as arguments are arguments"),
+    ("echo for", "keyword as an argument"),
 ]
 
 # ── refused: (command, offending word fragment, rule, why) ───────────────────
@@ -286,20 +315,115 @@ REFUSE = [
     ("LD_PRELOAD=x ls", "LD_PRELOAD=x", "assignment-denied", "loads code"),
     ("env -S 'x' ls", "env -S", "wrapper-unparseable", "env -S runs a string"),
     ("timeout foo ls", "timeout", "wrapper-unparseable", "bad duration"),
+    # AUR-tool near-misses: only the three named scripts, exactly, through the shared root.
+    ("python3 @TILDE@/@ROOT@/other.py", "python3", "first-word-not-allowed", "not one of AUR's allowed tools"),
+    ("python3 -I @TILDE@/@ROOT@/other.py", "python3", "first-word-not-allowed", "not one of AUR's allowed tools"),
+    ("python3 @TILDE@/@ROOT@/git-scope.py.evil", "python3", "first-word-not-allowed", "exact script name"),
+    ("python3 @TILDE@/@ROOT@/../aur/git-scope.py", "python3", "first-word-not-allowed", "exact path, not normalised"),
+    ("python3 @HOME@/.local/other/git-scope.py", "python3", "first-word-not-allowed", "not the shared root"),
+    ("python3 /elsewhere/.local/aur/git-scope.py", "python3", "first-word-not-allowed", "a different HOME"),
+    ("python3 ~bob/.local/aur/git-scope.py", "python3", "first-word-not-allowed", "another user's root"),
+    ("python3 -c x @TILDE@/@ROOT@/git-scope.py", "python3", "first-word-not-allowed", "-c runs code, script is data"),
+    ("python @TILDE@/@ROOT@/git-scope.py status", "python", "first-word-not-allowed", "only python3"),
+    ("bash @TILDE@/@ROOT@/git-scope.py status", "bash", "first-word-not-allowed", "only python3"),
+    ("PATH=/x python3 @TILDE@/@ROOT@/git-scope.py", "PATH=/x", "assignment-denied", "assignment still judged"),
+    ("python3 @TILDE@/@ROOT@/git-scope.py x > out", "> out", "redirect-to-file", "structural rules still apply"),
+    ("python3 @TILDE@/@ROOT@/git-scope.py $(id)", "$(", "command-substitution", "structural rules still apply"),
+    # Shell structure does not launder: the commands inside are judged.
+    ("for b in A B; do make build; done", "make", "first-word-not-allowed", "loop body judged"),
+    ("for b in A; do rm x; done", "rm", "first-word-not-allowed", "loop body judged"),
+    ("for b in A; do ls > out; done", "> out", "redirect-to-file", "loop body redirect judged"),
+    ("for b in A; do ls; done > out", "> out", "redirect-to-file", "redirect on done judged"),
+    ("for b in $(ls); do ls; done", "$(", "command-substitution", "substitution in the in-list"),
+    ("for x in a; do nice -n 5 make; done", "make", "first-word-not-allowed", "wrapper in a loop body"),
+    ("if ls; then make; fi", "make", "first-word-not-allowed", "then-branch judged"),
+    ("if ls; then ls; else rm x; fi", "rm", "first-word-not-allowed", "else-branch judged"),
+    ("if cargo build; then ls; fi", "cargo", "first-word-not-allowed", "if condition judged"),
+    ("while make; do ls; done", "make", "first-word-not-allowed", "while condition judged"),
+    ("while true; do ls; done", "while true", "option-unbounded", "a literally endless loop never returns"),
+    ("until false; do ls; done", "until false", "option-unbounded", "a literally endless loop never returns"),
+    ("while ! false; do ls; done", "while ! false", "option-unbounded", "negated endless condition"),
+    ("until ! true; do ls; done", "until ! true", "option-unbounded", "negated endless condition"),
+    ("{ make; }", "make", "first-word-not-allowed", "brace body judged"),
+    ("do rm x", "rm", "first-word-not-allowed", "a stray keyword does not launder"),
+    ("fortune", "fortune", "first-word-not-allowed", "a word merely starting like a keyword"),
+    ("forx b in A", "forx", "first-word-not-allowed", "a word merely starting like a keyword"),
+    ("case x in x) ls;; esac", "case", "first-word-not-allowed", "case is not structure the guard reads"),
 ]
+
+
+def expand(cmd, fx):
+    """Fill a table row's placeholders: the fixture's home, and the shell's
+    spellings of home (tilde, $HOME, ${HOME}) plus the shared root under it."""
+    for token, text in (("@HOME@", str(fx.home)), ("@TILDE@", "~"), ("@VAR@", "$HOME"),
+                        ("@BRACED@", "${HOME}"), ("@ROOT@", ".local/aur")):
+        cmd = cmd.replace(token, text)
+    return cmd
 
 
 def check_allow_refuse(fx, report):
     env = fx.env()
     for cmd, why in ALLOW:
+        cmd = expand(cmd, fx)
         code, err, _ = invoke(fx, payload(cmd, fx.sub), env)
         report(code == 0 and not err, f"want=ALLOW got={code}  main: {cmd!r}",
                f"{why}; stderr: {err[:300]!r}")
     for cmd, word, rule, why in REFUSE:
+        cmd = expand(cmd, fx)
         code, err, _ = invoke(fx, payload(cmd, fx.sub), env)
         missing = [f for f in REFUSE_FRAGMENTS + [f"`{word}`", f"rule {rule}"] if f not in err]
         report(code == 2 and not missing, f"want=REFUSE got={code}  main: {cmd!r}",
                f"{why}; missing in stderr: {missing}; stderr: {err[:300]!r}")
+
+
+def check_relocated_root(fx, report):
+    """AUR_SHARE_ROOT (read by aurshare.py) relocates the shared root; the guard reads the
+    same variable, so a relocated install keeps its three tools reachable - and nothing else."""
+    reloc = fx.root / "relocated" / "aur"
+    reloc.mkdir(parents=True)
+    r = str(reloc)
+    for tool in ("token-usage.py", "git-scope.py", "commit-guard.py"):
+        code, err, _ = invoke(fx, payload(f"python3 {r}/{tool} --help", fx.sub),
+                              fx.env(AUR_SHARE_ROOT=r))
+        report(code == 0 and not err, f"AUR_SHARE_ROOT set: python3 <root>/{tool} -> 0, silent",
+               err[:200])
+    code, err, _ = invoke(fx, payload(f"python3 -I {r}/token-usage.py", fx.sub),
+                          fx.env(AUR_SHARE_ROOT=r))
+    report(code == 0 and not err, "AUR_SHARE_ROOT set: python3 -I <root>/token-usage.py -> 0", err[:200])
+    code, err, _ = invoke(fx, payload(f"python3 {r}/token-usage.py", fx.sub),
+                          fx.env(AUR_SHARE_ROOT=r + "/"))
+    report(code == 0 and not err, "AUR_SHARE_ROOT with a trailing slash -> <root>/token-usage.py -> 0",
+           err[:200])
+    code, err, _ = invoke(fx, payload(f"python3 {fx.home}/relocated/aur/token-usage.py", fx.sub),
+                          fx.env(AUR_SHARE_ROOT=os.path.join("~", "relocated", "aur")))
+    report(code == 0 and not err, "AUR_SHARE_ROOT written with ~ is expanded against HOME -> 0",
+           err[:200])
+    code, err, _ = invoke(fx, payload(f"python3 {fx.home}/.local/aur/token-usage.py", fx.sub),
+                          fx.env(AUR_SHARE_ROOT=r))
+    report(code == 0 and not err, "AUR_SHARE_ROOT set: the default home root is still accepted -> 0",
+           err[:200])
+    for cmd, why in ((f"python3 {r}/other.py", "an unlisted script in the relocated root"),
+                     (f"python3 {r}/sub/token-usage.py", "a tool one directory deeper"),
+                     (f"python3 {r}/../token-usage.py", "a tool reached by .. out of the root"),
+                     (f"python3 {r}x/token-usage.py", "a sibling that merely shares the prefix"),
+                     (f"python3 -c 'print(1)' {r}/token-usage.py", "python3 -c before the tool")):
+        code, err, _ = invoke(fx, payload(cmd, fx.sub), fx.env(AUR_SHARE_ROOT=r))
+        report(code == 2 and "rule first-word-not-allowed" in err,
+               f"AUR_SHARE_ROOT set: {why} -> 2", err[:200])
+    # Unset, empty or relative: today's behaviour - a root that depends on cwd is no root.
+    for label, extra in (("unset", {}), ("empty", {"AUR_SHARE_ROOT": ""}),
+                         ("relative", {"AUR_SHARE_ROOT": "relocated/aur"})):
+        env = fx.env(**extra)
+        if label == "unset":
+            env.pop("AUR_SHARE_ROOT", None)
+        cmd = f"python3 {r}/token-usage.py" if label != "relative" else \
+            "python3 relocated/aur/token-usage.py"
+        code, err, _ = invoke(fx, payload(cmd, fx.sub), env)
+        report(code == 2 and "rule first-word-not-allowed" in err,
+               f"AUR_SHARE_ROOT {label}: the relocated tool is not accepted -> 2", err[:200])
+    code, err, _ = invoke(fx, payload("python3 ./token-usage.py", fx.sub),
+                          fx.env(AUR_SHARE_ROOT=""))
+    report(code == 2, "AUR_SHARE_ROOT empty is not '.': python3 ./token-usage.py -> 2", err[:200])
 
 
 def check_context_cases(fx, report):
@@ -486,6 +610,7 @@ def main():
         fx = Fixture(root / "main")
         check_allow_refuse(fx, report)
         check_context_cases(fx, report)
+        check_relocated_root(fx, report)
         check_arguments(fx, report)
         check_log(root, report)
         check_latency(fx, report)

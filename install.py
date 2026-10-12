@@ -206,6 +206,21 @@ def main():
         if do_claude_md and (project_dir / "CLAUDE.md").exists():
             print("    !! CLAUDE.md already exists — will skip, not overwrite.")
 
+    # ── Part C: token economy (user level, opt-in) ───────────────────────────
+    # Offered only where the payload exists (a checkout); the frozen binary
+    # bundles server/ templates/ patches/ systemd/ but not hooks/ or agents/.
+    do_c = False
+    if (HERE / "hooks" / "supervisor-bash-guard.py").is_file():
+        section("Part C — Token economy (user level)")
+        print()
+        print("  The main session supervises, delegates execute: a Bash guard that keeps")
+        print("  builds out of the main context, the reply card, the generic delegate")
+        print("  agent, and a 300k compaction window. Edits ~/.claude/settings.json")
+        print("  (merged, backup kept) and adds links in ~/.claude. A second run changes")
+        print("  nothing; `python3 tokeneconomy.py check` shows what it would do first.")
+        print()
+        do_c = ask_yn("C   Install the token-economy component?", default="n")
+
     # ── Confirmation summary ──────────────────────────────────────────────────
     section("Summary")
     print()
@@ -227,6 +242,9 @@ def main():
         if ides:
             print(f"    Keybinding: {'yes (' + ', '.join(ides) + ')' if do_keybinding else 'no'}")
         print(f"    CLAUDE.md:  {'yes' if do_claude_md else 'no'}")
+    if do_c:
+        print("  Part C — Token economy:")
+        print("    ~/.claude links + settings.json merge (hooks, auto-compact window)")
     print()
     if not ask_yn("Proceed?", default="y"):
         print("\n  Cancelled.")
@@ -268,6 +286,17 @@ def main():
         if do_keybinding:
             for ide in ides:
                 install_keybinding(ide, port, log)
+
+    if do_c:
+        section("Installing Token Economy")
+        print()
+        import aurshare
+        import tokeneconomy
+        rep = tokeneconomy.run(HERE, Path.home(), aurshare.SHARE, apply_changes=True,
+                               log=lambda msg: print(f"    {msg}"))
+        print(f"    {tokeneconomy.summary(rep)}")
+        if rep.problems:
+            failures.append("C token economy (see the [problem] lines above)")
 
     # ── Done ──────────────────────────────────────────────────────────────────
     if failures:

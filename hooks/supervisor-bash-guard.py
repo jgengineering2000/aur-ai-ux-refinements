@@ -12,6 +12,13 @@ context is thrown away; the supervisor keeps a small context and judges
 results. A rule the model must remember mid-task lapses; a refusal it cannot
 talk past does not — so the harness enforces it.
 
+WHAT IT ALLOWS BEYOND THE READ-ONLY SET. AUR's own tools through the shared root
+(`python3 [-I] <shared root>/{git-scope,commit-guard,token-usage}.py`, with the
+root spelled as tilde, $HOME, ${HOME} or the expanded home) and shell structure: `for`/`if`/`while`/
+`until` and `{ }` are syntax, so only the commands inside them are judged and a
+`for` in-list is data. A loop whose condition is literally endless
+(`while true`, `until false`) is refused as unbounded.
+
 WHO IT BINDS. The hook input carries `agent_id` only inside a subagent, so a
 subagent is never restricted (exit 0 silently). `agent_type` alone (set by
 `--agent`) is still the main thread.
@@ -60,6 +67,21 @@ GIT_READ = frozenset("status diff log show rev-parse merge-base ls-files blame "
 GIT_ALLOWED = sorted(GIT_READ | {"branch (listing only)", "add", "commit"})
 STD_BIN_DIRS = ("/bin", "/usr/bin", "/usr/local/bin", "/sbin", "/usr/sbin")
 
+# AUR's own tools, run through the shared root (under the user's home): committing, the
+# commit scan and the token measurement are the supervisor's work, and they are
+# reachable only as `python3 [-I] <shared root>/<tool>` - an exact path, so a
+# neighbouring script or `python3 -c` is not laundered by living near them. When
+# AUR_SHARE_ROOT relocates the root (aurshare.py honours it), that absolute path is accepted too.
+AUR_TOOLS = ("git-scope.py", "commit-guard.py", "token-usage.py")
+AUR_SHARED_ROOT = ".local/aur"                   # relative to a home; aurshare.SHARE
+AUR_ROOT_HEADS = ("~", "$HOME", "${HOME}")       # the spellings of "home" a shell accepts
+
+# Shell structure. These words are syntax, not commands: only the commands
+# inside a loop, conditional or group are judged. `for` is dropped whole (its
+# in-list is data); the others are peeled and what follows them is judged.
+STRUCT_FOR = "for"
+STRUCT_PEEL = frozenset("do done if then elif else fi while until { }".split())
+
 # Variables that change what an allowed command DOES (code loading, lookup path,
 # external programs git will spawn). Assigning them makes `ls` not `ls`.
 ASSIGN_DENY_EXACT = frozenset(
@@ -80,7 +102,7 @@ RULES = {
     "assignment-denied": "this variable changes what an allowed command executes",
     "wrapper-unparseable": "a nice/timeout/env wrapper's options were not understood",
     "option-writes": "this option makes an otherwise read-only command write or execute",
-    "option-unbounded": "this option never returns on its own",
+    "option-unbounded": "this option or loop never returns on its own",
     "option-uninspectable": "this option reads a program from a file the guard cannot inspect",
     "git-subcommand-not-allowed": "this git subcommand is outside the read/add/commit set",
     "git-option": "this git option can run a program or is not understood",
@@ -717,13 +739,76 @@ def judge_git(words):
     return "git " + sub, "git-subcommand-not-allowed"
 
 
+def endless_condition(kw, rest):
+    """`while true` / `until false` (and their negations): a loop condition fixed
+    by its own text, so the loop never returns on its own."""
+    neg = bool(rest) and rest[0] == "!"
+    core = rest[1:] if neg else rest
+    if len(core) != 1:
+        return False
+    name = command_name(core[0])
+    if kw == "while":
+        return (name == "true") != neg and name in ("true", "false")
+    if kw == "until":
+        return (name == "false") != neg and name in ("true", "false")
+    return False
+
+
+def strip_structure(words, viol):
+    """Peel leading shell structure words (do, done, if, then, elif, else, fi,
+    while, until, { and }); a `for` clause is data and vanishes whole. Returns
+    the words of the command that remains, [] when the whole simple command was
+    syntax. A loop whose condition can never end is a violation."""
+    for _ in range(16):
+        if not words:
+            return words
+        w = words[0]
+        if w == STRUCT_FOR:
+            return []
+        if w not in STRUCT_PEEL:
+            return words
+        if w in ("while", "until") and endless_condition(w, words[1:]):
+            viol.append((" ".join(words[:3 if words[1:2] == ["!"] else 2]), "option-unbounded"))
+            return []
+        words = words[1:]
+    viol.append((words[0], "unparseable"))
+    return []
+
+
+def is_aur_tool(words):
+    """`python3 [-I] <shared root>/<tool>` for an AUR tool, any spelling of the
+    shared root that names this user's home."""
+    if command_name(words[0]) != "python3":
+        return False
+    j = 2 if words[1:2] == ["-I"] else 1
+    if len(words) <= j:
+        return False
+    heads = AUR_ROOT_HEADS + (os.path.expanduser("~").rstrip("/"),)
+    if any(words[j] == f"{head}/{AUR_SHARED_ROOT}/{tool}" for head in heads for tool in AUR_TOOLS):
+        return True
+    reloc = relocated_root()
+    return bool(reloc) and any(words[j] == f"{reloc}/{tool}" for tool in AUR_TOOLS)
+
+
+def relocated_root():
+    """The shared root when AUR_SHARE_ROOT relocates it (aurshare.py reads the same variable;
+    this hook runs standalone, so it does not import it): the expanded value, no trailing
+    slash. Empty, or not absolute once expanded, is no root: '.' or a cwd-relative path would
+    accept whatever script happens to sit under the working directory."""
+    value = os.path.expanduser(os.environ.get("AUR_SHARE_ROOT", ""))
+    return value.rstrip("/") if value.startswith("/") else ""
+
+
 def judge(words, allow):
     """One simple command -> list of (offending word, rule)."""
     viol = []
+    words = strip_structure(words, viol)
     if words and words[0] == "!":           # pipeline negation does not change what runs
         words = words[1:]
     words = strip_wrappers(words, viol)
     if not words:
+        return viol
+    if is_aur_tool(words):
         return viol
     for pref in allow:                      # the project's own cheap status reads
         if words[:len(pref)] == pref:
@@ -819,9 +904,11 @@ def refusal_message(viol, allow_path):
                  "command and the question it answers; keep this conversation for judgement.")
     lines.append("Allowed here: " + " ".join(SIMPLE_ALLOWED) + "; "
                  + "; ".join(CONDITIONAL_ALLOWED) + "; git " + ", ".join(GIT_ALLOWED)
+                 + "; python3 [-I] <shared root>/{" + ",".join(t[:-3] for t in AUR_TOOLS) + "}.py"
                  + (f"; plus prefixes in {allow_path}" if allow_path else
                     "; plus prefixes in <project>/.claude/supervisor-allow.txt")
-                 + ". Pipes (|, &&, ||, ;) are fine if every part is allowed.")
+                 + ". Pipes (|, &&, ||, ;) are fine if every part is allowed; for/if/while "
+                 "and { } are judged by the commands inside them.")
     lines.append(f"Override: set {ENV_OVERRIDE}=off in the environment that launches Claude "
                  "Code (a hands-on session the owner opts into). Subagents are never restricted.")
     return "\n".join(lines) + "\n"

@@ -1,6 +1,6 @@
 ---
 name: delegation-and-new-session
-description: Read BEFORE closing a session, recommending or composing a new-session kickoff, or spawning any delegate/subagent — the master-supervisor architecture (thin top-model supervisor, nested delegates), the model ladder, phase-boundary-equals-session-boundary, delegate briefs, and the escalation rule for the unexpected.
+description: Read BEFORE closing a session, recommending or composing a new-session kickoff, or spawning any delegate/subagent — the master-supervisor architecture (thin top-model supervisor, nested delegates), the enforced context economy (supervisor Bash guard, slim delegate agent, compaction window, reply card, token-usage measurement), the model ladder, phase-boundary-equals-session-boundary, delegate briefs, and the escalation rule for the unexpected.
 ---
 
 # Delegation & New-Session Architecture
@@ -45,11 +45,45 @@ workers' tokens are the bulk of the spend.
   Anything outside the brief goes UP to the supervisor; a delegate never
   improvises past its brief — improvisation is the supervisor's monopoly.
 
+## Context economy — enforced by the harness, not remembered (owner 2026-10-12)
+
+**Every call re-sends the whole context**, so a session costs its context size
+times its call count — quadratic in its length — and a large context also costs
+focus: the rules at its top are read less as it grows. Measured on one
+project, 2026-10-01..12: 17.16B tokens re-read; **delegates 72%** of it; **growth inside
+a transcript ~77%**; every session started at 79k tokens and every delegate at
+66k; one delegate ran 2,294 calls and opened 984 images for 1.29B. That project
+already had a delegate card, a session-start budget check and a token nudge
+after every Bash call — all advice, and contexts still reached 967k. So each
+rule below is a mechanism, installed by AUR's installer (token-economy
+component):
+
+| Rule | Mechanism |
+|---|---|
+| The main thread judges; delegates execute | `supervisor-bash-guard` (PreToolUse Bash): the main thread runs cheap reads + git only; subagents are never restricted. Per project: `.claude/supervisor-allow.txt` (exact prefixes of cheap status tools). Opt out per session: launch with `AUR_SUPERVISOR_BASH=off`. |
+| Delegates start small | the `delegate` agent — Sonnet, `omitClaudeMd`, five tools, reads the project's `.claude/DELEGATE_BRIEF.md`. Measured start 15.9k vs 66k. Spawn it, not `general-purpose`. |
+| No context grows unbounded | `CLAUDE_CODE_AUTO_COMPACT_WINDOW=300000`. Task state lives in files (brief, plan, progress) so a compaction loses nothing needed; a SessionStart(`compact`) hook says to re-read them. |
+| The owner's presentation rules stay in view | the reply card, injected at the END of the context on every genuine owner message (not on task notifications) and after each compaction. |
+| Images are judged by sheet, not by stream | a review sheet driven by a full-resolution diff against the previous best — a large image opened whole is downscaled before the model sees it, so fine regressions hide in it anyway. |
+
+**Measured, never assumed:** the shared root's `token-usage.py` (`--compare
+A..B C..D`) reports re-reads per owner message and per commit, starting size
+and peak per transcript, main vs delegate, images opened. Acceptance for a
+project adopting this: delegate start p50 ≤ 35k; no peak above the window plus
+a compaction margin; re-reads per owner message and per commit ≥ 40% below its
+baseline; presentation-rule compliance no lower than before.
+
+**Never wire the same hook at user and project level** — both fire, and the
+card arrives twice. A project's own settings carry only what is the project's.
+
 ## Sessions
 
-- **Phase boundary = session boundary.** Each phase gets a clean session;
-  a bloated context is the signal to close, not to compact indefinitely.
-  Never start a delegation near the session's token limits.
+- **Phase boundary = session boundary.** Each phase gets a clean session.
+  Inside a phase, the compaction window bounds growth, and is safe because
+  task state lives in files. Across a phase boundary, compaction is the wrong
+  tool: its summary carries the finished phase's residue into the next one,
+  so close and start clean. Never start a delegation near the session's
+  token limits.
 - **The kickoff prompt is the interface.** Complete, self-contained,
   ready-to-paste, re-emitted in full whenever anything changes (never "see
   above" / "with one amendment"). Open decisions are asked BEFORE the

@@ -61,6 +61,13 @@ SHARED_ASSETS = {
     "libaur.so":        "server/libaur.so",
     "aur-gate":         "gate/aur-gate",
     "scan-hazards.py":  "tools/scan-hazards.py",
+    # The token-economy strategy: the main session supervises, delegates
+    # execute. This is the measurement tool and the generic delegate agent; the
+    # hooks it wires (supervisor-bash-guard.py, reply-card.*) travel in hooks/
+    # above. Putting them HERE only makes them available - wiring them into a
+    # user's ~/.claude is tokeneconomy.py, opt-in, never part of the heal.
+    "token-usage.py":   "tools/token-usage.py",
+    "agents/":          "agents/",
 }
 
 # The subset a project's aur/ directory links to. The rules files are consumed
@@ -119,12 +126,18 @@ def installed_version(name):
 
 # ── registry ────────────────────────────────────────────────────────────────
 
-def ensure_root():
-    """The root is a fundamental requirement — create it rather than fail."""
-    SHARE.mkdir(parents=True, exist_ok=True)
-    if not REGISTRY.exists():
-        REGISTRY.write_text(_REGISTRY_HEADER)
-    return SHARE
+def ensure_root(share=None):
+    """The root is a fundamental requirement — create it rather than fail.
+
+    `share` names a root other than the machine's own (a test's temporary HOME);
+    omitted, it is `SHARE`.
+    """
+    root = Path(share) if share else SHARE
+    root.mkdir(parents=True, exist_ok=True)
+    registry = root / REGISTRY.name
+    if not registry.exists():
+        registry.write_text(_REGISTRY_HEADER)
+    return root
 
 
 def _instance_of(project_dir):
@@ -136,11 +149,14 @@ def _instance_of(project_dir):
     return None, None
 
 
-def registry_read():
-    """Registered projects that still exist, as dicts. Never raises."""
+def registry_read(share=None):
+    """Registered projects that still exist, as dicts. Never raises.
+
+    `share` reads another root's registry (see `ensure_root`); omitted, `SHARE`'s.
+    """
     out = []
     try:
-        lines = REGISTRY.read_text().splitlines()
+        lines = ((Path(share) / REGISTRY.name) if share else REGISTRY).read_text().splitlines()
     except OSError:
         return out
     for line in lines:
@@ -470,7 +486,7 @@ def deploy(aur_root, version, log=print):
     return len(staged), len(skipped)
 
 
-def devlink(aur_root, names=None, log=print):
+def devlink(aur_root, names=None, log=print, share=None):
     """Point stable names at the CHECKOUT rather than at a deployed copy.
 
     Commit 379bfe0 made AUR self-host from canonical source so there would be
@@ -484,7 +500,7 @@ def devlink(aur_root, names=None, log=print):
     Reversible: `deploy` overwrites these with real versioned copies.
     """
     aur_root = Path(aur_root).expanduser().resolve()
-    ensure_root()
+    root = ensure_root(share)
     n = 0
     for name in (names or SHARED_ASSETS):
         rel = SHARED_ASSETS.get(name)
@@ -493,7 +509,7 @@ def devlink(aur_root, names=None, log=print):
         src = aur_root / rel.rstrip("/")
         if not src.exists():
             continue
-        link = SHARE / name.rstrip("/")
+        link = root / name.rstrip("/")
         if link.is_symlink() or link.exists():
             if link.is_dir() and not link.is_symlink():
                 shutil.rmtree(link)
