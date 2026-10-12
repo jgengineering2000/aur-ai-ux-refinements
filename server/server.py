@@ -1664,11 +1664,6 @@ def _fd_writable(pid, fd) -> bool:
     return False
 
 
-_LOG_CHANNELS_CACHE = {}
-_LOG_CHANNELS_TTL = 3.0  # seconds
-_log_channels_lock = threading.Lock()
-
-
 def _log_channels(daemon_dir: Path, registry: Path = None):
     """Every log under `daemon_dir` a process holds open, classified by fd.
 
@@ -1693,21 +1688,6 @@ def _log_channels(daemon_dir: Path, registry: Path = None):
     root = os.path.realpath(daemon_dir)
     spool_root = os.path.realpath(
         registry if registry is not None else CONSOLE_ROOTS["registry"])
-    now = time.monotonic()
-    with _log_channels_lock:
-        cached = _LOG_CHANNELS_CACHE.get((root, spool_root))
-        if cached is not None and (now - cached[0]) < _LOG_CHANNELS_TTL:
-            cached_owners, cached_holder = cached[1]
-            still_valid = True
-            for pid in cached_owners:
-                try:
-                    os.kill(pid, 0)
-                except OSError:
-                    still_valid = False
-                    break
-            if still_valid:
-                return ({p: {k: set(v) if isinstance(v, set) else v for k, v in r.items()}
-                         for p, r in cached_owners.items()}, dict(cached_holder))
 
     owners, holder = {}, {}
     try:
@@ -1773,12 +1753,6 @@ def _log_channels(daemon_dir: Path, registry: Path = None):
             holder.setdefault(target, ipid)
     for pid, rec in owners.items():
         rec["name"] = _proc_name(pid) or str(pid)
-    with _log_channels_lock:
-        _LOG_CHANNELS_CACHE[(root, spool_root)] = (
-            now,
-            ({p: {k: set(v) if isinstance(v, set) else v for k, v in r.items()}
-              for p, r in owners.items()}, dict(holder))
-        )
     return owners, holder
 
 
