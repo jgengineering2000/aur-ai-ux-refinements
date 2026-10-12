@@ -355,39 +355,42 @@ _LIB_FDUSER_HAS = None
 _LIB_PROC_STATS = None
 _LIB_SYSINFO_SAMPLE = None
 
-for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
-    _cand = _HERE / _so_name
-    if _cand.exists():
-        try:
-            _lib = ctypes.CDLL(str(_cand))
-            find_fn = getattr(_lib, "fduser_find_writers", None)
-            if find_fn is not None:
-                find_fn.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
-                find_fn.restype = ctypes.c_int
-                _LIB_FDUSER_FIND = find_fn
+for _dir in (_HERE, Path(__file__).resolve().parent, Path.home() / ".local" / "aur"):
+    for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
+        _cand = _dir / _so_name
+        if _cand.exists():
+            try:
+                _lib = ctypes.CDLL(str(_cand))
+                find_fn = getattr(_lib, "fduser_find_writers", None)
+                if find_fn is not None:
+                    find_fn.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+                    find_fn.restype = ctypes.c_int
+                    _LIB_FDUSER_FIND = find_fn
 
-            has_fn = getattr(_lib, "fduser_has_writer", None) or getattr(_lib, "fileholder_has_writer", None)
-            if has_fn is not None:
-                has_fn.argtypes = [ctypes.c_char_p]
-                has_fn.restype = ctypes.c_int
-                _LIB_FDUSER_HAS = has_fn
+                has_fn = getattr(_lib, "fduser_has_writer", None) or getattr(_lib, "fileholder_has_writer", None)
+                if has_fn is not None:
+                    has_fn.argtypes = [ctypes.c_char_p]
+                    has_fn.restype = ctypes.c_int
+                    _LIB_FDUSER_HAS = has_fn
 
-            stats_fn = getattr(_lib, "aur_get_proc_stats", None)
-            if stats_fn is not None:
-                stats_fn.argtypes = [ctypes.POINTER(AurProcStat), ctypes.c_int]
-                stats_fn.restype = ctypes.c_int
-                _LIB_PROC_STATS = stats_fn
+                stats_fn = getattr(_lib, "aur_get_proc_stats", None)
+                if stats_fn is not None:
+                    stats_fn.argtypes = [ctypes.POINTER(AurProcStat), ctypes.c_int]
+                    stats_fn.restype = ctypes.c_int
+                    _LIB_PROC_STATS = stats_fn
 
-            sysinfo_fn = getattr(_lib, "aur_sysinfo_sample", None)
-            if sysinfo_fn is not None:
-                sysinfo_fn.argtypes = [ctypes.c_char_p, ctypes.POINTER(AurSysInfo)]
-                sysinfo_fn.restype = ctypes.c_int
-                _LIB_SYSINFO_SAMPLE = sysinfo_fn
+                sysinfo_fn = getattr(_lib, "aur_sysinfo_sample", None)
+                if sysinfo_fn is not None:
+                    sysinfo_fn.argtypes = [ctypes.c_char_p, ctypes.POINTER(AurSysInfo)]
+                    sysinfo_fn.restype = ctypes.c_int
+                    _LIB_SYSINFO_SAMPLE = sysinfo_fn
 
-            _LIB_AUR = _lib
-            break
-        except OSError:
-            pass
+                _LIB_AUR = _lib
+                break
+            except OSError:
+                pass
+    if _LIB_AUR is not None:
+        break
 
 
 class ConsoleSpool:
@@ -2148,130 +2151,29 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
 _sys_lock = threading.Lock()
 
 # Standard scheduling and quiescent policy thresholds (AUR P3/P16).
-# Sourced from shared root policy.json with proportional fallbacks.
-_POLICY_DEFAULTS = {
+_POLICY = {
     "min_idle_pct": 15.0,
     "max_iowait_pct": 0.8,
-    "reserve_mb": None,
-    "free_cores": None,
-    "disk_reserve_mb": None,
+    "reserve_mb": 1024,
+    "free_cores": 3,
+    "disk_reserve_mb": 36935,
     "disk_reserve_pct": 5.0,
     "q_min_idle_pct": 90.0,
     "q_min_free_ram_pct": 20.0,
     "q_max_iowait_pct": 0.3,
 }
 
-POLICY_FILE = Path.home() / ".local" / "aur" / "policy.json"
-if not POLICY_FILE.exists():
-    POLICY_FILE = _HERE.parent / "policy.json"
-
-
-def _policy_thresholds(mem_total_mb, st_total_mb, cores):
-    p = dict(_POLICY_DEFAULTS)
-    if POLICY_FILE.exists():
-        try:
-            p.update(json.loads(POLICY_FILE.read_text()))
-        except Exception:
-            pass
-    if p.get("reserve_mb") is None:
-        p["reserve_mb"] = max(1024, mem_total_mb * 325 // 10000)
-    if p.get("free_cores") is None:
-        p["free_cores"] = max(1, cores * 1364 // 10000)
-    if p.get("disk_reserve_mb") is None:
-        pct = p.get("disk_reserve_pct", 5.0) or 5.0
-        p["disk_reserve_mb"] = int(st_total_mb * pct / 100.0)
-    return p
-
-
-_PY_CPU_PREV = None
-
-
-def _py_sample_sysinfo(disk_path=None):
-    """Pure Python fallback for sampling /proc when libaur.so is unavailable (AUR P16)."""
-    global _PY_CPU_PREV
-    fields = {}
+_policy_file = Path.home() / ".local" / "aur" / "policy.json"
+if not _policy_file.exists():
+    _policy_file = Path(__file__).resolve().parent.parent / "policy.json"
+if not _policy_file.exists():
+    _policy_file = _HERE.parent / "policy.json"
+if _policy_file.exists():
     try:
-        mi = Path("/proc/meminfo").read_text()
-        for line in mi.splitlines():
-            if line.startswith("MemAvailable:"):
-                fields["mem_avail_mb"] = int(line.split()[1]) // 1024
-            elif line.startswith("MemTotal:"):
-                fields["mem_total_mb"] = int(line.split()[1]) // 1024
-            elif line.startswith("SwapFree:"):
-                fields["sw_avail_mb"] = int(line.split()[1]) // 1024
-            elif line.startswith("SwapTotal:"):
-                fields["sw_total_mb"] = int(line.split()[1]) // 1024
+        _POLICY.update({k: v for k, v in json.loads(_policy_file.read_text()).items() if v is not None})
+    except Exception:
+        pass
 
-        lavg = Path("/proc/loadavg").read_text().split()
-        if len(lavg) >= 4 and "/" in lavg[3]:
-            fields["runnable"] = int(lavg[3].split("/")[0])
-
-        cores = os.cpu_count() or 1
-        fields["cores"] = cores
-
-        p = disk_path or ROOT.parent
-        vfs = os.statvfs(str(p))
-        fields["st_free_mb"] = vfs.f_bavail * vfs.f_frsize // 1048576
-        fields["st_total_mb"] = vfs.f_blocks * vfs.f_frsize // 1048576
-
-        st = Path("/proc/stat").read_text()
-        first = st.splitlines()[0]
-        if first.startswith("cpu"):
-            nums = [int(x) for x in first.split()[1:11]]
-            u, n, s, i, w = nums[0], nums[1], nums[2], nums[3], nums[4]
-            total = sum(nums)
-            if _PY_CPU_PREV is not None:
-                pu, pn, ps, pi, pw, ptot = _PY_CPU_PREV
-                dt = total - ptot
-                if dt > 0:
-                    fields["us"] = round((u - pu) * 100.0 / dt, 1)
-                    fields["ni"] = round((n - pn) * 100.0 / dt, 1)
-                    fields["sy"] = round((s - ps) * 100.0 / dt, 1)
-                    fields["id"] = round((i - pi) * 100.0 / dt, 1)
-                    fields["wa"] = round((w - pw) * 100.0 / dt, 1)
-            else:
-                fields["us"], fields["ni"], fields["sy"], fields["id"], fields["wa"] = 0.0, 0.0, 0.0, 100.0, 0.0
-            _PY_CPU_PREV = (u, n, s, i, w, total)
-
-        policy = _policy_thresholds(fields.get("mem_total_mb", 32768),
-                                    fields.get("st_total_mb", 100000),
-                                    cores)
-        fields.update(policy)
-        return fields
-    except Exception as exc:
-        print(f"[sysinfo] pure Python sample error: {exc}", file=sys.stderr)
-        return None
-
-
-def sample_sysinfo(disk_path=None):
-    """Sample machine metrics using libaur.so, falling back to pure Python /proc."""
-    dp = str(disk_path or ROOT.parent).encode("utf-8")
-    if _LIB_SYSINFO_SAMPLE is not None:
-        info = AurSysInfo()
-        if _LIB_SYSINFO_SAMPLE(dp, ctypes.byref(info)) == 0:
-            fields = {
-                "sy": round(info.sy, 1),
-                "us": round(info.us, 1),
-                "ni": round(info.ni, 1),
-                "id": round(info.id, 1),
-                "wa": round(info.wa, 1),
-                "mem_avail_mb": info.mem_avail_mb,
-                "mem_total_mb": info.mem_total_mb,
-                "sw_avail_mb": info.sw_avail_mb,
-                "sw_total_mb": info.sw_total_mb,
-                "st_free_mb": info.st_free_mb,
-                "st_total_mb": info.st_total_mb,
-                "runnable": info.runnable,
-                "cores": info.cores,
-            }
-            policy = _policy_thresholds(info.mem_total_mb, info.st_total_mb, info.cores)
-            fields.update(policy)
-            return fields
-
-    return _py_sample_sysinfo(disk_path)
-
-
-SYSINFO_BIN = None  # Retired: machine row is owned natively by AUR
 SYSINFO_INTERVAL_MS = 3000
 SYSINFO_STALE_S = 12.0
 
@@ -2279,82 +2181,43 @@ _SYSINFO = {"at": 0.0, "fields": None, "error": None}
 
 
 class SysinfoStream:
-    """Samples machine stats for as long as the server lives.
+    """Samples machine stats in-process via pure Rust libaur.so every 3 seconds."""
 
-    By default, samples in-process via pure Rust libaur.so (with a pure Python
-    /proc fallback ladder, AUR P16). If an explicit binary is provided (e.g. under
-    test), spawns it as a subprocess to preserve compatibility.
-    """
-
-    def __init__(self, binary=None, interval_ms=SYSINFO_INTERVAL_MS, disk_path=None):
-        self._bin = Path(binary) if binary else None
-        self._interval = interval_ms
+    def __init__(self, interval_ms=SYSINFO_INTERVAL_MS, disk_path=None, binary=None):
         self._interval_s = max(0.05, interval_ms / 1000.0)
-        self._disk_path = disk_path or str(ROOT.parent)
-        self._proc = None
+        self._disk_path = str(disk_path or ROOT.parent).encode("utf-8")
         self._thread = None
         self._stopping = False
 
     def start(self):
+        if _LIB_SYSINFO_SAMPLE is None:
+            _set_sysinfo_error("libaur.so sysinfo sampler unavailable")
+            return False
         self._stopping = False
-        if self._bin is not None:
-            if not self._bin.is_file():
-                _set_sysinfo_error(f"{self._bin} not built")
-                return False
-            try:
-                self._proc = subprocess.Popen(
-                    [str(self._bin), "sysinfo", "--interval", str(self._interval)],
-                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    text=True, bufsize=1)
-            except OSError as exc:
-                _set_sysinfo_error(f"cannot start {self._bin}: {exc}")
-                return False
-            self._thread = threading.Thread(target=self._run_subprocess, name="sysinfo-proc", daemon=True)
-            self._thread.start()
-            return True
-
-        self._thread = threading.Thread(target=self._run_builtin, name="sysinfo", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="sysinfo", daemon=True)
         self._thread.start()
         return True
 
-    def _run_builtin(self):
+    def _run(self):
+        info = AurSysInfo()
         while not self._stopping:
-            try:
-                fields = sample_sysinfo(self._disk_path)
-                if fields:
-                    with _sys_lock:
-                        _SYSINFO.update(at=time.time(), fields=fields, error=None)
-            except Exception as exc:
-                _set_sysinfo_error(f"sampler error: {exc}")
-            time.sleep(self._interval_s)
-
-    def _run_subprocess(self):
-        for line in self._proc.stdout:
-            fields = {}
-            for tok in line.split():
-                k, _, v = tok.partition("=")
-                if not v:
-                    continue
-                try:
-                    fields[k] = float(v) if "." in v else int(v)
-                except ValueError:
-                    continue
-            if fields:
+            if _LIB_SYSINFO_SAMPLE(self._disk_path, ctypes.byref(info)) == 0:
+                fields = {
+                    "sy": round(info.sy, 1), "us": round(info.us, 1),
+                    "ni": round(info.ni, 1), "id": round(info.id, 1),
+                    "wa": round(info.wa, 1),
+                    "mem_avail_mb": info.mem_avail_mb, "mem_total_mb": info.mem_total_mb,
+                    "sw_avail_mb": info.sw_avail_mb, "sw_total_mb": info.sw_total_mb,
+                    "st_free_mb": info.st_free_mb, "st_total_mb": info.st_total_mb,
+                    "runnable": info.runnable, "cores": info.cores,
+                    **_POLICY,
+                }
                 with _sys_lock:
                     _SYSINFO.update(at=time.time(), fields=fields, error=None)
-        if not self._stopping:
-            rc = self._proc.poll()
-            _set_sysinfo_error(f"sysinfo sampler exited rc={rc}")
+            time.sleep(self._interval_s)
 
     def stop(self):
         self._stopping = True
-        if self._proc and self._proc.poll() is None:
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                self._proc.wait(timeout=2)
 
 
 def _set_sysinfo_error(msg):

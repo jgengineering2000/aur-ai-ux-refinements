@@ -1,9 +1,9 @@
 {
   "min_idle_pct": 15.0,
   "max_iowait_pct": 0.8,
-  "reserve_mb": null,
-  "free_cores": null,
-  "disk_reserve_mb": null,
+  "reserve_mb": 1024,
+  "free_cores": 3,
+  "disk_reserve_mb": 36935,
   "disk_reserve_pct": 5.0,
   "q_min_idle_pct": 90.0,
   "q_min_free_ram_pct": 20.0,
