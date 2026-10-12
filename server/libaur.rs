@@ -10,6 +10,7 @@
 //    from /proc/<pid>/stat directly into the ctypes AurProcStat struct buffer.
 
 use std::os::raw::{c_char, c_int, c_long, c_void};
+use std::sync::Mutex;
 
 const PROC_BUF_SIZE: usize = 65536;
 const FD_BUF_SIZE: usize = 8192;
@@ -65,6 +66,22 @@ pub struct AurProcStat {
     pub rss_bytes: u64,
 }
 
+#[repr(C)]
+struct StatVfs {
+    f_bsize: u64,
+    f_frsize: u64,
+    f_blocks: u64,
+    f_bfree: u64,
+    f_bavail: u64,
+    f_files: u64,
+    f_ffree: u64,
+    f_favail: u64,
+    f_fsid: u64,
+    f_flag: u64,
+    f_namemax: u64,
+    __spare: [i32; 6],
+}
+
 extern "C" {
     fn open(path: *const c_char, flags: c_int, ...) -> c_int;
     fn openat(dirfd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
@@ -76,6 +93,7 @@ extern "C" {
     fn getuid() -> u32;
     fn sysconf(name: c_int) -> c_long;
     fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
+    fn statvfs(path: *const c_char, buf: *mut StatVfs) -> c_int;
 }
 
 fn write_i32(mut val: i32, out: &mut [u8; 16]) -> usize {
@@ -490,3 +508,250 @@ pub unsafe extern "C" fn fduser_has_writer(path: *const c_char) -> i32 {
 pub unsafe extern "C" fn fileholder_has_writer(path: *const c_char) -> i32 {
     fduser_has_writer(path)
 }
+
+// ── AUR System Info Sampler ──────────────────────────────────────────────────
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AurSysInfo {
+    pub sy: f64,
+    pub us: f64,
+    pub ni: f64,
+    pub id: f64,
+    pub wa: f64,
+    pub mem_avail_mb: u64,
+    pub mem_total_mb: u64,
+    pub sw_avail_mb: u64,
+    pub sw_total_mb: u64,
+    pub st_free_mb: u64,
+    pub st_total_mb: u64,
+    pub runnable: u64,
+    pub cores: u64,
+}
+
+#[derive(Clone, Copy)]
+struct CpuJiffies {
+    user: u64,
+    nice: u64,
+    system: u64,
+    idle: u64,
+    iowait: u64,
+    total: u64,
+}
+
+static CPU_PREV: Mutex<Option<CpuJiffies>> = Mutex::new(None);
+
+fn read_file_to_buf(path: *const c_char, buf: &mut [u8]) -> usize {
+    let fd = unsafe { open(path, O_RDONLY | O_CLOEXEC) };
+    if fd < 0 {
+        return 0;
+    }
+    let n = unsafe { read(fd, buf.as_mut_ptr() as *mut c_void, buf.len()) };
+    unsafe { close(fd) };
+    if n > 0 { n as usize } else { 0 }
+}
+
+fn parse_kb_val(mut slice: &[u8]) -> Option<u64> {
+    while !slice.is_empty() && (slice[0] == b' ' || slice[0] == b'\t') {
+        slice = &slice[1..];
+    }
+    let mut end = 0;
+    while end < slice.len() && slice[end].is_ascii_digit() {
+        end += 1;
+    }
+    if end == 0 {
+        return None;
+    }
+    parse_u64(&slice[..end])
+}
+
+fn sample_meminfo(info: &mut AurSysInfo) {
+    let mut buf = [0u8; 4096];
+    let n = read_file_to_buf(b"/proc/meminfo\0".as_ptr() as *const c_char, &mut buf);
+    if n == 0 {
+        return;
+    }
+    let data = &buf[..n];
+    let mut pos = 0;
+    while pos < data.len() {
+        let line_start = pos;
+        while pos < data.len() && data[pos] != b'\n' {
+            pos += 1;
+        }
+        let line = &data[line_start..pos];
+        if pos < data.len() {
+            pos += 1;
+        }
+        if line.starts_with(b"MemAvailable:") {
+            if let Some(val) = parse_kb_val(&line[13..]) {
+                info.mem_avail_mb = val / 1024;
+            }
+        } else if line.starts_with(b"MemTotal:") {
+            if let Some(val) = parse_kb_val(&line[9..]) {
+                info.mem_total_mb = val / 1024;
+            }
+        } else if line.starts_with(b"SwapFree:") {
+            if let Some(val) = parse_kb_val(&line[9..]) {
+                info.sw_avail_mb = val / 1024;
+            }
+        } else if line.starts_with(b"SwapTotal:") {
+            if let Some(val) = parse_kb_val(&line[10..]) {
+                info.sw_total_mb = val / 1024;
+            }
+        }
+    }
+}
+
+fn sample_loadavg(info: &mut AurSysInfo) {
+    let mut buf = [0u8; 128];
+    let n = read_file_to_buf(b"/proc/loadavg\0".as_ptr() as *const c_char, &mut buf);
+    if n == 0 {
+        return;
+    }
+    let data = &buf[..n];
+    let mut token_idx = 0;
+    let mut pos = 0;
+    while pos < data.len() {
+        while pos < data.len() && (data[pos] == b' ' || data[pos] == b'\t') {
+            pos += 1;
+        }
+        if pos >= data.len() {
+            break;
+        }
+        let tok_start = pos;
+        while pos < data.len() && data[pos] != b' ' && data[pos] != b'\t' && data[pos] != b'\n' {
+            pos += 1;
+        }
+        let tok = &data[tok_start..pos];
+        token_idx += 1;
+        if token_idx == 4 {
+            if let Some(slash) = tok.iter().position(|&b| b == b'/') {
+                if let Some(val) = parse_u64(&tok[..slash]) {
+                    info.runnable = val;
+                }
+            }
+            break;
+        }
+    }
+}
+
+fn read_cpu_jiffies() -> Option<CpuJiffies> {
+    let mut buf = [0u8; 1024];
+    let n = read_file_to_buf(b"/proc/stat\0".as_ptr() as *const c_char, &mut buf);
+    if n == 0 {
+        return None;
+    }
+    let data = &buf[..n];
+    if !data.starts_with(b"cpu ") && !data.starts_with(b"cpu\t") {
+        return None;
+    }
+    let mut pos = 3;
+    while pos < data.len() && (data[pos] == b' ' || data[pos] == b'\t') {
+        pos += 1;
+    }
+    let mut vals = [0u64; 10];
+    let mut val_count = 0;
+    while pos < data.len() && data[pos] != b'\n' && val_count < 10 {
+        while pos < data.len() && (data[pos] == b' ' || data[pos] == b'\t') {
+            pos += 1;
+        }
+        if pos >= data.len() || data[pos] == b'\n' {
+            break;
+        }
+        let start = pos;
+        while pos < data.len() && data[pos].is_ascii_digit() {
+            pos += 1;
+        }
+        if let Some(v) = parse_u64(&data[start..pos]) {
+            vals[val_count] = v;
+            val_count += 1;
+        }
+    }
+    if val_count < 5 {
+        return None;
+    }
+    let user = vals[0];
+    let nice = vals[1];
+    let system = vals[2];
+    let idle = vals[3];
+    let iowait = vals[4];
+    let total: u64 = vals[..val_count].iter().sum();
+    Some(CpuJiffies {
+        user,
+        nice,
+        system,
+        idle,
+        iowait,
+        total,
+    })
+}
+
+fn sample_cpu(info: &mut AurSysInfo) {
+    let cur = match read_cpu_jiffies() {
+        Some(j) => j,
+        None => return,
+    };
+    let mut lock = match CPU_PREV.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let prev = match *lock {
+        Some(p) => p,
+        None => {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if let Some(second) = read_cpu_jiffies() {
+                *lock = Some(second);
+                let dt = second.total.saturating_sub(cur.total);
+                if dt > 0 {
+                    let share = |c: u64, p: u64| (c.saturating_sub(p) as f64) * 100.0 / dt as f64;
+                    info.us = share(second.user, cur.user);
+                    info.ni = share(second.nice, cur.nice);
+                    info.sy = share(second.system, cur.system);
+                    info.id = share(second.idle, cur.idle);
+                    info.wa = share(second.iowait, cur.iowait);
+                }
+            }
+            return;
+        }
+    };
+    let dt = cur.total.saturating_sub(prev.total);
+    if dt > 0 {
+        let share = |c: u64, p: u64| (c.saturating_sub(p) as f64) * 100.0 / dt as f64;
+        info.us = share(cur.user, prev.user);
+        info.ni = share(cur.nice, prev.nice);
+        info.sy = share(cur.system, prev.system);
+        info.id = share(cur.idle, prev.idle);
+        info.wa = share(cur.iowait, prev.iowait);
+        *lock = Some(cur);
+    }
+}
+
+fn sample_disk(disk_path: *const c_char, info: &mut AurSysInfo) {
+    let p = if disk_path.is_null() {
+        b".\0".as_ptr() as *const c_char
+    } else {
+        disk_path
+    };
+    let mut st: StatVfs = unsafe { std::mem::zeroed() };
+    if unsafe { statvfs(p, &mut st) } == 0 {
+        let mb = 1024 * 1024;
+        info.st_free_mb = st.f_bavail.saturating_mul(st.f_frsize) / mb;
+        info.st_total_mb = st.f_blocks.saturating_mul(st.f_frsize) / mb;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn aur_sysinfo_sample(disk_path: *const c_char, out: *mut AurSysInfo) -> c_int {
+    if out.is_null() {
+        return -1;
+    }
+    let mut info = AurSysInfo::default();
+    info.cores = std::thread::available_parallelism().map_or(1, |n| n.get() as u64);
+    sample_meminfo(&mut info);
+    sample_loadavg(&mut info);
+    sample_disk(disk_path, &mut info);
+    sample_cpu(&mut info);
+    *out = info;
+    0
+}
+

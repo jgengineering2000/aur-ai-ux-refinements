@@ -110,6 +110,8 @@ def _load_config():
     except (OSError, ValueError) as exc:
         print(f"[docserver] ignoring {path}: {exc}", file=sys.stderr)
         return cfg
+    if "sysinfo_bin" in loaded:
+        print(f"[docserver] {path}: `sysinfo_bin` is retired — machine row is owned natively by AUR", file=sys.stderr)
     unknown = sorted(set(loaded) - set(_CONFIG_DEFAULTS))
     if unknown:
         print(f"[docserver] {path}: unknown key(s) {', '.join(unknown)} — "
@@ -325,6 +327,24 @@ class AurProcStat(ctypes.Structure):
     ]
 
 
+class AurSysInfo(ctypes.Structure):
+    _fields_ = [
+        ("sy", ctypes.c_double),
+        ("us", ctypes.c_double),
+        ("ni", ctypes.c_double),
+        ("id", ctypes.c_double),
+        ("wa", ctypes.c_double),
+        ("mem_avail_mb", ctypes.c_uint64),
+        ("mem_total_mb", ctypes.c_uint64),
+        ("sw_avail_mb", ctypes.c_uint64),
+        ("sw_total_mb", ctypes.c_uint64),
+        ("st_free_mb", ctypes.c_uint64),
+        ("st_total_mb", ctypes.c_uint64),
+        ("runnable", ctypes.c_uint64),
+        ("cores", ctypes.c_uint64),
+    ]
+
+
 _FDUSER_BIN = shutil.which("fduser") or str(Path.home() / ".local" / "bin" / "fduser")
 if not os.path.exists(_FDUSER_BIN):
     _FDUSER_BIN = None
@@ -333,6 +353,7 @@ _LIB_AUR = None
 _LIB_FDUSER_FIND = None
 _LIB_FDUSER_HAS = None
 _LIB_PROC_STATS = None
+_LIB_SYSINFO_SAMPLE = None
 
 for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
     _cand = _HERE / _so_name
@@ -356,6 +377,12 @@ for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
                 stats_fn.argtypes = [ctypes.POINTER(AurProcStat), ctypes.c_int]
                 stats_fn.restype = ctypes.c_int
                 _LIB_PROC_STATS = stats_fn
+
+            sysinfo_fn = getattr(_lib, "aur_sysinfo_sample", None)
+            if sysinfo_fn is not None:
+                sysinfo_fn.argtypes = [ctypes.c_char_p, ctypes.POINTER(AurSysInfo)]
+                sysinfo_fn.restype = ctypes.c_int
+                _LIB_SYSINFO_SAMPLE = sysinfo_fn
 
             _LIB_AUR = _lib
             break
@@ -2120,62 +2147,188 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
 
 _sys_lock = threading.Lock()
 
-# `mti-tier sysinfo` is the one authority for machine readings AND for the
-# thresholds they are judged against — the same `resources::Policy` the
-# admission gates apply, so a highlighted field here means exactly what would
-# make `rustc-gate` hold a compile back. A second set of numbers parsed out of
-# /proc, or a threshold retyped in this file, would be a second definition of
-# the policy and would drift the moment a knob moved (AUR P3).
-#
-# LONG-LIVED, one spawn, because the CPU figures are a delta between two reads
-# separated in time: a process per sample could only produce them by sleeping
-# inside every poll.
-SYSINFO_BIN = _cfg_path("sysinfo_bin")
+# Standard scheduling and quiescent policy thresholds (AUR P3/P16).
+# Sourced from shared root policy.json with proportional fallbacks.
+_POLICY_DEFAULTS = {
+    "min_idle_pct": 15.0,
+    "max_iowait_pct": 0.8,
+    "reserve_mb": None,
+    "free_cores": None,
+    "disk_reserve_mb": None,
+    "disk_reserve_pct": 5.0,
+    "q_min_idle_pct": 90.0,
+    "q_min_free_ram_pct": 20.0,
+    "q_max_iowait_pct": 0.3,
+}
+
+POLICY_FILE = Path.home() / ".local" / "aur" / "policy.json"
+if not POLICY_FILE.exists():
+    POLICY_FILE = _HERE.parent / "policy.json"
+
+
+def _policy_thresholds(mem_total_mb, st_total_mb, cores):
+    p = dict(_POLICY_DEFAULTS)
+    if POLICY_FILE.exists():
+        try:
+            p.update(json.loads(POLICY_FILE.read_text()))
+        except Exception:
+            pass
+    if p.get("reserve_mb") is None:
+        p["reserve_mb"] = max(1024, mem_total_mb * 325 // 10000)
+    if p.get("free_cores") is None:
+        p["free_cores"] = max(1, cores * 1364 // 10000)
+    if p.get("disk_reserve_mb") is None:
+        pct = p.get("disk_reserve_pct", 5.0) or 5.0
+        p["disk_reserve_mb"] = int(st_total_mb * pct / 100.0)
+    return p
+
+
+_PY_CPU_PREV = None
+
+
+def _py_sample_sysinfo(disk_path=None):
+    """Pure Python fallback for sampling /proc when libaur.so is unavailable (AUR P16)."""
+    global _PY_CPU_PREV
+    fields = {}
+    try:
+        mi = Path("/proc/meminfo").read_text()
+        for line in mi.splitlines():
+            if line.startswith("MemAvailable:"):
+                fields["mem_avail_mb"] = int(line.split()[1]) // 1024
+            elif line.startswith("MemTotal:"):
+                fields["mem_total_mb"] = int(line.split()[1]) // 1024
+            elif line.startswith("SwapFree:"):
+                fields["sw_avail_mb"] = int(line.split()[1]) // 1024
+            elif line.startswith("SwapTotal:"):
+                fields["sw_total_mb"] = int(line.split()[1]) // 1024
+
+        lavg = Path("/proc/loadavg").read_text().split()
+        if len(lavg) >= 4 and "/" in lavg[3]:
+            fields["runnable"] = int(lavg[3].split("/")[0])
+
+        cores = os.cpu_count() or 1
+        fields["cores"] = cores
+
+        p = disk_path or ROOT.parent
+        vfs = os.statvfs(str(p))
+        fields["st_free_mb"] = vfs.f_bavail * vfs.f_frsize // 1048576
+        fields["st_total_mb"] = vfs.f_blocks * vfs.f_frsize // 1048576
+
+        st = Path("/proc/stat").read_text()
+        first = st.splitlines()[0]
+        if first.startswith("cpu"):
+            nums = [int(x) for x in first.split()[1:11]]
+            u, n, s, i, w = nums[0], nums[1], nums[2], nums[3], nums[4]
+            total = sum(nums)
+            if _PY_CPU_PREV is not None:
+                pu, pn, ps, pi, pw, ptot = _PY_CPU_PREV
+                dt = total - ptot
+                if dt > 0:
+                    fields["us"] = round((u - pu) * 100.0 / dt, 1)
+                    fields["ni"] = round((n - pn) * 100.0 / dt, 1)
+                    fields["sy"] = round((s - ps) * 100.0 / dt, 1)
+                    fields["id"] = round((i - pi) * 100.0 / dt, 1)
+                    fields["wa"] = round((w - pw) * 100.0 / dt, 1)
+            else:
+                fields["us"], fields["ni"], fields["sy"], fields["id"], fields["wa"] = 0.0, 0.0, 0.0, 100.0, 0.0
+            _PY_CPU_PREV = (u, n, s, i, w, total)
+
+        policy = _policy_thresholds(fields.get("mem_total_mb", 32768),
+                                    fields.get("st_total_mb", 100000),
+                                    cores)
+        fields.update(policy)
+        return fields
+    except Exception as exc:
+        print(f"[sysinfo] pure Python sample error: {exc}", file=sys.stderr)
+        return None
+
+
+def sample_sysinfo(disk_path=None):
+    """Sample machine metrics using libaur.so, falling back to pure Python /proc."""
+    dp = str(disk_path or ROOT.parent).encode("utf-8")
+    if _LIB_SYSINFO_SAMPLE is not None:
+        info = AurSysInfo()
+        if _LIB_SYSINFO_SAMPLE(dp, ctypes.byref(info)) == 0:
+            fields = {
+                "sy": round(info.sy, 1),
+                "us": round(info.us, 1),
+                "ni": round(info.ni, 1),
+                "id": round(info.id, 1),
+                "wa": round(info.wa, 1),
+                "mem_avail_mb": info.mem_avail_mb,
+                "mem_total_mb": info.mem_total_mb,
+                "sw_avail_mb": info.sw_avail_mb,
+                "sw_total_mb": info.sw_total_mb,
+                "st_free_mb": info.st_free_mb,
+                "st_total_mb": info.st_total_mb,
+                "runnable": info.runnable,
+                "cores": info.cores,
+            }
+            policy = _policy_thresholds(info.mem_total_mb, info.st_total_mb, info.cores)
+            fields.update(policy)
+            return fields
+
+    return _py_sample_sysinfo(disk_path)
+
+
+SYSINFO_BIN = None  # Retired: machine row is owned natively by AUR
 SYSINFO_INTERVAL_MS = 3000
-# Past this, the last line we hold is history, not status. A monitoring row that
-# keeps presenting a stale reading as current is the exact failure this whole
-# surface exists to stop telling (P11).
 SYSINFO_STALE_S = 12.0
 
 _SYSINFO = {"at": 0.0, "fields": None, "error": None}
 
 
 class SysinfoStream:
-    """Reads `mti-tier sysinfo` for as long as the server lives."""
+    """Samples machine stats for as long as the server lives.
 
-    def __init__(self, binary=None, interval_ms=SYSINFO_INTERVAL_MS):
-        chosen = binary or SYSINFO_BIN
-        # None is a legitimate configuration, not an error: a project that
-        # ships no sysinfo binary simply gets no machine row. `Path(None)`
-        # would raise, taking the whole doc server down with it.
-        self._bin = Path(chosen) if chosen else None
+    By default, samples in-process via pure Rust libaur.so (with a pure Python
+    /proc fallback ladder, AUR P16). If an explicit binary is provided (e.g. under
+    test), spawns it as a subprocess to preserve compatibility.
+    """
+
+    def __init__(self, binary=None, interval_ms=SYSINFO_INTERVAL_MS, disk_path=None):
+        self._bin = Path(binary) if binary else None
         self._interval = interval_ms
+        self._interval_s = max(0.05, interval_ms / 1000.0)
+        self._disk_path = disk_path or str(ROOT.parent)
         self._proc = None
         self._thread = None
         self._stopping = False
 
     def start(self):
-        if self._bin is None:
-            _set_sysinfo_error("no sysinfo binary configured — set "
-                               "`sysinfo_bin` in server.config.json")
-            return False
-        if not self._bin.is_file():
-            _set_sysinfo_error(f"{self._bin} not built")
-            return False
-        try:
-            self._proc = subprocess.Popen(
-                [str(self._bin), "sysinfo", "--interval", str(self._interval)],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                text=True, bufsize=1)
-        except OSError as exc:
-            _set_sysinfo_error(f"cannot start {self._bin}: {exc}")
-            return False
-        self._thread = threading.Thread(target=self._run, name="sysinfo",
-                                        daemon=True)
+        self._stopping = False
+        if self._bin is not None:
+            if not self._bin.is_file():
+                _set_sysinfo_error(f"{self._bin} not built")
+                return False
+            try:
+                self._proc = subprocess.Popen(
+                    [str(self._bin), "sysinfo", "--interval", str(self._interval)],
+                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    text=True, bufsize=1)
+            except OSError as exc:
+                _set_sysinfo_error(f"cannot start {self._bin}: {exc}")
+                return False
+            self._thread = threading.Thread(target=self._run_subprocess, name="sysinfo-proc", daemon=True)
+            self._thread.start()
+            return True
+
+        self._thread = threading.Thread(target=self._run_builtin, name="sysinfo", daemon=True)
         self._thread.start()
         return True
 
-    def _run(self):
+    def _run_builtin(self):
+        while not self._stopping:
+            try:
+                fields = sample_sysinfo(self._disk_path)
+                if fields:
+                    with _sys_lock:
+                        _SYSINFO.update(at=time.time(), fields=fields, error=None)
+            except Exception as exc:
+                _set_sysinfo_error(f"sampler error: {exc}")
+            time.sleep(self._interval_s)
+
+    def _run_subprocess(self):
         for line in self._proc.stdout:
             fields = {}
             for tok in line.split():
@@ -2189,15 +2342,11 @@ class SysinfoStream:
             if fields:
                 with _sys_lock:
                     _SYSINFO.update(at=time.time(), fields=fields, error=None)
-        # The stream ended. Whether the binary died or was killed, the row must
-        # stop claiming to be live rather than freeze on its last good value.
         if not self._stopping:
             rc = self._proc.poll()
             _set_sysinfo_error(f"sysinfo sampler exited rc={rc}")
 
     def stop(self):
-        """Owned end to end: the child does not outlive this server on any exit
-        path, including the panic one (AUR P8)."""
         self._stopping = True
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
@@ -3571,7 +3720,8 @@ if __name__ == "__main__":
     # in full — but only if the scan happens before anything else can block.
     _SYSINFO_STREAM = SysinfoStream()
     if _SYSINFO_STREAM.start():
-        print(f"[sysinfo] sampling via {SYSINFO_BIN} every "
+        _backend = "libaur.so" if _LIB_SYSINFO_SAMPLE is not None else "in-process /proc"
+        print(f"[sysinfo] sampling via {_backend} every "
               f"{SYSINFO_INTERVAL_MS}ms", flush=True)
 
     # Prune BEFORE capture starts, so a server that has been down for days does

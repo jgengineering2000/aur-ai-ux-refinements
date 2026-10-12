@@ -1,0 +1,17 @@
+{
+  "min_idle_pct": 15.0,
+  "max_iowait_pct": 0.8,
+  "reserve_mb": null,
+  "free_cores": null,
+  "disk_reserve_mb": null,
+  "disk_reserve_pct": 5.0,
+  "q_min_idle_pct": 90.0,
+  "q_min_free_ram_pct": 20.0,
+  "q_max_iowait_pct": 0.3,
+  "nice_ladder": {
+    "low": 19,
+    "normal": 0,
+    "priority": -5,
+    "serve": -10
+  }
+}
