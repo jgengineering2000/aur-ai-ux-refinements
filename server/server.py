@@ -303,7 +303,7 @@ _INOTIFY_HDR = struct.Struct("iIII")
 
 class _Tail:
     """One live capture: the held source fd and the spool file it feeds."""
-    __slots__ = ("uuid", "stem", "src_fd", "dst_fd", "last_sweep_check", "last_sweep_mtime")
+    __slots__ = ("uuid", "stem", "src_fd", "dst_fd", "last_sweep_check", "last_sweep_mtime", "writer_pid")
 
     def __init__(self, uuid, stem, src_fd, dst_fd):
         self.uuid = uuid
@@ -312,24 +312,53 @@ class _Tail:
         self.dst_fd = dst_fd
         self.last_sweep_check = 0.0
         self.last_sweep_mtime = 0.0
+        self.writer_pid = None
+
+
+class AurProcStat(ctypes.Structure):
+    _fields_ = [
+        ("pid", ctypes.c_int32),
+        ("comm", ctypes.c_char * 64),
+        ("nice", ctypes.c_int32),
+        ("ticks", ctypes.c_uint64),
+        ("rss_bytes", ctypes.c_uint64),
+    ]
 
 
 _FDUSER_BIN = shutil.which("fduser") or str(Path.home() / ".local" / "bin" / "fduser")
 if not os.path.exists(_FDUSER_BIN):
     _FDUSER_BIN = None
 
-_LIB_FDUSER = None
-for _so_name in ("libfduser.so", "libfileholder.so"):
+_LIB_AUR = None
+_LIB_FDUSER_FIND = None
+_LIB_FDUSER_HAS = None
+_LIB_PROC_STATS = None
+
+for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
     _cand = _HERE / _so_name
     if _cand.exists():
         try:
             _lib = ctypes.CDLL(str(_cand))
-            fn = getattr(_lib, "fduser_has_writer", None) or getattr(_lib, "fileholder_has_writer", None)
-            if fn is not None:
-                fn.argtypes = [ctypes.c_char_p]
-                fn.restype = ctypes.c_int
-                _LIB_FDUSER = fn
-                break
+            find_fn = getattr(_lib, "fduser_find_writers", None)
+            if find_fn is not None:
+                find_fn.argtypes = [ctypes.POINTER(ctypes.c_char_p), ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+                find_fn.restype = ctypes.c_int
+                _LIB_FDUSER_FIND = find_fn
+
+            has_fn = getattr(_lib, "fduser_has_writer", None) or getattr(_lib, "fileholder_has_writer", None)
+            if has_fn is not None:
+                has_fn.argtypes = [ctypes.c_char_p]
+                has_fn.restype = ctypes.c_int
+                _LIB_FDUSER_HAS = has_fn
+
+            stats_fn = getattr(_lib, "aur_get_proc_stats", None)
+            if stats_fn is not None:
+                stats_fn.argtypes = [ctypes.POINTER(AurProcStat), ctypes.c_int]
+                stats_fn.restype = ctypes.c_int
+                _LIB_PROC_STATS = stats_fn
+
+            _LIB_AUR = _lib
+            break
         except OSError:
             pass
 
@@ -562,13 +591,33 @@ class ConsoleSpool:
 
     def _has_writer(self, tail):
         """Check if any process on the machine has this task file open for writing."""
+        # 0. Ultra-fast path: if writer_pid was recorded, check kill -0 in ~500 ns
+        if tail.writer_pid is not None:
+            try:
+                os.kill(tail.writer_pid, 0)
+                return True
+            except OSError:
+                tail.writer_pid = None
+
         src_path = self._tmp_root / tail.uuid / "tasks" / f"{tail.stem}.output"
         target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{tail.src_fd}"
 
-        # 1. Ultra-fast path: in-process C shared library (zero IPC, GIL released, ~3.8ms)
-        if _LIB_FDUSER is not None:
+        # 1. Ultra-fast path: in-process C shared library (zero IPC, GIL released)
+        if _LIB_FDUSER_FIND is not None:
             try:
-                res = _LIB_FDUSER(target.encode())
+                paths = (ctypes.c_char_p * 1)(target.encode())
+                out_pids = (ctypes.c_int * 1)()
+                res = _LIB_FDUSER_FIND(paths, 1, out_pids)
+                if res > 0 and out_pids[0] > 0:
+                    tail.writer_pid = int(out_pids[0])
+                    return True
+                elif res == 0:
+                    return False
+            except Exception:
+                pass
+        elif _LIB_FDUSER_HAS is not None:
+            try:
+                res = _LIB_FDUSER_HAS(target.encode())
                 if res in (0, 1):
                     return res == 1
             except Exception:
@@ -607,12 +656,38 @@ class ConsoleSpool:
                                     if line.startswith("flags:"):
                                         flags = int(line.split()[1], 8)
                                         if (flags & 3) in (os.O_WRONLY, os.O_RDWR):
+                                            tail.writer_pid = int(pid)
                                             return True
                         except OSError:
+                            tail.writer_pid = int(pid)
                             return True
                 except OSError:
                     pass
         return False
+
+    def _check_writers_batch(self, tails):
+        """Batch-check multiple tails in a single pass over /proc using libaur."""
+        if not tails:
+            return
+        if _LIB_FDUSER_FIND is not None and len(tails) > 1:
+            targets = []
+            for t in tails:
+                src_path = self._tmp_root / t.uuid / "tasks" / f"{t.stem}.output"
+                target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{t.src_fd}"
+                targets.append(target.encode())
+            c_paths = (ctypes.c_char_p * len(targets))(*targets)
+            out_pids = (ctypes.c_int * len(targets))()
+            try:
+                _LIB_FDUSER_FIND(c_paths, len(targets), out_pids)
+                for i, t in enumerate(tails):
+                    t.writer_pid = int(out_pids[i]) if out_pids[i] > 0 else None
+                return
+            except Exception:
+                pass
+        # Fallback to per-tail check
+        for t in tails:
+            if not self._has_writer(t):
+                t.writer_pid = None
 
     def _capture(self, uuid, name):
         """CREATE: open the source, hold the fd, start the per-command spool file."""
@@ -777,6 +852,7 @@ class ConsoleSpool:
         with self._lock:
             tails = list(self._tails.values())
         now = time.time()
+        candidates = []
         for tail in tails:
             self._drain(tail)
             try:
@@ -789,13 +865,20 @@ class ConsoleSpool:
             if gone:
                 self._finish(tail)
             elif inactive:
-                # If inactive, only re-scan /proc if the file was modified since
-                # the last check, or after a backoff interval (15s) has elapsed.
-                if (st.st_mtime != tail.last_sweep_mtime) or (now - tail.last_sweep_check >= 15.0):
-                    tail.last_sweep_check = now
-                    tail.last_sweep_mtime = st.st_mtime
-                    if not self._has_writer(tail):
-                        self._finish(tail)
+                # Fast gate: check if recorded writer is still alive via kill -0 (~500 ns)
+                if tail.writer_pid is not None:
+                    try:
+                        os.kill(tail.writer_pid, 0)
+                        continue
+                    except OSError:
+                        tail.writer_pid = None
+                candidates.append(tail)
+
+        if candidates:
+            self._check_writers_batch(candidates)
+            for tail in candidates:
+                if tail.writer_pid is None:
+                    self._finish(tail)
 
     def _run(self):
         if self.mode == "poll":
@@ -2263,6 +2346,9 @@ _TOP_PROC_INTERVAL_S = 2.0
 _top_proc_lock = threading.Lock()
 
 
+_PROC_STATS_BUF = None
+
+
 def top_process_groups():
     """Top 2 CPU load process groups, plus top 1 RSS group (or 3rd CPU group if covered).
 
@@ -2275,33 +2361,43 @@ def top_process_groups():
         if (now - _TOP_PROC_RESULT_CACHE["at"]) < _TOP_PROC_INTERVAL_S:
             return list(_TOP_PROC_RESULT_CACHE["data"])
 
-    try:
-        pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
-    except OSError:
-        return []
-
     raw_procs = []
-    for pid in pids:
-        try:
-            with open(f"/proc/{pid}/stat", "r") as fh:
-                raw = fh.read()
-            cut = raw.rfind(")")
-            if cut < 0:
-                continue
-            comm = raw[raw.find("(") + 1:cut]
-            parts = raw[cut + 2:].split()
-            if len(parts) < 17:
-                continue
-            utime = int(parts[11])
-            stime = int(parts[12])
-            nice = int(parts[16])
-            ticks = utime + stime
+    if _LIB_PROC_STATS is not None:
+        global _PROC_STATS_BUF
+        if _PROC_STATS_BUF is None:
+            _PROC_STATS_BUF = (AurProcStat * 1024)()
+        n = _LIB_PROC_STATS(_PROC_STATS_BUF, 1024)
+        if n > 0:
+            for i in range(n):
+                s = _PROC_STATS_BUF[i]
+                raw_procs.append((s.pid, s.comm.decode("utf-8", "replace"), s.nice, s.ticks, s.rss_bytes))
 
-            rss_pages = int(parts[21]) if len(parts) >= 22 else 0
-            rss_bytes = rss_pages * _PAGE
-            raw_procs.append((pid, comm, nice, ticks, rss_bytes))
-        except (OSError, IndexError, ValueError):
-            continue
+    if not raw_procs:
+        try:
+            pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
+        except OSError:
+            return []
+        for pid in pids:
+            try:
+                with open(f"/proc/{pid}/stat", "r") as fh:
+                    raw = fh.read()
+                cut = raw.rfind(")")
+                if cut < 0:
+                    continue
+                comm = raw[raw.find("(") + 1:cut]
+                parts = raw[cut + 2:].split()
+                if len(parts) < 17:
+                    continue
+                utime = int(parts[11])
+                stime = int(parts[12])
+                nice = int(parts[16])
+                ticks = utime + stime
+
+                rss_pages = int(parts[21]) if len(parts) >= 22 else 0
+                rss_bytes = rss_pages * _PAGE
+                raw_procs.append((pid, comm, nice, ticks, rss_bytes))
+            except (OSError, IndexError, ValueError):
+                continue
 
     with _top_proc_lock:
         current_pids = set()
