@@ -64,7 +64,7 @@ component):
 | Delegates start small | the `delegate` agent — Sonnet, `omitClaudeMd`, five tools, reads the project's `.claude/DELEGATE_BRIEF.md`. Measured start 15.9k vs 66k. Spawn it, not `general-purpose`. |
 | No context grows unbounded | `CLAUDE_CODE_AUTO_COMPACT_WINDOW=300000`. Task state lives in files (brief, plan, progress) so a compaction loses nothing needed; a SessionStart(`compact`) hook says to re-read them. |
 | The owner's presentation rules stay in view | the reply card, injected at the END of the context on every genuine owner message (not on task notifications) and after each compaction. |
-| Images are judged by sheet, not by stream | a review sheet driven by a full-resolution diff against the previous best — a large image opened whole is downscaled before the model sees it, so fine regressions hide in it anyway. |
+| Images are judged by sheet, not by stream | a review sheet driven by a full-resolution diff against the previous best — a large image opened whole is downscaled before the model sees it, so fine regressions hide in it anyway. Claude Code caps the displayed long edge at 2000 px (measured 2026-10-12; the Read result states original vs displayed size), so a page meant to be seen 1:1 stays within 2000 px. |
 
 **Measured, never assumed:** the shared root's `token-usage.py` (`--compare
 A..B C..D`) reports re-reads per owner message and per commit, starting size

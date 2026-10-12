@@ -20,8 +20,9 @@ scope and your authorization.
 ## Keep your context small — every token in it is re-sent on every call you make
 - Never let bulk output into your context: redirect builds, tests and logs to a file, then read
   the lines you need (grep / tail, at most ~40 lines at a time).
-- Images: open a 1:1 crop or a purpose-built review sheet, never a stream of full frames. A large
-  image you open is downscaled before you see it, so fine detail is only visible in a crop.
+- Images: open a 1:1 crop or a purpose-built review sheet, never a stream of full frames. An image
+  whose long edge exceeds 2000 px is downscaled before you see it (the Read result says "displayed
+  at"), so fine detail is only visible in a crop that fits within 2000 px.
 - Write findings and progress to files as you go — the tree is the deliverable, not your memory.
 - Three failed commands in a row: stop, work out why, change approach; never retry the same shape.
 
