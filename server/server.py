@@ -327,6 +327,18 @@ class AurProcStat(ctypes.Structure):
     ]
 
 
+class AurTopGroup(ctypes.Structure):
+    _fields_ = [
+        ("rank", ctypes.c_char * 8),
+        ("count", ctypes.c_int32),
+        ("name", ctypes.c_char * 64),
+        ("nice", ctypes.c_char * 32),
+        ("load", ctypes.c_double),
+        ("cputime_s", ctypes.c_double),
+        ("rss", ctypes.c_uint64),
+    ]
+
+
 class AurSysInfo(ctypes.Structure):
     _fields_ = [
         ("sy", ctypes.c_double),
@@ -345,15 +357,12 @@ class AurSysInfo(ctypes.Structure):
     ]
 
 
-_FDUSER_BIN = shutil.which("fduser") or str(Path.home() / ".local" / "bin" / "fduser")
-if not os.path.exists(_FDUSER_BIN):
-    _FDUSER_BIN = None
-
 _LIB_AUR = None
 _LIB_FDUSER_FIND = None
 _LIB_FDUSER_HAS = None
 _LIB_PROC_STATS = None
 _LIB_SYSINFO_SAMPLE = None
+_LIB_TOP_GROUPS = None
 
 for _dir in (_HERE, Path(__file__).resolve().parent, Path.home() / ".local" / "aur"):
     for _so_name in ("libaur.so", "libfduser.so", "libfileholder.so"):
@@ -385,12 +394,22 @@ for _dir in (_HERE, Path(__file__).resolve().parent, Path.home() / ".local" / "a
                     sysinfo_fn.restype = ctypes.c_int
                     _LIB_SYSINFO_SAMPLE = sysinfo_fn
 
+                top_groups_fn = getattr(_lib, "aur_get_top_process_groups", None)
+                if top_groups_fn is not None:
+                    top_groups_fn.argtypes = [ctypes.POINTER(AurTopGroup), ctypes.c_int]
+                    top_groups_fn.restype = ctypes.c_int
+                    _LIB_TOP_GROUPS = top_groups_fn
+
                 _LIB_AUR = _lib
                 break
             except OSError:
                 pass
     if _LIB_AUR is not None:
         break
+
+if _LIB_AUR is None or _LIB_FDUSER_FIND is None or _LIB_PROC_STATS is None or _LIB_SYSINFO_SAMPLE is None:
+    sys.stderr.write("libaur.so can't be loaded\n")
+    sys.exit(1)
 
 
 class ConsoleSpool:
@@ -632,91 +651,35 @@ class ConsoleSpool:
         src_path = self._tmp_root / tail.uuid / "tasks" / f"{tail.stem}.output"
         target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{tail.src_fd}"
 
-        # 1. Ultra-fast path: in-process C shared library (zero IPC, GIL released)
-        if _LIB_FDUSER_FIND is not None:
-            try:
-                paths = (ctypes.c_char_p * 1)(target.encode())
-                out_pids = (ctypes.c_int * 1)()
-                res = _LIB_FDUSER_FIND(paths, 1, out_pids)
-                if res > 0 and out_pids[0] > 0:
-                    tail.writer_pid = int(out_pids[0])
-                    return True
-                elif res == 0:
-                    return False
-            except Exception:
-                pass
-        elif _LIB_FDUSER_HAS is not None:
-            try:
-                res = _LIB_FDUSER_HAS(target.encode())
-                if res in (0, 1):
-                    return res == 1
-            except Exception:
-                pass
-
-        # 2. CLI fallback path: native fduser binary
-        if _FDUSER_BIN:
-            try:
-                res = subprocess.run([_FDUSER_BIN, "-q", "-w", target], check=False)
-                if res.returncode in (0, 1):
-                    return res.returncode == 0
-            except OSError:
-                pass
-
-        # 3. Fallback path: procfs scan in Python
-        target_suffix = f"/{tail.uuid}/tasks/{tail.stem}.output"
-        my_uid = os.getuid()
+        # Native libaur.so check (zero IPC, GIL released)
         try:
-            pids = [d for d in os.listdir("/proc") if d.isdigit()]
-        except OSError:
+            paths = (ctypes.c_char_p * 1)(target.encode())
+            out_pids = (ctypes.c_int * 1)()
+            res = _LIB_FDUSER_FIND(paths, 1, out_pids)
+            if res > 0 and out_pids[0] > 0:
+                tail.writer_pid = int(out_pids[0])
+                return True
             return False
-        for pid in pids:
-            try:
-                if os.stat(f"/proc/{pid}").st_uid != my_uid:
-                    continue
-                fds = os.listdir(f"/proc/{pid}/fd")
-            except OSError:
-                continue
-            for fd in fds:
-                try:
-                    dest = os.readlink(f"/proc/{pid}/fd/{fd}")
-                    if dest.endswith(target_suffix):
-                        try:
-                            with open(f"/proc/{pid}/fdinfo/{fd}", "r") as fh:
-                                for line in fh:
-                                    if line.startswith("flags:"):
-                                        flags = int(line.split()[1], 8)
-                                        if (flags & 3) in (os.O_WRONLY, os.O_RDWR):
-                                            tail.writer_pid = int(pid)
-                                            return True
-                        except OSError:
-                            tail.writer_pid = int(pid)
-                            return True
-                except OSError:
-                    pass
-        return False
+        except Exception:
+            return False
 
     def _check_writers_batch(self, tails):
         """Batch-check multiple tails in a single pass over /proc using libaur."""
         if not tails:
             return
-        if _LIB_FDUSER_FIND is not None and len(tails) > 1:
-            targets = []
-            for t in tails:
-                src_path = self._tmp_root / t.uuid / "tasks" / f"{t.stem}.output"
-                target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{t.src_fd}"
-                targets.append(target.encode())
-            c_paths = (ctypes.c_char_p * len(targets))(*targets)
-            out_pids = (ctypes.c_int * len(targets))()
-            try:
-                _LIB_FDUSER_FIND(c_paths, len(targets), out_pids)
-                for i, t in enumerate(tails):
-                    t.writer_pid = int(out_pids[i]) if out_pids[i] > 0 else None
-                return
-            except Exception:
-                pass
-        # Fallback to per-tail check
+        targets = []
         for t in tails:
-            if not self._has_writer(t):
+            src_path = self._tmp_root / t.uuid / "tasks" / f"{t.stem}.output"
+            target = str(src_path) if src_path.exists() else f"/proc/{os.getpid()}/fd/{t.src_fd}"
+            targets.append(target.encode())
+        c_paths = (ctypes.c_char_p * len(targets))(*targets)
+        out_pids = (ctypes.c_int * len(targets))()
+        try:
+            _LIB_FDUSER_FIND(c_paths, len(targets), out_pids)
+            for i, t in enumerate(tails):
+                t.writer_pid = int(out_pids[i]) if out_pids[i] > 0 else None
+        except Exception:
+            for t in tails:
                 t.writer_pid = None
 
     def _capture(self, uuid, name):
@@ -1038,14 +1001,17 @@ def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
     of historical files on every 3-second beat. Sessions with live commands are
     always refreshed.
     """
-    sizes = []
+    total = 0
+    files = 0
+    min_val = None
+    biggest = 0
     try:
-        sessions = list(Path(registry).iterdir())
+        sessions = [e for e in os.scandir(registry) if e.is_dir()]
     except OSError:
         sessions = []
     with _spool_stats_lock:
         for sd in sessions:
-            spool = sd / "spool"
+            spool = Path(sd.path) / "spool"
             try:
                 st = spool.stat()
             except OSError:
@@ -1053,26 +1019,41 @@ def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
             is_live = _SPOOL is not None and _SPOOL.session_live(sd.name)
             cached = _SPOOL_STATS_CACHE.get(sd.name)
             if not is_live and cached is not None and cached[0] == st.st_mtime_ns:
-                sizes.extend(cached[1])
+                _, s_tot, s_cnt, s_min, s_max, *_ = cached
+                total += s_tot
+                files += s_cnt
+                if s_cnt > 0:
+                    min_val = s_min if min_val is None else min(min_val, s_min)
+                    biggest = max(biggest, s_max)
                 continue
             sess_sizes = []
+            newest_mtime = st.st_mtime
             try:
-                entries = list(spool.glob("*.log"))
+                for entry in os.scandir(spool):
+                    if entry.name.endswith(".log"):
+                        try:
+                            st_e = entry.stat()
+                            sess_sizes.append(st_e.st_size)
+                            if st_e.st_mtime > newest_mtime:
+                                newest_mtime = st_e.st_mtime
+                        except OSError:
+                            pass
             except OSError:
                 continue
-            for f in entries:
-                try:
-                    sess_sizes.append(f.stat().st_size)
-                except OSError:
-                    continue
-            _SPOOL_STATS_CACHE[sd.name] = (st.st_mtime_ns, sess_sizes)
-            sizes.extend(sess_sizes)
+            s_tot = sum(sess_sizes)
+            s_cnt = len(sess_sizes)
+            s_min = min(sess_sizes, default=0)
+            s_max = max(sess_sizes, default=0)
+            _SPOOL_STATS_CACHE[sd.name] = (st.st_mtime_ns, s_tot, s_cnt, s_min, s_max, newest_mtime)
+            total += s_tot
+            files += s_cnt
+            if s_cnt > 0:
+                min_val = s_min if min_val is None else min(min_val, s_min)
+                biggest = max(biggest, s_max)
 
-    total = sum(sizes)
-    biggest = max(sizes, default=0)
     return {
         "bytes": total,
-        "files": len(sizes),
+        "files": files,
         # min/avg/max rather than the single largest and its name. One number
         # cannot say whether it is an outlier: a 185K maximum reads alarming
         # beside nothing and unremarkable beside a 7K mean. The distribution is
@@ -1080,8 +1061,8 @@ def spool_stats(registry: Path, alert_total=CONSOLE_SPOOL_ALERT_TOTAL,
         # is the whole point of showing this continuously. The filename is
         # dropped — it identified a command the reader cannot act on from here,
         # and cost the width the three figures now use.
-        "min": min(sizes, default=0),
-        "avg": (total // len(sizes)) if sizes else 0,
+        "min": min_val if min_val is not None else 0,
+        "avg": (total // files) if files else 0,
         "max": biggest,
         "alert_total": alert_total,
         "alert_single": alert_single,
@@ -1197,6 +1178,42 @@ def _spooled(registry: Path, uuid: str):
         if not is_live:
             _SPOOLED_CACHE[uuid] = (st.st_mtime_ns, list(out))
     return out
+
+
+def _spool_info(registry: Path, uuid: str):
+    """Fast session spool summary (count, live, newest_mtime) from cache."""
+    spool = registry / uuid / "spool"
+    try:
+        st = spool.stat()
+    except OSError:
+        return 0, False, 0.0
+
+    is_live = _SPOOL is not None and _SPOOL.session_live(uuid)
+    with _spool_stats_lock:
+        cached = _SPOOL_STATS_CACHE.get(uuid)
+        if cached is not None and cached[0] == st.st_mtime_ns and len(cached) >= 6:
+            return cached[2], is_live, cached[5]
+
+    try:
+        entries = []
+        newest_mtime = st.st_mtime
+        for e in os.scandir(spool):
+            if e.name.endswith(".log"):
+                try:
+                    m = e.stat().st_mtime
+                    entries.append(m)
+                    if m > newest_mtime:
+                        newest_mtime = m
+                except OSError:
+                    pass
+        cnt = len(entries)
+        with _spool_stats_lock:
+            cur_cached = _SPOOL_STATS_CACHE.get(uuid)
+            if cur_cached is not None and cur_cached[0] == st.st_mtime_ns:
+                _SPOOL_STATS_CACHE[uuid] = (st.st_mtime_ns, cur_cached[1], cnt, cur_cached[3], cur_cached[4], newest_mtime)
+        return cnt, is_live, newest_mtime
+    except OSError:
+        return 0, is_live, 0.0
 
 
 def console_history(registry: Path, uuid: str, cursor=None,
@@ -1633,6 +1650,8 @@ def _daemon_key(stem: str) -> str:
     The same normaliser runs over a live process's name, which is how an
     evidence row and a convention row for one daemon meet on one line.
     """
+    if stem.endswith(".py"):
+        stem = stem[:-3]
     return re.sub(r"[-_.\s]+", "-", stem).strip("-").lower()
 
 
@@ -1650,23 +1669,82 @@ def _split_channel(filename: str):
     return _daemon_key(stem), "own"
 
 
+def _python_prog_name(argv: list[str]) -> str | None:
+    """Extract program.py from python command arguments, or None."""
+    if not argv:
+        return None
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "-m" and i + 1 < len(argv):
+            mod = argv[i + 1]
+            return mod if mod.endswith(".py") else f"{mod}.py"
+        elif arg.startswith("-m"):
+            mod = arg[2:]
+            return mod if mod.endswith(".py") else f"{mod}.py"
+        elif arg == "-c":
+            return None
+        elif arg in ("-W", "-X", "--check-hash-based-pycs") and i + 1 < len(argv):
+            i += 2
+            continue
+        elif arg.startswith("-"):
+            i += 1
+            continue
+        else:
+            base = os.path.basename(arg).strip()
+            if base:
+                return base
+        i += 1
+    return None
+
+
+_PY_PROG_CACHE: dict[int, str | None] = {}
+
+
+def _python_prog_for_pid(pid: int) -> str | None:
+    if pid in _PY_PROG_CACHE:
+        return _PY_PROG_CACHE[pid]
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        _PY_PROG_CACHE[pid] = None
+        return None
+    argv = [p.decode("utf-8", "replace").strip() for p in raw.split(b"\0") if p.strip()]
+    prog = _python_prog_name(argv)
+    _PY_PROG_CACHE[pid] = prog
+    return prog
+
+
+
 def _proc_name(pid: int):
     """What to call the process: argv[0]'s basename, falling back to comm.
 
     `comm` is the FALLBACK rather than the source because the kernel truncates
     it to 15 characters, and a name that silently loses its tail cannot be
     matched against the log filenames it has to group with.
+    When a python interpreter is invoked, reports the program.py name instead.
     """
+    argv = []
     try:
-        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        argv = [p.decode("utf-8", "replace").strip() for p in raw.split(b"\0") if p.strip()]
     except OSError:
-        argv = []
+        pass
     if argv and argv[0]:
-        base = os.path.basename(argv[0].decode("utf-8", "replace")).strip()
+        base = os.path.basename(argv[0]).strip()
+        if base.startswith("python"):
+            py_name = _python_prog_name(argv)
+            if py_name:
+                return py_name
         if base:
             return base
     try:
-        return Path(f"/proc/{pid}/comm").read_text().strip() or None
+        comm = Path(f"/proc/{pid}/comm").read_text().strip() or None
+        if comm and comm.startswith("python"):
+            py_name = _python_prog_for_pid(pid)
+            if py_name:
+                return py_name
+        return comm
     except OSError:
         return None
 
@@ -1694,99 +1772,211 @@ def _fd_writable(pid, fd) -> bool:
     return False
 
 
-def _log_channels(daemon_dir: Path, registry: Path = None):
+_CHANNEL_TRACKER = {}  # target_path -> {"baseline_mtime_ns": int, "writers": {pid: (channel, holder_fd)}}
+_channel_tracker_lock = threading.Lock()
+
+
+def _classify_channel(target: str, pid: int) -> tuple[str, str | None]:
+    """Determine channel type (crash/captured/own) and current open fd for pid."""
+    base = os.path.basename(target)
+    if _split_channel(base)[1] == "crash":
+        channel = "crash"
+    else:
+        is_captured = False
+        for fdn in ("1", "2"):
+            try:
+                if os.readlink(f"/proc/{pid}/fd/{fdn}") == target:
+                    is_captured = True
+                    break
+            except OSError:
+                pass
+        channel = "captured" if is_captured else "own"
+
+    holder_fd = None
+    try:
+        fd_dir = f"/proc/{pid}/fd"
+        for fdn in os.listdir(fd_dir):
+            try:
+                if os.readlink(f"{fd_dir}/{fdn}") == target and _fd_writable(pid, fdn):
+                    holder_fd = fdn
+                    break
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return channel, holder_fd
+
+
+_DAEMON_LOGS_CACHE = {}
+
+
+def _log_channels(daemon_dir: Path, registry: Path = None, discover_dormant: bool = False):
     """Every log under `daemon_dir` a process holds open, classified by fd.
 
-    `registry` names the console spool's own tree, which is EXCLUDED. The
-    spool captures by holding each command's spool file open for writing, and
-    that tree lives under the daemon directory — so without this every command
-    being captured surfaced here as a daemon channel named after its task id,
-    offered as a chip that then 404'd ("stream no longer served") because no
-    daemon log of that name exists. The spool's descriptors are capture
-    machinery, not a daemon writing its log.
+    Mtime-driven lifecycle (AUR resource-monitoring skill):
+      1. Dormant files: if st_mtime has not advanced, zero /proc scanning occurs.
+      2. Discovery pass: when st_mtime advances (write event), query fduser_find_writers
+         for that specific file.
+      3. Monitored state: while writers exist, periodic ticks test only the specific
+         (pid, holder_fd) via kill(pid, 0) and readlink (~15 µs total).
+      4. Close / exit rescan: when a monitored writer closes or exits, scan once to see
+         if anyone else has the file open. If not, update baseline_mtime and return to
+         dormancy until mtime moves again.
 
-    Returns `(owners, holder)`:
-      owners  pid -> {"name", "captured": {path…}, "own": {path…}}
-      holder  path -> pid, the truthful answer to "is this file live", where
-              mtime is only a proxy: a log nothing has open is finished no
-              matter how recently it was touched, and a log held open is live
-              no matter how long it has been quiet.
-
-    One pass over /proc; other users' processes raise PermissionError and are
-    skipped, which is correct — we only care about this user's daemons.
+    Returns `(owners, holder, candidates)`:
+      owners  pid -> {"name", "captured": {path…}, "own": {path…}, "crash": {path…}}
+      holder  path -> pid, truthful liveness for each held log channel.
+      candidates path -> stat
     """
     root = os.path.realpath(daemon_dir)
     spool_root = os.path.realpath(
         registry if registry is not None else CONSOLE_ROOTS["registry"])
 
     owners, holder = {}, {}
+
+    candidates = {}
     try:
-        pids = [d for d in os.listdir("/proc") if d.isdigit()]
+        dir_st = os.stat(daemon_dir)
+        cached_entry = _DAEMON_LOGS_CACHE.get(root)
+        if cached_entry is not None and cached_entry[0] == dir_st.st_mtime_ns:
+            for rp in cached_entry[1]:
+                try:
+                    candidates[rp] = os.stat(rp)
+                except OSError:
+                    pass
+        else:
+            known = []
+            for entry in os.scandir(daemon_dir):
+                if entry.name.endswith(".log") and not entry.name.startswith(CONSOLE_ONESHOT_PREFIXES):
+                    try:
+                        rp = os.path.realpath(entry.path)
+                        known.append(rp)
+                        candidates[rp] = entry.stat()
+                    except OSError:
+                        pass
+            _DAEMON_LOGS_CACHE[root] = (dir_st.st_mtime_ns, known)
     except OSError:
-        return owners, holder
-    my_uid = os.getuid()
-    for pid in pids:
-        try:
-            if os.stat(f"/proc/{pid}").st_uid != my_uid:
+        pass
+
+    needs_scan = []
+
+    with _channel_tracker_lock:
+        # Prune entries no longer in daemon_dir
+        for path in list(_CHANNEL_TRACKER.keys()):
+            if path.startswith(root + os.sep) and path not in candidates:
+                _CHANNEL_TRACKER.pop(path, None)
+
+        for target, st in candidates.items():
+            info = _CHANNEL_TRACKER.get(target)
+            if info is None:
+                info = _CHANNEL_TRACKER[target] = {
+                    "baseline_mtime_ns": st.st_mtime_ns,
+                    "writers": {},
+                }
+                if discover_dormant:
+                    needs_scan.append(target)
                 continue
-        except OSError:
-            continue
-        fd_dir = f"/proc/{pid}/fd"
-        try:
-            fds = os.listdir(fd_dir)
-        except OSError:
-            continue
-        for fd in fds:
-            try:
-                target = os.readlink(f"{fd_dir}/{fd}")
-            except OSError:
-                continue
-            # The kernel suffixes an unlinked target with " (deleted)".
-            # Such an fd is NOT the file of that name on disk — it is a
-            # rotated generation the writer never reopened — so it must not
-            # mark the current file live. Stripping the suffix and matching
-            # anyway would attribute a process to a file it is not writing
-            # to, which is exactly the lie this column exists to prevent.
-            if target.endswith(" (deleted)"):
-                continue
-            if not target.startswith(root + os.sep):
-                continue
-            # The console spool's own capture descriptors (see the docstring).
-            if target.startswith(spool_root + os.sep):
-                continue
-            # The crash log is identified by NAME before fd number, because
-            # the handler holds it on an ordinary descriptor for the process's
-            # whole life — by fd alone it looks exactly like the daemon's own
-            # log and would compete with it for the same cell.
-            if _split_channel(os.path.basename(target))[1] == "crash":
-                channel = "crash"
-            elif fd in ("1", "2"):
-                channel = "captured"
-            elif target.endswith(".log"):
-                channel = "own"
+
+            writers = info["writers"]
+            if writers:
+                dead_pids = []
+                for pid, (channel, holder_fd) in list(writers.items()):
+                    pid_alive = False
+                    try:
+                        os.kill(pid, 0)
+                        pid_alive = True
+                    except OSError:
+                        pass
+
+                    still_held = False
+                    if pid_alive:
+                        if holder_fd is not None:
+                            try:
+                                if (os.readlink(f"/proc/{pid}/fd/{holder_fd}") == target
+                                        and _fd_writable(pid, holder_fd)):
+                                    still_held = True
+                            except OSError:
+                                pass
+                        if not still_held:
+                            try:
+                                fd_dir = f"/proc/{pid}/fd"
+                                for fdn in os.listdir(fd_dir):
+                                    try:
+                                        if os.readlink(f"{fd_dir}/{fdn}") == target and _fd_writable(pid, fdn):
+                                            still_held = True
+                                            writers[pid] = (channel, fdn)
+                                            break
+                                    except OSError:
+                                        pass
+                            except OSError:
+                                pass
+
+                    if not still_held:
+                        dead_pids.append(pid)
+
+                for pid in dead_pids:
+                    writers.pop(pid, None)
+
+                if dead_pids and not writers:
+                    needs_scan.append(target)
             else:
-                # Held open, but not a log: a database, a WAL, a lock file.
-                # `mtid` alone holds ninety descriptors on its sqlite file, so
-                # without this the process row would be almost entirely noise.
-                continue
-            # Checked only AFTER the cheap filters above, so the extra read
-            # happens for the handful of real candidates rather than for every
-            # descriptor in the directory.
-            if not _fd_writable(pid, fd):
-                continue
-            ipid = int(pid)
-            rec = owners.get(ipid)
-            if rec is None:
-                rec = owners[ipid] = {"name": None, "captured": set(),
-                                      "own": set(), "crash": set()}
-            rec[channel].add(target)
-            holder.setdefault(target, ipid)
+                if st.st_mtime_ns != info["baseline_mtime_ns"]:
+                    info["baseline_mtime_ns"] = st.st_mtime_ns
+                    needs_scan.append(target)
+                elif discover_dormant:
+                    needs_scan.append(target)
+
+    if needs_scan:
+        paths_bytes = [p.encode("utf-8") for p in needs_scan]
+        c_paths = (ctypes.c_char_p * len(paths_bytes))(*paths_bytes)
+        out_pids = (ctypes.c_int * len(paths_bytes))()
+        try:
+            n = _LIB_FDUSER_FIND(c_paths, len(paths_bytes), out_pids)
+            if n >= 0:
+                with _channel_tracker_lock:
+                    for i, path_b in enumerate(paths_bytes):
+                        pid = out_pids[i]
+                        target = path_b.decode("utf-8")
+                        info = _CHANNEL_TRACKER.get(target)
+                        if info is not None:
+                            if pid > 0:
+                                channel, holder_fd = _classify_channel(target, pid)
+                                info["writers"][pid] = (channel, holder_fd)
+                            else:
+                                st = candidates.get(target)
+                                if st is not None:
+                                    info["baseline_mtime_ns"] = st.st_mtime_ns
+        except Exception:
+            pass
+
+    with _channel_tracker_lock:
+        for target in candidates:
+            info = _CHANNEL_TRACKER.get(target)
+            if info is not None and info["writers"]:
+                for pid, (channel, holder_fd) in info["writers"].items():
+                    holder.setdefault(target, pid)
+                    rec = owners.get(pid)
+                    if rec is None:
+                        rec = owners[pid] = {"name": None, "captured": set(),
+                                             "own": set(), "crash": set()}
+                    rec[channel].add(target)
+
     for pid, rec in owners.items():
         rec["name"] = _proc_name(pid) or str(pid)
-    return owners, holder
+    return owners, holder, candidates
 
 
-def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None):
+def _pid_alive(pid: int) -> bool:
+    if pid is None:
+        return False
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rsplit(") ", 1)[1][0]
+        return state != "Z"
+    except (OSError, IndexError):
+        return False
+
+
+def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None, discover_dormant: bool = True):
     """One row per daemon: its process when running, its channels either way.
 
     The row is the DAEMON, not the file. A daemon with two logs used to be two
@@ -1802,7 +1992,7 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None):
     merge, with a pid suffix when two live processes share a name: folding two
     processes onto one line would be a lie no column could correct.
     """
-    owners, holder = _log_channels(daemon_dir, registry)
+    owners, holder, candidates = _log_channels(daemon_dir, registry, discover_dormant=discover_dormant)
     rows, by_key = [], {}
 
     def _row(key, name):
@@ -1841,19 +2031,16 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None):
                     r[channel] = ch
 
     # Convention behind it, for everything nothing holds open.
-    try:
-        names = sorted(p.name for p in daemon_dir.glob("*.log"))
-    except OSError:
-        names = []
-    for name in names:
-        path = os.path.realpath(daemon_dir / name)
+    for path, st in sorted(candidates.items(), key=lambda x: os.path.basename(x[0])):
         if path in holder or path in owned:
             continue
+        name = os.path.basename(path)
         if name.startswith(CONSOLE_ONESHOT_PREFIXES):
             continue
-        ch = _chan(path)
-        if ch is None:
-            continue
+        ch = {"id": f"daemon:{name}",
+              "label": name,
+              "size": st.st_size, "mtime": st.st_mtime,
+              "live": False}
         key, channel = _split_channel(name)
         r = _row(key, key)
         if r[channel] is None or ch["mtime"] > r[channel]["mtime"]:
@@ -1861,8 +2048,13 @@ def _daemon_rows(daemon_dir: Path, owned=frozenset(), registry: Path = None):
 
     for r in rows:
         chans = [r[c] for c in ("captured", "own", "crash") if r[c]]
-        r["live"] = any(c["live"] for c in chans)
-        r["mtime"] = max((c["mtime"] for c in chans), default=0)
+        if chans:
+            r["live"] = any(c["live"] for c in chans)
+            r["mtime"] = max((c["mtime"] for c in chans), default=0)
+        elif r.get("pid") is not None:
+            r["live"] = _pid_alive(r["pid"])
+            if not r.get("mtime"):
+                r["mtime"] = time.time()
         # An empty crash log is dropped HERE, once, rather than by each reader:
         # the listing and the 3-second numbers poll must agree about which
         # channels exist, and they don't share a code path. Suppressed in one
@@ -2038,6 +2230,10 @@ def console_delete_oneshots(names, *, daemon_dir=None):
     return {"deleted": gone, "refused": refused}
 
 
+_GATE_DIRS_CACHE = {"mtime_ns": 0, "base": None, "dirs": []}
+_gate_dirs_lock = threading.Lock()
+
+
 def _gate_state_dirs():
     """The tmpfs directories a project's admission gates (a `rustc-gate`,
     `cc-gate`, or a project's own resource gate — each project's launcher
@@ -2054,7 +2250,33 @@ def _gate_state_dirs():
     shm = Path("/dev/shm")
     base = shm if shm.is_dir() and os.access(shm, os.W_OK) else Path("/tmp")
     user = os.environ.get("USER", "default")
-    return sorted(d for d in base.glob(f"*-gate-{user}") if d.is_dir())
+    suffix = f"-gate-{user}"
+    try:
+        cur_mtime = base.stat().st_mtime_ns
+    except OSError:
+        cur_mtime = 0
+    with _gate_dirs_lock:
+        if _GATE_DIRS_CACHE["base"] == base and _GATE_DIRS_CACHE["mtime_ns"] == cur_mtime:
+            return list(_GATE_DIRS_CACHE["dirs"])
+
+    dirs = []
+    try:
+        with os.scandir(base) as it:
+            for entry in it:
+                if entry.name.endswith(suffix):
+                    try:
+                        if entry.is_dir():
+                            dirs.append(Path(entry.path))
+                    except OSError:
+                        pass
+    except OSError:
+        pass
+    dirs.sort()
+    with _gate_dirs_lock:
+        _GATE_DIRS_CACHE["base"] = base
+        _GATE_DIRS_CACHE["mtime_ns"] = cur_mtime
+        _GATE_DIRS_CACHE["dirs"] = list(dirs)
+    return dirs
 
 
 def _read_gate_entries(dir_path=None):
@@ -2106,6 +2328,11 @@ def _read_gate_entries(dir_path=None):
     return out
 
 
+_PROCSTATS_CACHE = {"at": 0.0, "data": None, "bytes": None}
+_procstats_lock = threading.Lock()
+_PROCSTATS_INTERVAL_S = 1.5
+
+
 def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
                       registry=None):
     """Just the numbers for the daemon rows, refreshed on top(1)'s cadence.
@@ -2116,6 +2343,13 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     beat would re-attach every open pane and fight the reader's scroll. This
     returns values only, and the client writes them into the existing cells.
     """
+    is_default = (daemon_dir is None and tmp_root is None and projects is None and registry is None)
+    now = time.monotonic()
+    if is_default:
+        with _procstats_lock:
+            if (now - _PROCSTATS_CACHE["at"]) < _PROCSTATS_INTERVAL_S and _PROCSTATS_CACHE["data"] is not None:
+                return _PROCSTATS_CACHE["data"]
+
     r = _console_roots(daemon_dir=daemon_dir, tmp_root=tmp_root,
                        projects=projects, registry=registry)
     # The SAME row builder the listing uses. Keying these numbers off a second,
@@ -2124,7 +2358,7 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     # writes into cells the listing created, so both must derive identity the
     # one way.
     out = {}
-    for row in _daemon_rows(r["daemon_dir"], registry=r["registry"]):
+    for row in _daemon_rows(r["daemon_dir"], registry=r["registry"], discover_dormant=False):
         # `out`/`log` — the SAME channel vocabulary the listing uses. Two names
         # for one channel across two endpoints is a drift waiting to happen,
         # and the client would have to translate between them per poll.
@@ -2142,10 +2376,36 @@ def console_procstats(*, daemon_dir=None, tmp_root=None, projects=None,
     # The spool reading rides on the 3-second poll that already exists, rather
     # than a timer of its own: a runaway command is only worth watching while
     # someone is watching, and this is the poll that means they are.
-    return {"rows": out, "system": system_stats(),
-            "top": top_process_groups(),
-            "spool": spool_stats(r["registry"]),
-            "gates": _read_gate_entries()}
+    res = {"rows": out, "system": system_stats(),
+           "top": top_process_groups(),
+           "spool": spool_stats(r["registry"]),
+           "gates": _read_gate_entries()}
+    if is_default:
+        res_bytes = json.dumps(res).encode("utf-8")
+        with _procstats_lock:
+            _PROCSTATS_CACHE["at"] = now
+            _PROCSTATS_CACHE["data"] = res
+            _PROCSTATS_CACHE["bytes"] = res_bytes
+    return res
+
+
+def console_procstats_bytes(*, daemon_dir=None, tmp_root=None, projects=None,
+                            registry=None):
+    """Pre-serialized JSON bytes for /procstats, serving cache directly when fresh."""
+    is_default = (daemon_dir is None and tmp_root is None and projects is None and registry is None)
+    now = time.monotonic()
+    if is_default:
+        with _procstats_lock:
+            if (now - _PROCSTATS_CACHE["at"]) < _PROCSTATS_INTERVAL_S and _PROCSTATS_CACHE.get("bytes") is not None:
+                return _PROCSTATS_CACHE["bytes"]
+    res = console_procstats(daemon_dir=daemon_dir, tmp_root=tmp_root,
+                            projects=projects, registry=registry)
+    if is_default:
+        with _procstats_lock:
+            cached_b = _PROCSTATS_CACHE.get("bytes")
+            if cached_b is not None:
+                return cached_b
+    return json.dumps(res).encode("utf-8")
 
 
 _sys_lock = threading.Lock()
@@ -2190,9 +2450,6 @@ class SysinfoStream:
         self._stopping = False
 
     def start(self):
-        if _LIB_SYSINFO_SAMPLE is None:
-            _set_sysinfo_error("libaur.so sysinfo sampler unavailable")
-            return False
         self._stopping = False
         self._thread = threading.Thread(target=self._run, name="sysinfo", daemon=True)
         self._thread.start()
@@ -2333,6 +2590,7 @@ _top_proc_lock = threading.Lock()
 
 
 _PROC_STATS_BUF = None
+_TOP_GROUPS_BUF = None
 
 
 def top_process_groups():
@@ -2347,43 +2605,45 @@ def top_process_groups():
         if (now - _TOP_PROC_RESULT_CACHE["at"]) < _TOP_PROC_INTERVAL_S:
             return list(_TOP_PROC_RESULT_CACHE["data"])
 
-    raw_procs = []
-    if _LIB_PROC_STATS is not None:
-        global _PROC_STATS_BUF
-        if _PROC_STATS_BUF is None:
-            _PROC_STATS_BUF = (AurProcStat * 1024)()
-        n = _LIB_PROC_STATS(_PROC_STATS_BUF, 1024)
-        if n > 0:
+    global _TOP_GROUPS_BUF
+    if _LIB_TOP_GROUPS is not None:
+        if _TOP_GROUPS_BUF is None:
+            _TOP_GROUPS_BUF = (AurTopGroup * 3)()
+        n = _LIB_TOP_GROUPS(_TOP_GROUPS_BUF, 3)
+        if n >= 0:
+            out = []
             for i in range(n):
-                s = _PROC_STATS_BUF[i]
-                raw_procs.append((s.pid, s.comm.decode("utf-8", "replace"), s.nice, s.ticks, s.rss_bytes))
+                g = _TOP_GROUPS_BUF[i]
+                rank_str = g.rank.split(b"\0")[0].decode("utf-8", "replace")
+                name_str = g.name.split(b"\0")[0].decode("utf-8", "replace")
+                nice_str = g.nice.split(b"\0")[0].decode("utf-8", "replace")
+                total_sec = g.cputime_s
+                m = int(total_sec // 60)
+                s = total_sec % 60
+                out.append({
+                    "rank": rank_str,
+                    "count": int(g.count),
+                    "name": name_str,
+                    "nice": nice_str,
+                    "load": float(g.load),
+                    "cputime": f"{m}:{s:05.2f}",
+                    "cputime_s": total_sec,
+                    "rss": int(g.rss),
+                })
+            with _top_proc_lock:
+                _TOP_PROC_RESULT_CACHE["at"] = now
+                _TOP_PROC_RESULT_CACHE["data"] = list(out)
+            return out
 
-    if not raw_procs:
-        try:
-            pids = [int(d) for d in os.listdir("/proc") if d.isdigit()]
-        except OSError:
-            return []
-        for pid in pids:
-            try:
-                with open(f"/proc/{pid}/stat", "r") as fh:
-                    raw = fh.read()
-                cut = raw.rfind(")")
-                if cut < 0:
-                    continue
-                comm = raw[raw.find("(") + 1:cut]
-                parts = raw[cut + 2:].split()
-                if len(parts) < 17:
-                    continue
-                utime = int(parts[11])
-                stime = int(parts[12])
-                nice = int(parts[16])
-                ticks = utime + stime
-
-                rss_pages = int(parts[21]) if len(parts) >= 22 else 0
-                rss_bytes = rss_pages * _PAGE
-                raw_procs.append((pid, comm, nice, ticks, rss_bytes))
-            except (OSError, IndexError, ValueError):
-                continue
+    raw_procs = []
+    global _PROC_STATS_BUF
+    if _PROC_STATS_BUF is None:
+        _PROC_STATS_BUF = (AurProcStat * 1024)()
+    n = _LIB_PROC_STATS(_PROC_STATS_BUF, 1024)
+    if n > 0:
+        for i in range(n):
+            s = _PROC_STATS_BUF[i]
+            raw_procs.append((s.pid, s.comm.decode("utf-8", "replace"), s.nice, s.ticks, s.rss_bytes))
 
     with _top_proc_lock:
         current_pids = set()
@@ -2398,6 +2658,16 @@ def top_process_groups():
                 delta_time = now - prev[1]
                 if delta_ticks > 0 and delta_time > 0:
                     load = (delta_ticks / _HZ) / delta_time * 100.0
+
+            # Skip dormant zero-resource entities (kernel threads with 0 ticks and 0 RSS)
+            # that cannot contribute to top CPU or RSS groups.
+            if rss == 0 and ticks == 0 and load == 0.0:
+                continue
+
+            if comm.startswith("python"):
+                py_name = _python_prog_for_pid(pid)
+                if py_name:
+                    comm = py_name
 
             g = groups.get(comm)
             if g is None:
@@ -2419,6 +2689,7 @@ def top_process_groups():
         dead_pids = set(_TOP_PROC_CACHE.keys()) - current_pids
         for dead in dead_pids:
             _TOP_PROC_CACHE.pop(dead, None)
+            _PY_PROG_CACHE.pop(dead, None)
 
     by_cpu = sorted(groups.values(), key=lambda x: (x["load"], x["ticks"]), reverse=True)
     by_rss = sorted(groups.values(), key=lambda x: x["rss"], reverse=True)
@@ -2431,10 +2702,10 @@ def top_process_groups():
 
     if top_rss and top_rss["name"] not in covered:
         g3 = top_rss
-        g3_tag = "rss#1"
+        g3_tag = "rss"
     else:
         g3 = by_cpu[2] if len(by_cpu) > 2 else None
-        g3_tag = "cpu#3"
+        g3_tag = "cpu"
 
     def _fmt(tag, g):
         total_sec = g["ticks"] / _HZ
@@ -2455,9 +2726,9 @@ def top_process_groups():
 
     out = []
     if g1:
-        out.append(_fmt("cpu#1", g1))
+        out.append(_fmt("cpu", g1))
     if g2:
-        out.append(_fmt("cpu#2", g2))
+        out.append(_fmt("cpu", g2))
     if g3:
         out.append(_fmt(g3_tag, g3))
     with _top_proc_lock:
@@ -2498,14 +2769,14 @@ def _live_sessions(r, now, live_window):
         # `_registered` streams stay. Those are named long-lived processes, not
         # one entry per command, so they are a list a reader can actually hold
         # in their head.
-        spooled = _spooled(r["registry"], uuid)
+        spool_cnt, is_spool_live, newest_spool_mtime = _spool_info(r["registry"], uuid)
         streams = []
-        if spooled:
+        if spool_cnt > 0:
             streams.append({"id": f"session:{uuid}:history",
-                            "label": f"session console ({len(spooled)})",
+                            "label": f"session console ({spool_cnt})",
                             "carries": "stdout+stderr",
                             "primary": True,
-                            "live": any(s.get("live") for s in spooled)})
+                            "live": is_spool_live})
         # The transcript itself, openable. A session closed by accident is
         # otherwise unrecoverable from this tab: the console shows what COMMANDS
         # did, and says nothing about what was being discussed when it ended.
@@ -2522,8 +2793,8 @@ def _live_sessions(r, now, live_window):
         # spoke here", and falls back through the newest console write to mtime,
         # so a session always sorts on something real.
         active = _epoch_of(meta.get("last_human"), 0)
-        if not active and spooled:
-            active = max((s.get("mtime_epoch") or 0) for s in spooled)
+        if not active and spool_cnt > 0:
+            active = newest_spool_mtime
         if not active:
             active = mtime
 
@@ -2575,7 +2846,7 @@ def console_groups(*, tmp_root=None, projects=None, daemon_dir=None,
     owned = {os.path.realpath(s["path"])
              for sess in sessions for s in sess["streams"] if s.get("path")}
 
-    rows = _daemon_rows(r["daemon_dir"], owned, registry=r["registry"])
+    rows = _daemon_rows(r["daemon_dir"], owned, registry=r["registry"], discover_dormant=True)
 
     recent, older = [], []
     for row in rows:
@@ -2805,6 +3076,8 @@ def instance_running(port, name):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
@@ -2812,11 +3085,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # Prevent a single hung client from blocking the whole server.
         self.request.settimeout(30)
         super().setup()
+        try:
+            self.request.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass
 
     def log_message(self, fmt, *args):
         # Suppress per-request noise; only log errors
-        if args and str(args[1]) not in ("200", "304"):
-            super().log_message(fmt, *args)
+        if len(args) >= 2 and str(args[1]) in ("200", "304"):
+            return
+        super().log_message(fmt, *args)
 
     # ── Reload restore ──────────────────────────────────────────────────────
     #
@@ -2900,7 +3178,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == "/oneshots":
             self._json(console_oneshots())
         elif parsed.path == "/procstats":
-            self._json(console_procstats())
+            self._json(console_procstats_bytes())
         elif parsed.path == "/consoles":
             self._get_consoles(parse_qs(parsed.query))
         elif parsed.path.startswith("/transcript/"):
@@ -3446,9 +3724,13 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
         self.wfile.write(data)
 
     def _json(self, obj, status=200):
-        data = json.dumps(obj).encode()
+        if isinstance(obj, (bytes, bytearray)):
+            data = obj
+        else:
+            data = json.dumps(obj).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
         self._cors()
         self.end_headers()
         self.wfile.write(data)
@@ -3543,6 +3825,38 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
         self.wfile.write(json.dumps({"saved": True}).encode())
 
 
+class _TeeStream:
+    def __init__(self, original, file):
+        self.original = original
+        self.file = file
+
+    def write(self, s):
+        try:
+            self.original.write(s)
+        except OSError:
+            pass
+        try:
+            self.file.write(s)
+            self.file.flush()
+        except OSError:
+            pass
+
+    def flush(self):
+        try:
+            self.original.flush()
+        except OSError:
+            pass
+        try:
+            self.file.flush()
+        except OSError:
+            pass
+
+    def fileno(self):
+        if hasattr(self.original, "fileno"):
+            return self.original.fileno()
+        return self.file.fileno()
+
+
 if __name__ == "__main__":
     # If a port file exists and that port is answering AS THIS PROJECT, a
     # healthy instance is running — exit rather than start a duplicate. The
@@ -3561,6 +3875,16 @@ if __name__ == "__main__":
 
     port = find_free_port(PREFERRED_PORT)
     PORT_FILE.write_text(str(port))
+
+    daemon_dir = CONSOLE_ROOTS["daemon_dir"]
+    try:
+        daemon_dir.mkdir(parents=True, exist_ok=True)
+        server_log_path = daemon_dir / "server.log"
+        _server_log_file = open(server_log_path, "a", encoding="utf-8", errors="replace")
+        sys.stdout = _TeeStream(sys.stdout, _server_log_file)
+        sys.stderr = _TeeStream(sys.stderr, _server_log_file)
+    except OSError:
+        pass
 
     def _release_port_file():
         """Remove the port file ONLY while it still names this instance.
@@ -3583,8 +3907,7 @@ if __name__ == "__main__":
     # in full — but only if the scan happens before anything else can block.
     _SYSINFO_STREAM = SysinfoStream()
     if _SYSINFO_STREAM.start():
-        _backend = "libaur.so" if _LIB_SYSINFO_SAMPLE is not None else "in-process /proc"
-        print(f"[sysinfo] sampling via {_backend} every "
+        print(f"[sysinfo] sampling via libaur.so every "
               f"{SYSINFO_INTERVAL_MS}ms", flush=True)
 
     # Prune BEFORE capture starts, so a server that has been down for days does

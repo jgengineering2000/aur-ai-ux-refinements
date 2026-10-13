@@ -48,6 +48,8 @@
     }
   } catch (e) { /* storage or fetch unavailable: refresh button still works */ }
 
+  if (IS_MANIFEST) return;
+
   // ── The one document theme ───────────────────────────────────────────────
   // Appended to <head> so it lands AFTER the document's own <style> and wins
   // the cascade at equal specificity. Documents written before doc.css existed
@@ -68,8 +70,6 @@
       document.head.appendChild(th);
     }
   } catch (e) { /* theme is cosmetic: never let it stop the page */ }
-
-  if (IS_MANIFEST) return;
 
   function parseDateFromPath() {
     var filename = window.location.pathname.split('/').pop();

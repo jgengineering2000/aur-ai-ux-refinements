@@ -8,7 +8,7 @@
 :root {
   --bg: #0f172a;
   --sf: rgba(15, 23, 42, 0.95);
-  --card: #1e293b;
+  --card: var(--bg);
   --bd: #334155;
   --tx: #f0f0f0;
   --mu: #94a3b8;
@@ -631,7 +631,7 @@ body {
 }
 .pane-btn:hover { border-color: var(--ac); color: var(--ac); }
 .pane-btn.on { border-color: var(--ac); color: var(--ac); }
-.pane-btn:active { background: var(--bg); }
+.pane-btn:active { background: rgba(56, 189, 248, 0.12); }
 .pane-body {
   height: 260px;
   overflow: auto;
@@ -689,7 +689,7 @@ body {
    drawing, never by punctuation in the label. */
 .find-q {
   flex: 1 1 auto; min-width: 0;
-  background: var(--cb); border: 1px solid var(--bd); border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3); border: 1px solid var(--bd); border-radius: 5px;
   color: var(--tx); font-family: inherit; font-size: 11px; padding: 3px 7px;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
 }
@@ -914,7 +914,7 @@ body {
 }
 
 /* Panel visibility */
-.panel { display: none; }
+.panel { display: none; background: transparent; }
 .panel.active { display: block; }
 </style>
 </head>
@@ -2744,7 +2744,7 @@ body {
       const loadBad = load >= 100;
       const loadWarn = load >= 50 && !loadBad;
       const loadCls = loadBad ? ' bad' : (loadWarn ? ' warn' : '');
-      const tag = p.rank ? `<span class="sl">${esc(p.rank)}</span>` : '<span class="sl"></span>';
+      const tag = p.rank ? `<span class="sl">${esc(p.rank.replace(/#\d+$/, ''))}</span>` : '<span class="sl"></span>';
       return `<div class="top-row">`
         + tag
         + `<span class="top-n top-cnt">${p.count}</span>`
