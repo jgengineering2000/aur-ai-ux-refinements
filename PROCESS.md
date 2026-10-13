@@ -182,3 +182,38 @@ been made able to answer, that command is the wrong next step. Owner
 2026-09-11, paid for the same day: a two-way re-run of an enhancer binary established
 a routing defect that a spawn-argv line plus a produced-dimensions line would
 have shown in the log already written — and will show in the next one.
+
+## 11. Understand before you fix — the recursive why, written down, then audited
+
+Every idea from every source — the owner, an experiment, a measurement, the
+internet, a precedent implementation, a spec — is met with **why**, recursively,
+until it is actually known. Prior work is a basis for understanding a problem
+faster, never the answer: a rule copied without its reason gets applied at the
+wrong scope, and a fix whose why cannot be stated is not correct however
+well-sourced (owner 2026-10-12: "If you don't understand why then it isn't
+correct no matter what").
+
+The ladder per problem: how do I solve this so it solves every similar case?
+What was done before? How did it work, and where did it fail? Why did it work,
+and why did it fail? Has it been solved before? How should I solve it? Will that
+work — why, and why not? It is **tail recursion**: each why, why-not and how is
+asked again of its own answer until the conclusion is deterministic — settled
+by evidence on disk, or reduced to one measurement whose decision is written
+before it is taken. Only then **unwind**: restate each level with every child's
+result, carry an "it depends" up as its condition, and record a branch that
+opens another problem as a link instead of dropping it.
+
+**Write the chain down** — each why, its answer, and the source it was read
+from — then **audit it** as a critic would: does this make sense? Is it true
+(re-read, re-look, re-measure the claim it rests on)? What could go wrong? A
+chain that fails its audit is rewound to the failed node, never patched at the
+conclusion. **The checkable moment is proposing a fix or a design choice**: if
+the chain behind it is not written and audited, the proposal is a guess. The
+cost is deliberate (owner 2026-10-12): "how many cycles have you wasted by not
+knowing what you're doing? There aren't that many key problems to solve, and if
+you invest in actually solving them instead of trying to create dumb rules then
+everything comes together — fast." Paid for the same day: a port of a working
+prototype ran eight iterations of symptom patches and typed limits; written
+down, the chain showed a solved mechanism that had never been ported, and the
+audit's first re-look at the pixels refuted the conclusion the unaudited chain
+had drawn from it.
