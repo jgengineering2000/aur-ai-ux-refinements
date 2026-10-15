@@ -281,7 +281,11 @@ added the first time one is.
   failure is not the refusal but the diagnosis: it presents as a permissions bug,
   is "fixed" in settings, appears to work, and returns. Treat a prompt that
   survives a correct-looking config change as a boundary, not a bug, and move the
-  work out rather than widening the permission.
+  work out rather than widening the permission. When the boundary refuses an edit
+  the owner has already authorised, **say so and offer the one-step route first**:
+  leaving auto mode for that one edit puts it to the owner as an approval prompt —
+  never hand them a paste job for work they told you to do (owner 2026-10-15,
+  after a hand-paste of a settings block went wrong and cost two more turns).
 - **Irreversible and outward-facing actions.** Anything whose failure costs more
   than a retry — destructive replacement without a staged swap, an operation
   that publishes, a change to a shared or session-scoped resource.
