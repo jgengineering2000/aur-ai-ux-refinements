@@ -78,12 +78,19 @@ card arrives twice. A project's own settings carry only what is the project's.
 
 ## Sessions
 
-- **Phase boundary = session boundary.** Each phase gets a clean session.
-  Inside a phase, the compaction window bounds growth, and is safe because
-  task state lives in files. Across a phase boundary, compaction is the wrong
-  tool: its summary carries the finished phase's residue into the next one,
-  so close and start clean. Never start a delegation near the session's
-  token limits.
+- **Phase boundary = session boundary, and a phase is the kickoff's whole
+  scope** (owner 2026-10-17: "You're not doing supervisor right if you have
+  to end the session every 30 minutes. Sonnet is perfectly capable of viewing
+  and comparing multiple images and generating a guided report"). A part,
+  increment or review inside the kickoff is not a phase. The supervisor
+  stays thin by delegating, not by closing: viewing and comparing images,
+  sweeps and reading code go to a mid-model worker that returns a guided
+  report. A supervisor that must close before its kickoff is done has
+  skipped a delegation. Inside a phase, the compaction window bounds growth,
+  and is safe because task state lives in files. Across a phase boundary,
+  compaction is the wrong tool: its summary carries the finished phase's
+  residue into the next one, so close and start clean. Never start a
+  delegation near the session's token limits.
 - **The kickoff prompt is the interface.** Complete, self-contained,
   ready-to-paste, re-emitted in full whenever anything changes (never "see
   above" / "with one amendment"). Open decisions are asked BEFORE the
