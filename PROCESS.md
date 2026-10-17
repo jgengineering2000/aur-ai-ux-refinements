@@ -217,3 +217,8 @@ prototype ran eight iterations of symptom patches and typed limits; written
 down, the chain showed a solved mechanism that had never been ported, and the
 audit's first re-look at the pixels refuted the conclusion the unaudited chain
 had drawn from it.
+
+**Invoke the `thinking` skill whenever you do not understand why something did
+or did not work** — a missed prediction, a failed gate, "the next" approach
+after one failed. The owner calls this loop the Thinking skill (2026-10-17);
+the skill carries the procedure and the checks that catch it lapsing.
