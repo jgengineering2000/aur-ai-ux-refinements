@@ -78,6 +78,29 @@ LEAKAGE_EXEMPT = ("checkpoints/", "checkpoints-archive/", "/rule-tests/",
 
 
 
+# A remote web address is not a folder on this machine. The personal-tree rule
+# judges what a string NAMES, not where it sits, and the path of a URL on a
+# remote host (https://example.org/Documents/x) names a document on that host,
+# nothing of the user's. This is NOT an exemption class - no directory, file or
+# line is exempt (see THE CEILING): the same text as a bare path, a file:// URL,
+# a localhost / 127.x.x.x / [::1] URL, or elsewhere on the same line is still a
+# finding. Applies to the personal-tree rule only; the home-path, email and
+# private-IPv4 rules still read the whole line, URLs included.
+URL_SPAN = re.compile(r"https?://[^\s|)\]>\"'`]+", re.I)
+LOCAL_HOST = re.compile(r"(?:localhost|127(?:\.\d+){3}|\[::1\])$", re.I)
+
+
+def without_remote_urls(line):
+    """The line with each remote http(s) URL span replaced by a placeholder."""
+    def blank(m):
+        authority = re.split(r"[/?#]", m.group(0).split("://", 1)[1], maxsplit=1)[0]
+        host = authority.rsplit("@", 1)[-1]
+        if not host.endswith("]"):
+            host = re.sub(r":\d*$", "", host)
+        return m.group(0) if LOCAL_HOST.match(host) else "URL"
+    return URL_SPAN.sub(blank, line)
+
+
 def tracked_projects():
     """Consuming project names, from the shared-root registry."""
     try:
@@ -163,7 +186,9 @@ def scan(repo, added, projects, log):
 
         for n, line in lines:
             for label, pat in pats:
-                if pat.search(line):
+                text = (without_remote_urls(line)
+                        if label == "personal tree reference" else line)
+                if pat.search(text):
                     findings.append(("PII", rel, n, label, line.strip()[:100]))
                     break
             if shared:
