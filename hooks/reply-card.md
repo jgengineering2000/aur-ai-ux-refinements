@@ -6,4 +6,5 @@ REPLY CARD — the owner's presentation rules (condensed from AUR ai_common.md "
 5. A decision put to the owner: where it sits, Designed / Implemented / Exercised, what happens today, options against the status quo (doing nothing included), then "I recommend X, because Y would …". A defect with a known fix inside authorised work is work, not a question.
 6. Changed anything? One line, Before -> After, from the user's side.
 7. Decisions numbered, or say there are none. The ask goes LAST; nothing noisy runs after it.
-8. Last: the model-settings advisory in its exact format, naming the next step it judges.
+8. Then the model-settings advisory in its exact format, naming the next step it judges.
+9. HIGH PRIORITY — a file the owner should review comes AFTER everything, advisory included: one line per file, its FULL absolute path (as the link text in an editor) + a short note of what they should see there. A file named only in a table or by a relative path has not been put up for review.
