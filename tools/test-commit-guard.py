@@ -13,7 +13,9 @@ Exit 0 all pass, 1 any failure, 64 bad argument.
 """
 
 import importlib.util
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -54,6 +56,33 @@ def load(path):
     return mod
 
 
+def worktree_cases(proj="projx", branch="lab"):
+    """Own-folder exemption must hold in a linked worktree named <proj>-<branch>.
+    Returns (cases, tmpdir); cases = (repo, line, want, why)."""
+    tmp = tempfile.TemporaryDirectory(prefix="cg-wt-")
+    main_repo = Path(tmp.name) / proj
+    wt = Path(tmp.name) / f"{proj}-{branch}"
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t" + "@" + "localhost.invalid"]
+    for cmd in (git + ["init", "-q", str(main_repo)],
+                git + ["-C", str(main_repo), "commit", "-q", "--allow-empty", "-m", "i"],
+                git + ["-C", str(main_repo), "worktree", "add", "-q", "-b", branch, str(wt)]):
+        subprocess.run(cmd, check=True, capture_output=True)
+    tilde, home = "~" + "/", "$" + "HOME/"
+    lines = [
+        (tilde + f".config/{proj}/x", 0, "own config dir"),
+        (tilde + f".local/share/{proj}/y.log", 0, "own data dir"),
+        (tilde + f".local/share/{proj}-extra/y.log", 0, "own suffixed dir"),
+        (tilde + "Pictures/a.jpg", 1, "personal folder stays flagged"),
+        (tilde + ".config/other/x", 1, "another project's config stays flagged"),
+        (home + "x", 1, "bare home variable stays flagged"),
+    ]
+    out = []
+    for repo in (main_repo, wt):
+        for line, want, why in lines:
+            out.append((str(repo), line, want, f"{repo.name}: {why}"))
+    return out, tmp
+
+
 def main():
     verbose, module = False, HERE / "commit-guard.py"
     args = sys.argv[1:]
@@ -82,7 +111,36 @@ def main():
             fails += 1
         if not ok or verbose:
             print(f"{'ok  ' if ok else 'FAIL'} {why}: want {want}, got {len(found)}: {line}")
-    print(f"\ntest-commit-guard: {len(CASES) - fails}/{len(CASES)} passed in "
+    wcases, tmp = worktree_cases()
+    with tmp:
+        for wrepo, line, want, why in wcases:
+            found = guard.scan(wrepo, {"f.md": [(1, line)]}, [], lambda *_: None)
+            ok = len(found) == want
+            if not ok:
+                fails += 1
+            if not ok or verbose:
+                print(f"{'ok  ' if ok else 'FAIL'} {why}: want {want}, got {len(found)}: {line}")
+    # Same defect class: the shared-infrastructure leak check is keyed on the
+    # project being "aur"; a worktree named aur-<branch> must still get it.
+    atmp = tempfile.TemporaryDirectory(prefix="cg-aur-")
+    with atmp:
+        amain = Path(atmp.name) / "aur"
+        awt = Path(atmp.name) / "aur-lab"
+        g = ["git", "-c", "user.name=t", "-c", "user.email=t" + "@" + "localhost.invalid"]
+        for cmd in (g + ["init", "-q", str(amain)],
+                    g + ["-C", str(amain), "commit", "-q", "--allow-empty", "-m", "i"],
+                    g + ["-C", str(amain), "worktree", "add", "-q", "-b", "lab", str(awt)]):
+            subprocess.run(cmd, check=True, capture_output=True)
+        for r in (amain, awt):
+            found = guard.scan(str(r), {"tools/x.py": [(1, "uses projx here")]},
+                               ["projx"], lambda *_: None)
+            ok = len(found) == 1
+            wcases.append(None)
+            if not ok:
+                fails += 1
+                print(f"FAIL {r.name}: shared leak check, want 1, got {len(found)}")
+    total = len(CASES) + len(wcases)
+    print(f"\ntest-commit-guard: {total - fails}/{total} passed in "
           f"{time.perf_counter() - t0:.2f}s")
     return 1 if fails else 0
 

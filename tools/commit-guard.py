@@ -149,7 +149,22 @@ def added_lines(repo, mode):
     return {k: v for k, v in files.items() if v}
 
 
-def pii_patterns(repo):
+def project_name(repo, log=print):
+    """The project's name: the directory of the MAIN worktree. A linked
+    worktree is named <proj>-<branch>, which is not the name the project's
+    own XDG folders carry. Falls back to the given directory's name, logged."""
+    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--path-format=absolute",
+                        "--git-common-dir"], capture_output=True, text=True)
+    common = r.stdout.strip()
+    if r.returncode == 0 and common:
+        return Path(common).parent.name
+    fallback = Path(repo).resolve().name
+    log(f"commit-guard: project name for {repo} from directory name `{fallback}`: "
+        f"git --git-common-dir failed (rc={r.returncode}: {r.stderr.strip()[:100]})")
+    return fallback
+
+
+def pii_patterns(repo, log=print):
     """The PII patterns for THIS repository: the fixed set plus the project's
     own absolute path. A project under $HOME is already caught by the home
     pattern; one elsewhere (/srv, /mnt, a temp dir) is not, and its own
@@ -163,7 +178,7 @@ def pii_patterns(repo):
     # taken from the repo directory so no project is hard-coded. The lookbehind
     # leaves URLs, "foo" glued to a tilde, and "~5 ms" alone; a bare tilde-slash
     # with no path after it is prose.
-    own = re.escape(Path(repo).resolve().name)
+    own = re.escape(project_name(repo, log))
     pats.append(("home-relative path",
                  re.compile(rf"(?<![\w/.~$}}-])(?:~|\$HOME|\$\{{HOME\}})/"
                             rf"(?!(?:\.claude(?![\w-])|(?:\.config|\.local/share|\.cache)"
@@ -176,8 +191,8 @@ def pii_patterns(repo):
 
 def scan(repo, added, projects, log):
     findings = []
-    repo_name = Path(repo).name
-    pats = pii_patterns(repo)
+    repo_name = project_name(repo, log)
+    pats = pii_patterns(repo, log)
     for rel, lines in added.items():
         leak_exempt = any(k in f"/{rel}" for k in LEAKAGE_EXEMPT)
         # Shared infrastructure: anything AUR owns and every project inherits.
