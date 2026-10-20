@@ -46,6 +46,15 @@ CASES = [
      "personal path elsewhere on the line still one finding"),
     ("https://example.org/Documents/y and /{Pictures}/z", 1,
      "personal path after a remote URL still flagged"),
+    ("grep ~/.claude/projects/-home-{USER}-develop-x/abc.jsonl", 1,
+     "dash-encoded transcript path past the claude exemption"),
+    ("-home-{USER}-develop", 1, "dash-encoded home path"),
+    ("/home/{USER}/x", 1, "slash-form home path"),
+    ("written by {USER} today", 1, "bare username as a word"),
+    ("written by {USER_UPPER} today", 1, "username is case-insensitive"),
+    ("the {USER}x file", 0, "username as prefix of a longer word"),
+    ("the x{USER} file", 0, "username as suffix of a longer word"),
+    ("see ~/.claude/settings.json", 0, "unrelated claude config path"),
 ]
 
 
@@ -103,6 +112,8 @@ def main():
     repo = str(HERE.parent)
     fails = 0
     folders = {d: d for d in guard.PERSONAL_DIRS}
+    folders["USER"] = Path.home().name
+    folders["USER_UPPER"] = Path.home().name.upper()
     for template, want, why in CASES:
         line = template.format_map(folders)
         found = guard.scan(repo, {"f.md": [(1, line)]}, [], print)

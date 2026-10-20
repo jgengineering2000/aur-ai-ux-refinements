@@ -54,6 +54,9 @@ PERSONAL_DIRS = ("Pictures", "Documents", "Downloads", "Desktop", "Videos",
 PII = [
     ("absolute home path", re.compile(rf"{re.escape(HOME)}/")),
     ("home path (~ form)", re.compile(rf"/home/{re.escape(USER)}\b")),
+    # a path encoder (dashes, %2F, underscores) carries the username outside every slash-form pattern
+    ("username (any encoding)",
+     re.compile(rf"(?<![A-Za-z0-9]){re.escape(USER)}(?![A-Za-z0-9])", re.I)),
     # Extension ids (foo@ubuntu.com, bar@gnome.org) share the email shape and
     # are not addresses; excluding the known suffixes beats a cleverer regex.
     # An scp-style git remote (git@host:org/repo.git) has the same shape too,
