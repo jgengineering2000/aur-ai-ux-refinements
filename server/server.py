@@ -3411,12 +3411,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 pass
 
         docs.sort(key=lambda x: x["datetime_ts"], reverse=True)
-        data = json.dumps(docs).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        self.wfile.write(data)
+        self._json(docs)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -3454,6 +3449,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
+        buf = getattr(self, "_headers_buffer", [])
+        has_framing = any(
+            h.lower().startswith((b"content-length:", b"transfer-encoding:"))
+            for h in buf
+        )
+        if not has_framing:
+            self.send_header("Connection", "close")
+            self.close_connection = True
         super().end_headers()
 
     def _cors(self):
@@ -3462,7 +3465,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def _get_meta(self):
-        data = json.dumps({
+        self._json({
             "project":  PROJECT_NAME.upper(),
             "subtitle": f"{ROOT.parent.name}/{ROOT.name}",
             # Project-pinned documents, surfaced as header badges. A project
@@ -3470,12 +3473,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # hard-coding MTI's into the shared page is what made this file a
             # fork in the first place.
             "links":    CONFIG["header_links"],
-        }).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        self.wfile.write(data)
+        })
 
     def _get_spec_list(self):
         import re
@@ -3522,12 +3520,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
-        data = json.dumps(specs).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        self.wfile.write(data)
+        self._json(specs)
 
     def _serve_spec(self, filename):
         # No path traversal: reject any separator/parent ref before joining.
@@ -3617,12 +3610,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
-        data = json.dumps(items).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        self.wfile.write(data)
+        self._json(items)
 
     def _serve_ai_context(self, relpath):
         # No traversal: reject separators-as-parent-refs and resolve must stay
@@ -3801,11 +3789,7 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
         path = ANNOTATIONS_DIR / f"{docname}.json"
         with _doc_lock:
             data = path.read_bytes() if path.exists() else b"{}"
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        self.wfile.write(data)
+        self._json(data)
 
     def _post_annotations(self, docname):
         length = int(self.headers.get("Content-Length", 0))
