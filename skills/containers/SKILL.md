@@ -29,7 +29,50 @@ description: Read BEFORE designing or changing any reader, parser, decoder, dict
 > assed by looking at it as if the end point data exists without context when we are literally working with a nested
 > hierarchy.
 
-## The model
+And the same day, on what the table is:
+
+> The data type u16 can contain a time or a counter or the number of days since an epoch. Same with UTF-8 or
+> ASCII. The point being that the table per se is a dictionary of field types, and is the fastest and cleanest
+> model. Your algorithm processes recursively, but JSON is the lazy way to commingle the data, dictionary, and
+> relationship hierarchy instead of making your conceptual algorithm the driver that leverages the field
+> dictionary/spec to express the model (which is in essence mathematical).
+
+## The math, in its final form
+
+```
+Σ  states: name -> value (byte order, encoding, base), set by fields, never stored in rows
+R  representations  ρ : bytes × Σ -> V     u8 u16 u32 s32 rational f32 ascii utf8 utf16 bytes (width is ρ's)
+I  interpretations  ι : V -> M             count, time of day, date-time, days since epoch, enum E, version,
+                                           ratio, and state setters (ι maps "II" to little-endian into Σ)
+C  container types, each with one framing  f_c : bytes × Σ -> [(k, s_k)]
+
+D : C × K -> (R ∪ C) × I × Name            THE dictionary: one flat row per (container type, key)
+
+read(c, s, σ):
+    for (k, s_k) in f_c(s, σ):
+        (τ, ι, name) = D(c, k)                       a miss: (bytes, raw, unknown), still emitted
+        if τ ∈ C:  read(τ, s_k, σ)                    the hierarchy exists only here
+        else:      m = ι(τ(s_k, σ)); emit(path·k, name, m)
+                   if ι sets state: σ = σ ⊕ m        scoped to later siblings and their descendants
+```
+
+- **Representation and interpretation are orthogonal.** |R| + |I| functions give |R| × |I| field types: one u16
+  is a counter, a time or a day count; one time is ASCII, three rationals or a u32. Neither axis is a row column
+  repeated per field; each is a named function.
+- **The table is flat at every depth.** Nesting is the fixed point of `read`, never a nested data structure.
+  JSON (or any nested document) that stores the hierarchy stores what the algorithm computes, and commingles
+  data, dictionary and relationship: the defect, not a format preference.
+- **Three tables, nothing else:** fields D (container type, key, representation, interpretation, name,
+  description), containers (container type, framing), enumerations (enumeration, value, meaning). Code: the
+  framings, the representations and the interpretations, each a map name -> function, plus `read`.
+- **Normal form by construction:** every column of D depends on (c, k), the whole key and nothing but the key.
+  Width belongs to ρ, byte order to σ, framing to c; none is a column of D.
+- **Pointers stay in the fold:** a pointer is a representation (an offset) with the interpretation "locate
+  container c′", which calls `read(c′, span at base + v, σ)`.
+- **Self-description is a constraint:** where the file carries a child's type (a TIFF entry's type code), the
+  file picks ρ and D's ρ checks it.
+
+## The model, in prose
 
 **Node.** Every thing read is a node `n = (τ, s, σ)`: a type `τ`, a span `s` of the parent's bytes, and the state `σ`
 in force where it sits. There are two kinds of type:
@@ -114,11 +157,9 @@ The model is standard; naming the theory lets a design be checked against it rat
 - **One fact, one place: the level whose spec defines it.** A container type's own properties (its framing, which
   child sets its byte order, where its first directory starts) belong to that type's definition, never to the parent
   row that points at it.
-- **One relation per entity kind.** Types (`type, kind, generalises, spec, description`); containment
-  (`container_type, key, [discriminator], child_type, name, description`); state sources
-  (`container_type, child key, state name`); framing (`container_type, framing kind`); data representation
-  (`data_type, width, order source, sign, encoding`). A property that applies only to a subtype lives in that
-  subtype's relation.
+- **The dictionary is D and its two side tables** (fields, containers, enumerations; see the math). State
+  sources are not a table: a field that sets state does so by its interpretation. A property that applies only
+  to a subtype lives with that subtype (framing with container types), never as a nullable column of D.
 - **A blank cell is the signature of the defect.** It means the row holds two kinds of entity, or the column is a
   property of something other than the row. Either split the relation or move the column to the entity it describes.
 - **A deliberate denormalisation is a cache:** named as one, derived from the normal form by a stated rule, and
@@ -151,4 +192,7 @@ byte_order` as columns on JPEG marker rows, blank on 16 of 18. Chain: the column
 it reached APP1 (an access-pattern decomposition, ai_common P3), so the TIFF type's own properties were written onto
 the parent's row, and the Exif format, a type contained in an APP1, was treated as an attribute of the segment. The
 same defect sat in the Exif field table: `points_to` (blank on most rows) was a child-type reference flattened into a
-column, and `length, encoding, shown_as` repeated per row were unnamed data types.
+column, and `length, encoding, shown_as` repeated per row were unnamed data types. The supervisor then proposed
+building on the JSON tables as "closer to normal form"; the owner corrected it: JSON commingles data, dictionary
+and hierarchy, the hierarchy is the algorithm's, and the table is a flat dictionary of field types whose type is
+representation × interpretation.
