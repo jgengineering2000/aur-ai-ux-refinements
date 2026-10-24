@@ -37,24 +37,61 @@ And the same day, on what the table is:
 > relationship hierarchy instead of making your conceptual algorithm the driver that leverages the field
 > dictionary/spec to express the model (which is in essence mathematical).
 
+The same day, on state, special cases and damage, refuting a design that had called three cases impure:
+
+> It's hierarchy state. An attribute of the containing field id. I assume you have flags at the field level and such
+> state can apply to the current field, its direct children or its entire family tree. In true normalized DB form you
+> could have a dictionary table of manufacturers which could then include state plus a default state for anyone who
+> didn't require special attributes. The math is still pure - just extended.
+
+> A legitimate special case, but once again it's algorithmic and therefore still pure math. There are two types of
+> damage (as I see it). Corruption of bytes within the file (length remains the same), and extraneous introduction or
+> removal of bytes. The two cases both require finding a recognized sequence as a starting point to search forward
+> and backward for structure that is consistent with that milestone and reconstructing whatever can be
+> reconstructed. You can put this in the spec, comments, and math, but we don't need to implement it yet.
+
+So nothing sits outside the math: a case that looks special is a state, a relation row or an algorithm not yet
+written down. The owner's two tests for any design, the same day: the math is pure, with no compromise; and
+everything is covered, every capability, mode, context and hierarchical state.
+
 ## The math, in its final form
 
 ```
-Σ  states: name -> value (byte order, encoding, base), set by fields, never stored in rows
-R  representations  ρ : bytes × Σ -> V     u8 u16 u32 s32 rational f32 ascii utf8 utf16 bytes (width is ρ's)
-I  interpretations  ι : V -> M             count, time of day, date-time, days since epoch, enum E, version,
-                                           ratio, and state setters (ι maps "II" to little-endian into Σ)
-C  container types, each with one framing  f_c : bytes × Σ -> [(k, s_k)]
+Σ  states: name -> value (byte order, encoding, base, a count), set by rows, never by code: a field's
+   interpretation, a container's zero-width row (a fact its spec fixes, such as JPEG's byte order), a
+   parameter of the containing row, or a fact the parent's framing reads about the child
+S  scope: name -> {field, level, tree}, one per state name. A state is an attribute of the node that holds
+   it, and reaches that node only (field), its direct children (level) or its whole subtree (tree)
+R  representations  ρ : span × Σ -> V     u8 u16 u32 s32 rational f32 ascii utf8 utf16 bytes (width is ρ's)
+I  interpretations  ι : V × Σ -> M        count, time of day, date, days since epoch, enum E, version,
+                                          contain c, locate c, and state setters (ι maps "II" to little-endian)
+C  container types, each with one framing  f_c : span × Σ -> [(k, s_k, Φ_k)]
+                                          Φ_k: the field-scope state the file states about child k
+                                          (a TIFF entry's type code and count)
 
-D : C × K -> (R ∪ C) × I × Name            THE dictionary: one flat row per (container type, key)
+D : C × K -> R × I × Name                 THE dictionary: one flat row per (container type, key)
 
 read(c, s, σ):
-    for (k, s_k) in f_c(s, σ):
-        (τ, ι, name) = D(c, k)                       a miss: (bytes, raw, unknown), still emitted
-        if τ ∈ C:  read(τ, s_k, σ)                    the hierarchy exists only here
-        else:      m = ι(τ(s_k, σ)); emit(path·k, name, m)
-                   if ι sets state: σ = σ ⊕ m        scoped to later siblings and their descendants
+    σ_c = σ ⊕ S_c                         S_c: the state c holds, each setter evaluated before its readers
+    σ↓  = σ|tree ⊕ S_c|{level, tree}      c's field state and its parent's level state stop at c
+    for (k, s_k, Φ_k) in f_c(s, σ_c):
+        σ_k = σ↓ ⊕ Φ_k
+        (ρ, ι, name) = D(c, k)            a miss: (the file's own form, value, unknown), still emitted
+        ρ' = ρ ∩ admits(σ_k.type)         the file's own type narrows D's (self-description)
+        m  = ι(ρ'(s_k, σ_k), σ_k)         contain and locate call read(c', s', σ_k): the hierarchy exists only here
+        emit(path·k, name, m)
 ```
+
+- **State is ordered by dependency and scope, never by file order.** A setter is evaluated before the rows that
+  read it, and its value reaches exactly its scope; a nearer setter shadows an inherited one. Each scope is forced
+  by a case: a maker note's own UNDEFINED type and count must not reach its entries (field); one directory's
+  thumbnail offset must not pair with a nested directory's length (level); byte order governs every depth (tree).
+- **A state the file leaves unstated is an intersection.** D admits a set (`literal:little|big`); a candidate
+  survives when the rows it governs are well formed under it (the framing's own checks, each field's domain from
+  its spec). One survivor is the value; several take the most specific identification row's default, else the
+  inherited value; none is a fault on the node.
+- **Special cases are relation rows.** A maker's formats, and state that differs by model, are rows of the
+  identification relation (header, then maker, then model), whose empty key is the default row.
 
 - **Representation and interpretation are orthogonal.** |R| + |I| functions give |R| × |I| field types: one u16
   is a counter, a time or a day count; one time is ASCII, three rationals or a u32. Neither axis is a row column
@@ -62,15 +99,16 @@ read(c, s, σ):
 - **The table is flat at every depth.** Nesting is the fixed point of `read`, never a nested data structure.
   JSON (or any nested document) that stores the hierarchy stores what the algorithm computes, and commingles
   data, dictionary and relationship: the defect, not a format preference.
-- **Three tables, nothing else:** fields D (container type, key, representation, interpretation, name,
-  description), containers (container type, framing), enumerations (enumeration, value, meaning). Code: the
-  framings, the representations and the interpretations, each a map name -> function, plus `read`.
+- **Four tables, nothing else:** fields D (container type, key, representation, interpretation, name,
+  description), containers (container type, framing), enumerations (enumeration, value, meaning), states (state,
+  scope, spec). Code: the framings, the representations and the interpretations, each a map name -> function,
+  plus `read`.
 - **Normal form by construction:** every column of D depends on (c, k), the whole key and nothing but the key.
   Width belongs to ρ, byte order to σ, framing to c; none is a column of D.
 - **Pointers stay in the fold:** a pointer is a representation (an offset) with the interpretation "locate
   container c′", which calls `read(c′, span at base + v, σ)`.
-- **Self-description is a constraint:** where the file carries a child's type (a TIFF entry's type code), the
-  file picks ρ and D's ρ checks it.
+- **Self-description is an intersection:** where the file carries a child's type (a TIFF entry's type code), D's
+  ρ must fall inside the representations that type admits; a disagreement is noted and the file's own form read.
 
 ## The model, in prose
 
@@ -91,12 +129,14 @@ in force where it sits. There are two kinds of type:
 child_type(τ, k [, discriminator]) → τ_k
 ```
 
-**State flows down.** Some children of a container are fields whose value the spec says governs everything beneath
-(byte order, text encoding, offset base, version). The state a child sees is its parent's state extended by those
-fields:
+**State flows down, as far as its scope.** Some children of a container are fields whose value the spec says
+governs others (byte order, text encoding, offset base, a count, a version). The state is an attribute of the
+container that holds it, and its scope says how far it reaches: that node only, its direct children, or its whole
+subtree. The state a child sees is the tree-scope state its parent inherited, extended by the state its parent
+holds at level or tree scope, and by the facts its parent's framing reads about it:
 
 ```
-σ_k = σ ⊕ { name ↦ value(child j) : (τ, j, name) ∈ state_from }
+σ_k = σ|tree ⊕ S_c|{level, tree} ⊕ Φ_k
 ```
 
 **One recursive function reads everything:**
@@ -129,9 +169,10 @@ entry's type code and count, an XMP element's name). That is a discriminator the
 expected type is a constraint on it. A disagreement is reported on that node and the file's own description is
 read, never silently overridden.
 
-**State must precede what it governs.** A field that sets state is read before the children it governs (or its
-container's framing locates it independently of them). A design where a value's meaning depends on a field read
-later, beside it or below it, has an unmodelled container or a misplaced state source.
+**State must precede what it governs, by dependency, not by file order.** A field that sets state is evaluated
+before the rows it governs, wherever the file places it: a directory sorted by tag still pairs an offset with a
+length that comes before it. A design where a value's meaning depends on a field below it, or on a setter whose
+scope does not reach it, has an unmodelled container or a misplaced state source.
 
 ## The computer science it maps to
 
@@ -157,8 +198,9 @@ The model is standard; naming the theory lets a design be checked against it rat
 - **One fact, one place: the level whose spec defines it.** A container type's own properties (its framing, which
   child sets its byte order, where its first directory starts) belong to that type's definition, never to the parent
   row that points at it.
-- **The dictionary is D and its two side tables** (fields, containers, enumerations; see the math). State
-  sources are not a table: a field that sets state does so by its interpretation. A property that applies only
+- **The dictionary is D and its three side tables** (containers, enumerations, states; see the math). State
+  sources are not a table: a field that sets state does so by its interpretation. The states table holds what
+  belongs to a state itself, its scope and the spec that defines it, never who sets it. A property that applies only
   to a subtype lives with that subtype (framing with container types), never as a nullable column of D.
 - **A blank cell is the signature of the defect.** It means the row holds two kinds of entity, or the column is a
   property of something other than the row. Either split the relation or move the column to the entity it describes.
@@ -177,7 +219,8 @@ The model is standard; naming the theory lets a design be checked against it rat
 5. **Repetition test.** The same cluster of cells repeated across rows (`1 × SHORT, enum:orientation`) is a type
    that was never named. Name it once; rows reference it.
 6. **Depth test.** Can every value be explained as `read(τ, s, σ)` all the way down to a primitive, with `σ` coming
-   only from ancestors? A value that needs knowledge from beside or below its path has an unmodelled container.
+   only from the node's own field facts, its parent's level state and its ancestors' tree state? A value that needs
+   knowledge from below its path, or from a setter whose scope does not reach it, has an unmodelled container.
 
 ## Use with the `thinking` skill
 
@@ -196,3 +239,10 @@ column, and `length, encoding, shown_as` repeated per row were unnamed data type
 building on the JSON tables as "closer to normal form"; the owner corrected it: JSON commingles data, dictionary
 and hierarchy, the hierarchy is the algorithm's, and the table is a flat dictionary of field types whose type is
 representation × interpretation.
+
+2026-10-24, the same prototype, later. The design said three cases could not be made pure: a byte order nobody
+states, resynchronising after damage, and one maker note whose offsets are off. Chain: each was treated as an
+exception because the math had no place for it, and the math had no place for it because state had no scope and
+special cases had no relation. The owner refuted all three: state is an attribute of its node with a scope
+(field, level, tree), a maker's special attributes are rows of a relation with a default row, and damage recovery
+is an algorithm, so it is math. A case that looks outside the math is a gap in the math.
