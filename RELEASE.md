@@ -32,6 +32,11 @@ Every release attaches three artefacts to the GitHub release:
 2. Version updated wherever it appears (release notes, README if pinned).
 3. `install.py` and `install-gui.py` tested manually — run through at
    least one A-only and one B-only install on a clean target directory.
+   The installer must work **from a terminal, from a GUI with no terminal,
+   and interactively in either** (owner 2026-08-28): at least once per
+   release, launch the frozen `aur-installer` by double-click from a file
+   manager with no terminal open and confirm elevation arrives as a GUI
+   askpass dialog, not a hung `sudo`.
 4. No uncommitted changes: `git status` is clean.
 5. Patch patterns verified against the current Claude Code extension version.
 

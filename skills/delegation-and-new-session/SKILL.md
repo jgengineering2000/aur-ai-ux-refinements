@@ -157,6 +157,26 @@ exists), the boundaries (what is out of scope, what must not be touched),
 and the escalation trigger. The supervisor verifies against the real
 artifact (P9), never against the delegate's report of it.
 
+**Before briefing a fix, search the history for prior attempts** —
+`git log --grep=<topic>` and `git log -S<symbol>` (owner-accepted
+2026-10-06): a brief once had a delegate build a harness relaunch the owner
+had already ruled out, and the ruling sat in a commit nobody searched.
+
+**Every run brief states its cost and a hard stop** (owner 2026-10-15, after
+425 CPU-minutes went unbudgeted): expected **CPU-hours** (threads × wall,
+never wall alone), the stop that ends a pathological run, and a report of
+**mean / p90 / max per stage, never the median alone** — a median hid one
+626 s picture that cost 96% of a 7.2-hour run. A pathological cost is a
+defect to fix before scaling (P7), never a budget to fund with threads.
+
+**Pictures cost transcript.** The supervisor opens only the sheet a decision
+rests on (JPEG q85, at most 2000 px a side); viewing and comparing go to a
+worker that returns a guided report. A viewer's call is a lead: the property
+it judged is named in the rubric and drawn on the sheet so it can be checked.
+
+**A worker kills only the processes it started, by pid** — never
+`pkill -f`, whose pattern matches other sessions' work.
+
 **Every brief declares its expectation on the health model, and a brief
 without one is refused** (owner 2026-09-18, P11's corollary). A delegate is
 a spawn like any other, so before its first long step the brief states what
