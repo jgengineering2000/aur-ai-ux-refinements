@@ -14,6 +14,85 @@
 # router-backup setup). If that file is missing or unreadable, or nothing on
 # the current network resolves, the push is skipped — fail closed.
 
+# Internal mode: `--worker` is the detached push body, started by this script
+# itself after the gateway check. Any other argument is refused before any
+# side effect.
+MODE=gate
+case "${1:-}" in
+    "") ;;
+    --worker) MODE=worker ;;
+    *) echo "usage: router-backup-push.sh   (no arguments; --worker is internal)" >&2; exit 2 ;;
+esac
+
+worker() {
+    LOG="$HOME/.claude/git-templates/router-push.log"
+    mkdir -p "$(dirname "$LOG")"
+    REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
+    say() { printf "%s [%s] %s\n" "$(date -Iseconds)" "$REPO" "$*" >> "$LOG"; }
+    fail() {  # fail <message>: log line plus the critical popup
+        say "push FAILED: $*"
+        command -v notify-send >/dev/null 2>&1 && notify-send -u critical \
+            "Router backup push FAILED — $REPO" "$(head -c 200 <<<"$*")  See $LOG"
+    }
+
+    BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
+    if [ -z "$BRANCH" ]; then
+        say "skipped: detached HEAD (rebase or commit mirror); the branch is pushed at its next commit on a branch"
+        return 0
+    fi
+
+    # One push per repo at a time: two racing pushes of one repo produced 22
+    # "cannot lock ref" failures. The second waits for the first.
+    LOCKFILE="$(git rev-parse --git-common-dir)/router-push.lock"
+    exec 9>"$LOCKFILE" || { fail "[$BRANCH] cannot open lock file $LOCKFILE"; return 1; }
+    if ! flock -n 9; then
+        say "[$BRANCH] another push of this repo is running; waiting for its lock"
+        flock 9
+    fi
+
+    OLD=$(git ls-remote router "refs/heads/$BRANCH" 2>/dev/null | awk '{print $1; exit}')
+    NEW=$(git rev-parse HEAD)
+    if OUT=$(git push router "HEAD:refs/heads/$BRANCH" --no-verify 2>&1); then
+        say "[$BRANCH] pushed: route=plain push; router tip ${OLD:-none} -> $NEW"
+        return 0
+    fi
+
+    if ! grep -qE "rejected|non-fast-forward|fetch first" <<<"$OUT"; then
+        fail "[$BRANCH] route=plain push failed, not a rejection: $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
+    if [ -z "$OLD" ]; then
+        fail "[$BRANCH] rejected but the router tip could not be read: $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
+
+    # Prove safe or abort (AUR P8): the router tip must be in this branch's own
+    # reflog, i.e. this repo once had it as the tip and the router holds this
+    # repo's superseded history.
+    N=$(git reflog show --format=%H "refs/heads/$BRANCH" 2>/dev/null | grep -n "^$OLD$" | head -1 | cut -d: -f1)
+    if [ -z "$N" ]; then
+        fail "[$BRANCH] rejected non-fast-forward; router tip $OLD is not in this repo's reflog; resolve with router-safe-resync.sh: $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
+    STAMP=$(date +%Y%m%d-%H%M%S)
+    BACKUP_REF="refs/backup/${REPO}-${BRANCH}-${STAMP}"
+    if ! OUT=$(git push router "$OLD:$BACKUP_REF" --no-verify 2>&1); then
+        fail "[$BRANCH] resync aborted: cannot keep old tip $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
+    if ! OUT=$(git push router "HEAD:refs/heads/$BRANCH" --force-with-lease="refs/heads/$BRANCH:$OLD" --no-verify 2>&1); then
+        fail "[$BRANCH] resync lease push failed after backing up $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
+    say "[$BRANCH] resynced: route=reflog proof (old tip $OLD found in the local reflog at entry $((N-1))); kept as $BACKUP_REF; router tip $OLD -> $NEW"
+    return 0
+}
+
+if [ "$MODE" = worker ]; then
+    worker
+    exit $?
+fi
+
 LOCAL_CONF="$HOME/develop/git_access.local"
 [ -r "$LOCAL_CONF" ] || exit 0
 
@@ -36,21 +115,9 @@ GW_MAC=$(arp -n "$GW_IP" 2>/dev/null | awk -v ip="$GW_IP" '$1 == ip {print $3}')
 
 if [ "${GW_MAC,,}" = "${TARGET_MAC,,}" ]; then
     # setsid fully detaches into a new session so the push survives the
-    # invoking shell/hook exiting before it finishes (plain `&` does not —
-    # a killed process group takes the backgrounded push with it).
-    # Success stays silent; failure (e.g. the router branch diverged from a
-    # local rebase/amend) is both logged AND surfaced with a desktop
-    # notification — a "backup" that fails invisibly isn't a backup. This is
-    # what caught the 2026-07-18 divergence: silent failure let two repos drift
-    # unbacked-up for a week before anyone noticed.
-    setsid bash -c '
-        LOG="$HOME/.claude/git-templates/router-push.log"
-        REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
-        if ! OUT=$(git push router HEAD --no-verify 2>&1); then
-            printf "%s [%s] push FAILED: %s\n" "$(date -Iseconds)" "$REPO" "$(tr "\n" " " <<<"$OUT")" >> "$LOG"
-            command -v notify-send >/dev/null 2>&1 && notify-send -u critical \
-                "Router backup push FAILED — $REPO" \
-                "$(head -c 200 <<<"$OUT")  See $LOG"
-        fi
-    ' < /dev/null > /dev/null 2>&1 &
+    # invoking shell/hook exiting before it finishes (plain `&` does not).
+    # Every outcome is one log line (success included); a lasting failure is
+    # also a desktop notification — a "backup" that fails invisibly isn't a
+    # backup (the 2026-07-18 divergence).
+    setsid "$0" --worker < /dev/null > /dev/null 2>&1 &
 fi
