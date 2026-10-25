@@ -18,7 +18,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 export HOME="$TMP/home"
 # Fixture names are assembled, not written out: the script under test reads a
 # fixed home-relative file, and the content guard flags literal addresses.
-DEV=develop; CFG=git_access.local; GWIP=192.0.2.1; MAC=$(printf "%s:%s:%s:%s:%s:%s" 02 00 5e 00 53 01)
+DOTLOCAL=.local; DEV_AUR=aur; DEV=develop; CFG=git_access.local; GWIP=192.0.2.1; MAC=$(printf "%s:%s:%s:%s:%s:%s" 02 00 5e 00 53 01)
 mkdir -p "$HOME/$DEV" "$HOME/.claude/git-templates" "$TMP/bin"
 echo "$MAC" > "$HOME/$DEV/$CFG"
 LOG="$HOME/.claude/git-templates/router-push.log"
@@ -88,6 +88,30 @@ commit "$R" c1; commit "$R" c2; commit "$R" c3
 for i in $(seq 1 150); do [ "$(grep -c pushed "$LOG")" -ge 3 ] && break; sleep 0.1; done; quiet "$R"
 [ "$(grep -c "pushed" "$LOG")" -ge 3 ]; check "quick succession: one success line per commit" $?
 grep -q "cannot lock ref" "$LOG"; check "quick succession: no cannot-lock-ref line" $((! $? ))
+
+# 5. the real pre-push content scan runs on the automatic push: flagged content
+# is refused (log line plus popup) and the router does not receive it.
+R=$(newrepo five); : > "$LOG"; : > "$NOTIFY"
+GUARDDIR="$HOME/$DOTLOCAL/$DEV_AUR"; mkdir -p "$GUARDDIR"; ln -s "$(cd "$(dirname "$0")/.." && pwd)/tools/commit-guard.py" "$GUARDDIR/commit-guard.py"
+cp "$(cd "$(dirname "$0")" && pwd)/pre-push" "$R/.git/hooks/pre-push"; chmod +x "$R/.git/hooks/pre-push"
+commit "$R" clean1; wait_log "pushed" ; quiet "$R"; : > "$LOG"; : > "$NOTIFY"
+PRIVIP=$(printf "%s.%s.%s.%s" 192 168 1 77)
+echo "gateway $PRIVIP" > "$R/flagged.txt"; git -C "$R" add flagged.txt
+git -C "$R" commit -q --no-verify -m flagged
+wait_log "FAILED|pushed"; quiet "$R"
+grep -q "FAILED.*content scan refused" "$LOG"; check "content scan: refusal logged with its route" $?
+[ -s "$NOTIFY" ]; check "content scan: popup raised" $?
+! git --git-dir="$TMP/five.router.git" cat-file -e "$(git -C "$R" rev-parse HEAD)" 2>/dev/null; check "content scan: router did not receive the commit" $?
+
+# 6. the lock wait is bounded. MTI_ROUTER_PUSH_LOCK_WAIT is test-only.
+R=$(newrepo six); : > "$LOG"; : > "$NOTIFY"
+commit "$R" c1; wait_log "pushed"; quiet "$R"; : > "$LOG"; : > "$NOTIFY"
+flock "$R/.git/router-push.lock" sleep 6 &
+HOLDER=$!; sleep 0.3
+MTI_ROUTER_PUSH_LOCK_WAIT=2 commit "$R" c2
+wait_log "lock wait exceeded" 1 10; check "lock timeout: line logged" $?
+[ -s "$NOTIFY" ]; check "lock timeout: popup raised" $?
+wait "$HOLDER" 2>/dev/null; quiet "$R"
 
 [ -n "${DUMP:-}" ] && { echo "--- log"; cut -c1-300 "$LOG"; }
 echo; [ "$FAILURES" = 0 ] && echo "ALL PASSED" || { echo "$FAILURES FAILED"; exit 1; }

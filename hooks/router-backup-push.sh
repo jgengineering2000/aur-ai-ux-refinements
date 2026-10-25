@@ -35,6 +35,10 @@ worker() {
             "Router backup push FAILED — $REPO" "$(head -c 200 <<<"$*")  See $LOG"
     }
 
+    # The pre-push hook is the content scan (PII, personal paths); it runs for
+    # the router exactly as for a public remote, so these pushes never skip it.
+    scan_refused() { grep -q "\[pre-push\]" <<<"$1"; }
+
     BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null)
     if [ -z "$BRANCH" ]; then
         say "skipped: detached HEAD (rebase or commit mirror); the branch is pushed at its next commit on a branch"
@@ -44,19 +48,30 @@ worker() {
     # One push per repo at a time: two racing pushes of one repo produced 22
     # "cannot lock ref" failures. The second waits for the first.
     LOCKFILE="$(git rev-parse --git-common-dir)/router-push.lock"
-    exec 9>"$LOCKFILE" || { fail "[$BRANCH] cannot open lock file $LOCKFILE"; return 1; }
+    # MTI_ROUTER_PUSH_LOCK_WAIT: seconds to wait for the lock, default 300. Test-only override.
+    LOCK_WAIT="${MTI_ROUTER_PUSH_LOCK_WAIT:-300}"
+    exec 9>>"$LOCKFILE" || { fail "[$BRANCH] cannot open lock file $LOCKFILE"; return 1; }
     if ! flock -n 9; then
         say "[$BRANCH] another push of this repo is running; waiting for its lock"
-        flock 9
+        if ! flock -w "$LOCK_WAIT" 9; then
+            HOLDER=$(cat "$LOCKFILE" 2>/dev/null | head -c 20)
+            fail "[$BRANCH] lock wait exceeded ${LOCK_WAIT} s; a push of this repo is still holding it (holder pid ${HOLDER:-unreadable})"
+            return 1
+        fi
     fi
+    printf "%s\n" "$$" > "$LOCKFILE"   # holder's pid, for a waiter that times out
 
     OLD=$(git ls-remote router "refs/heads/$BRANCH" 2>/dev/null | awk '{print $1; exit}')
     NEW=$(git rev-parse HEAD)
-    if OUT=$(git push router "HEAD:refs/heads/$BRANCH" --no-verify 2>&1); then
+    if OUT=$(git push router "HEAD:refs/heads/$BRANCH" 2>&1); then
         say "[$BRANCH] pushed: route=plain push; router tip ${OLD:-none} -> $NEW"
         return 0
     fi
 
+    if scan_refused "$OUT"; then
+        fail "[$BRANCH] route=content scan refused (pre-push): $(tr "\n" " " <<<"$OUT")"
+        return 1
+    fi
     if ! grep -qE "rejected|non-fast-forward|fetch first" <<<"$OUT"; then
         fail "[$BRANCH] route=plain push failed, not a rejection: $(tr "\n" " " <<<"$OUT")"
         return 1
@@ -76,11 +91,13 @@ worker() {
     fi
     STAMP=$(date +%Y%m%d-%H%M%S)
     BACKUP_REF="refs/backup/${REPO}-${BRANCH}-${STAMP}"
-    if ! OUT=$(git push router "$OLD:$BACKUP_REF" --no-verify 2>&1); then
+    if ! OUT=$(git push router "$OLD:$BACKUP_REF" 2>&1); then
+        scan_refused "$OUT" && fail "[$BRANCH] route=content scan refused (pre-push) on the backup ref: $(tr "\n" " " <<<"$OUT")" && return 1
         fail "[$BRANCH] resync aborted: cannot keep old tip $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
         return 1
     fi
-    if ! OUT=$(git push router "HEAD:refs/heads/$BRANCH" --force-with-lease="refs/heads/$BRANCH:$OLD" --no-verify 2>&1); then
+    if ! OUT=$(git push router "HEAD:refs/heads/$BRANCH" --force-with-lease="refs/heads/$BRANCH:$OLD" 2>&1); then
+        scan_refused "$OUT" && fail "[$BRANCH] route=content scan refused (pre-push) on the resync push: $(tr "\n" " " <<<"$OUT")" && return 1
         fail "[$BRANCH] resync lease push failed after backing up $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
         return 1
     fi
