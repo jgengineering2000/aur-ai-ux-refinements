@@ -103,15 +103,34 @@ grep -q "FAILED.*content scan refused" "$LOG"; check "content scan: refusal logg
 [ -s "$NOTIFY" ]; check "content scan: popup raised" $?
 ! git --git-dir="$TMP/five.router.git" cat-file -e "$(git -C "$R" rev-parse HEAD)" 2>/dev/null; check "content scan: router did not receive the commit" $?
 
-# 6. the lock wait is bounded. MTI_ROUTER_PUSH_LOCK_WAIT is test-only.
+# 6. the lock wait is bounded. AUR_ROUTER_PUSH_LOCK_WAIT is test-only.
 R=$(newrepo six); : > "$LOG"; : > "$NOTIFY"
 commit "$R" c1; wait_log "pushed"; quiet "$R"; : > "$LOG"; : > "$NOTIFY"
 flock "$R/.git/router-push.lock" sleep 6 &
 HOLDER=$!; sleep 0.3
-MTI_ROUTER_PUSH_LOCK_WAIT=2 commit "$R" c2
+AUR_ROUTER_PUSH_LOCK_WAIT=2 commit "$R" c2
 wait_log "lock wait exceeded" 1 10; check "lock timeout: line logged" $?
 [ -s "$NOTIFY" ]; check "lock timeout: popup raised" $?
 wait "$HOLDER" 2>/dev/null; quiet "$R"
+
+# 7. rebase-resync with the real pre-push installed: the scan refuses the resync
+# push (the rewritten tip holds flagged content). One refusal line naming the
+# resync push, no second failure line, and the router branch does not move.
+R=$(newrepo seven); : > "$LOG"; : > "$NOTIFY"
+cp "$(cd "$(dirname "$0")" && pwd)/pre-push" "$R/.git/hooks/pre-push"; chmod +x "$R/.git/hooks/pre-push"
+commit "$R" c1; commit "$R" c2; wait_log "pushed" 2; quiet "$R"
+OLDTIP=$(git -C "$R" rev-parse HEAD)
+git -C "$R" checkout -q --detach main~1
+echo "gateway $PRIVIP" > "$R/flagged.txt"; git -C "$R" add flagged.txt
+git -C "$R" commit -q --no-verify -m flagged-rewrite
+git -C "$R" update-ref -m "test rewrite" refs/heads/main "$(git -C "$R" rev-parse HEAD)"
+git -C "$R" checkout -q main
+wait_log "skipped" 1; quiet "$R"; : > "$LOG"; : > "$NOTIFY"
+commit "$R" c3
+wait_log "FAILED|resynced"; quiet "$R"
+[ "$(grep -c "FAILED" "$LOG")" = 1 ] && grep -q "FAILED.*content scan refused.*on the resync push" "$LOG"; check "resync scan refusal: one line naming the resync push" $?
+[ "$(git --git-dir="$TMP/seven.router.git" rev-parse refs/heads/main)" = "$OLDTIP" ]; check "resync scan refusal: router branch did not move" $?
+[ -s "$NOTIFY" ]; check "resync scan refusal: popup raised" $?
 
 [ -n "${DUMP:-}" ] && { echo "--- log"; cut -c1-300 "$LOG"; }
 echo; [ "$FAILURES" = 0 ] && echo "ALL PASSED" || { echo "$FAILURES FAILED"; exit 1; }

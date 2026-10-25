@@ -48,8 +48,8 @@ worker() {
     # One push per repo at a time: two racing pushes of one repo produced 22
     # "cannot lock ref" failures. The second waits for the first.
     LOCKFILE="$(git rev-parse --git-common-dir)/router-push.lock"
-    # MTI_ROUTER_PUSH_LOCK_WAIT: seconds to wait for the lock, default 300. Test-only override.
-    LOCK_WAIT="${MTI_ROUTER_PUSH_LOCK_WAIT:-300}"
+    # AUR_ROUTER_PUSH_LOCK_WAIT: seconds to wait for the lock, default 300. Test-only override.
+    LOCK_WAIT="${AUR_ROUTER_PUSH_LOCK_WAIT:-300}"
     exec 9>>"$LOCKFILE" || { fail "[$BRANCH] cannot open lock file $LOCKFILE"; return 1; }
     if ! flock -n 9; then
         say "[$BRANCH] another push of this repo is running; waiting for its lock"
@@ -92,13 +92,19 @@ worker() {
     STAMP=$(date +%Y%m%d-%H%M%S)
     BACKUP_REF="refs/backup/${REPO}-${BRANCH}-${STAMP}"
     if ! OUT=$(git push router "$OLD:$BACKUP_REF" 2>&1); then
-        scan_refused "$OUT" && fail "[$BRANCH] route=content scan refused (pre-push) on the backup ref: $(tr "\n" " " <<<"$OUT")" && return 1
-        fail "[$BRANCH] resync aborted: cannot keep old tip $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        if scan_refused "$OUT"; then
+            fail "[$BRANCH] route=content scan refused (pre-push) on the backup ref: $(tr "\n" " " <<<"$OUT")"
+        else
+            fail "[$BRANCH] resync aborted: cannot keep old tip $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        fi
         return 1
     fi
     if ! OUT=$(git push router "HEAD:refs/heads/$BRANCH" --force-with-lease="refs/heads/$BRANCH:$OLD" 2>&1); then
-        scan_refused "$OUT" && fail "[$BRANCH] route=content scan refused (pre-push) on the resync push: $(tr "\n" " " <<<"$OUT")" && return 1
-        fail "[$BRANCH] resync lease push failed after backing up $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        if scan_refused "$OUT"; then
+            fail "[$BRANCH] route=content scan refused (pre-push) on the resync push: $(tr "\n" " " <<<"$OUT")"
+        else
+            fail "[$BRANCH] resync lease push failed after backing up $OLD as $BACKUP_REF: $(tr "\n" " " <<<"$OUT")"
+        fi
         return 1
     fi
     say "[$BRANCH] resynced: route=reflog proof (old tip $OLD found in the local reflog at entry $((N-1))); kept as $BACKUP_REF; router tip $OLD -> $NEW"
