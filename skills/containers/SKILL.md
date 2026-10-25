@@ -92,6 +92,15 @@ read(c, s, σ):
   inherited value; none is a fault on the node.
 - **Special cases are relation rows.** A maker's formats, and state that differs by model, are rows of the
   identification relation (header, then maker, then model), whose empty key is the default row.
+- **Damage is a repair (φ, Ψ), chosen by the math.** Substituted bytes keep every position (φ is the identity,
+  and Ψ corrects the claims, pointers, lengths and counts, whose own bytes broke). Inserted or removed bytes move
+  every later position, so φ(x) = x + Σ δᵢ over the breakpoints pᵢ ≤ x. Anchors are what D recognises by itself (an
+  identified key, a framing's check passing). From each anchor read forward for consistency and backward for the
+  claim that should name it (δ = found − claimed). Choose the repair that accounts for the most bytes by nodes
+  passing their checks, then the fewest corrections; mark what was recovered, inserted or missing, so every byte is
+  still accounted for. A moved base is the same φ, scoped to one node's pointers.
+- **A check reports; it never repairs by itself.** A writer's convention (values packed after their directory)
+  is a lead whose δ is reported on the node, and a repair is applied only where consistency improves under it.
 
 - **Representation and interpretation are orthogonal.** |R| + |I| functions give |R| × |I| field types: one u16
   is a counter, a time or a day count; one time is ASCII, three rationals or a u32. Neither axis is a row column
