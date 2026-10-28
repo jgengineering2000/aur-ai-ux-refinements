@@ -62,13 +62,13 @@ everything is covered, every capability, mode, context and hierarchical state.
    parameter of the containing row, or a fact the parent's framing reads about the child
 R  representations  ρ : span × Σ -> V     u8 u16 u32 s32 rational f32 ascii utf8 utf16 bytes (width is ρ's)
 I  interpretations  ι : V × Σ -> M        count, time of day, date, days since epoch, enum E, version,
-                                          contain c, locate c, and state setters (ι maps "II" to little-endian)
+                                          ratio, contain c, locate c, and state setters (ι maps "II" to little-endian)
 C  container types, each with one framing  f_c : span × Σ -> [(k, s_k, Φ_k)]
                                           Φ_k: what the framing reads about child k (a TIFF
                                           entry's type code and count), bound for every child,
                                           "unstated" where the file states none
 
-D : C × K -> R × I × Name                 THE dictionary: one flat row per (container type, key)
+D : C × K -> R × I × Name                 THE field dictionary: one flat row per (container type, key)
 
 read(c, s, σ):
     σ_c = σ ⊕ S_c                         S_c: the state c holds, each setter evaluated before its readers
@@ -101,7 +101,7 @@ read(c, s, σ):
   claim that should name it (δ = found − claimed). Choose the repair that accounts for the most bytes by nodes
   passing their checks, then the fewest corrections; mark what was recovered, inserted or missing, so every byte is
   still accounted for. A moved base is the same φ, restricted to one node's pointers.
-- **A check reports; it never repairs by itself.** A writer's convention (values packed after their directory)
+- **A consistency check reports; it never repairs by itself.** A writer's convention (values packed after their directory)
   is a lead whose δ is reported on the node, and a repair is applied only where consistency improves under it.
 
 - **Representation and interpretation are orthogonal.** |R| + |I| functions give |R| × |I| field types: one u16
@@ -157,6 +157,9 @@ read(τ, s, σ) =
     [ read(child_type(τ, k), s_k, σ ⊕ δ_τ) for (k, s_k) in frame_τ(s, σ) ]   if τ is a container
 ```
 
+Here `σ ⊕ δ_τ` is the child's state `σ_k` from the rule above (`δ_τ = S_τ ⊕ Φ_k`). The `δ` of the damage repair
+in the math is a different symbol: a byte shift.
+
 A location is the path of keys from the root: `host / drive / partition / fs / dir / x.tar.gz / gzip / tar / dir /
 x.jpg / APP1 / Exif / IFD0 / 0x0110`. The same path form serves every depth.
 
@@ -179,7 +182,7 @@ entry's type code and count, an XMP element's name). That is a discriminator the
 expected type is a constraint on it. A disagreement is reported on that node and the file's own description is
 read, never silently overridden.
 
-**State must precede what it governs, by dependency, not by file order.** A field that sets state is evaluated
+**State must precede what it governs, by dependency, never by file order.** A field that sets state is evaluated
 before the rows it governs, wherever the file places it: a directory sorted by tag still pairs an offset with a
 length that comes before it. A design where a value's meaning depends on a field below it, or on knowledge from
 outside its nearest setters, has an unmodelled container or a misplaced state source.
@@ -208,7 +211,7 @@ The model is standard; naming the theory lets a design be checked against it rat
 - **One fact, one place: the level whose spec defines it.** A container type's own properties (its framing, which
   child sets its byte order, where its first directory starts) belong to that type's definition, never to the parent
   row that points at it.
-- **The dictionary is D and its two side tables** (containers, enumerations; see the math). State sources are
+- **The dictionary as a whole is D and its two side tables** (containers, enumerations; see the math). State sources are
   not a table: a field that sets state does so by its interpretation, and a state's reach is derived from D, so
   no table records it either. A property that applies only
   to a subtype lives with that subtype (framing with container types), never as a nullable column of D.
@@ -217,7 +220,7 @@ The model is standard; naming the theory lets a design be checked against it rat
 - **A deliberate denormalisation is a cache:** named as one, derived from the normal form by a stated rule, and
   invalidated when its source changes. Anything else is an accident.
 
-## The checks — run them on every table before it is built
+## The design checks — run them on every table before it is built
 
 1. **Blank-cell test.** Any column empty in some rows? Name the entity the column describes; it is not the row's.
 2. **Rows-into-columns test.** Does a column name a child, a field or a property of a nested level (a byte order, a
@@ -236,7 +239,7 @@ The model is standard; naming the theory lets a design be checked against it rat
 ## Use with the `thinking` skill
 
 Before proposing a schema or a reader, write the chain: what each table row *is* (its entity), which spec defines
-it, which level owns each column, where each piece of state is set. Audit each node against the checks above; a
+it, which level owns each column, where each piece of state is set. Audit each node against the design checks above; a
 refuted node rewinds the design, never patches the table.
 
 ## Paid for
@@ -256,7 +259,8 @@ states, resynchronising after damage, and one maker note whose offsets are off. 
 exception because the math had no place for it, and the math had no place for it because state had no scope and
 special cases had no relation. The owner refuted all three: state is an attribute of its node with a scope
 (field, level, tree), a maker's special attributes are rows of a relation with a default row, and damage recovery
-is an algorithm, so it is math. A case that looks outside the math is a gap in the math.
+is an algorithm, so it is math. A case that looks outside the math is a gap in the math. (The scope this entry gives
+state was removed from the math on 2026-10-25: see the next entry.)
 
 2026-10-25, the same design. Scope had been written into the math as an operator (σ↓ = σ|tree ⊕ S_c|{level,
 tree}) and as a states table with a scope column. Chain: the owner's "current field, its direct children or its
