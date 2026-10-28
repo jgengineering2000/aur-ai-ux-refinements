@@ -219,6 +219,9 @@ audit's first re-look at the pixels refuted the conclusion the unaudited chain
 had drawn from it.
 
 **Invoke the `thinking` skill whenever you do not understand why something did
-or did not work** — a missed prediction, a failed gate, "the next" approach
-after one failed. The owner calls this loop the Thinking skill (2026-10-17);
-the skill carries the procedure and the checks that catch it lapsing.
+or did not work** — a missed prediction, a failed gate, a number you cannot
+explain, "the next" approach after one failed — and before proposing a fix,
+experiment or design choice whose why you cannot state, or running a test that
+has a decision rule attached. The owner calls this loop the Thinking skill
+(2026-10-17); the skill carries the design written in symbols first (owner
+2026-10-28), the procedure, and the checks that catch it lapsing.

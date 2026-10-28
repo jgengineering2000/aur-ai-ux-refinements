@@ -1,6 +1,6 @@
 ---
 name: thinking
-description: Read when you do not understand why something did or did not work — a missed prediction, a fix or change that failed its gate, a number you cannot explain, a line of work about to try "the next" approach after one failed — and before proposing a fix, experiment or design choice whose why you cannot state. The design written in mathematical symbols first (goal, progress and context grounded in it, every assumption a symbol, so a miss localises to the math or the implementation), the owner's scientific-method loop (the recursive why, written and audited; a proposal with expectations; an experiment that informs; back to the start on a miss), the checks that catch a test which cannot discriminate and a mechanism named too shallow, and when to reground with the literature or the architect.
+description: Read when you do not understand why something did or did not work — a missed prediction, a fix or change that failed its gate, a number you cannot explain, a line of work about to try "the next" approach after one failed — and before proposing a fix, experiment or design choice whose why you cannot state, or running a test that has a decision rule attached. The design written in mathematical symbols first (goal, progress and context grounded in it, every assumption a symbol, so a miss localises to the math or the implementation), the owner's scientific-method loop (the recursive why, written and audited; a proposal with expectations; an experiment that informs; back to the start on a miss), the checks that catch a test which cannot discriminate and a mechanism named too shallow, and when to reground with the literature or the architect.
 ---
 
 # Thinking — the recursive why
@@ -8,6 +8,10 @@ description: Read when you do not understand why something did or did not work �
 This is the operational form of PROCESS §11 ("Understand before you fix").
 That section is the principle; this skill is the procedure and the checks
 that catch it failing in the moment.
+
+"Thinking" here is the owner's name for this loop. It is not the model's
+thinking setting (extended thinking on or off), which other texts also call
+"thinking".
 
 ## The owner's statement (2026-10-17)
 
@@ -64,8 +68,9 @@ start, the two missing variables are visible before any run.
 
 - A prediction missed, in either direction.
 - A change failed its gate, or moved the outcome less than predicted.
-- The next step on the list is "the next lever / gate / approach" and the
-  last one's failure is explained in one sentence.
+- The next step on the list is "the next lever / gate / approach" (a gate
+  here is a discriminator in the design, not the check a change must pass)
+  and the last one's failure is explained in one sentence.
 - A number you cannot derive from the definition of what produced it.
 - A test is about to run with a decision rule attached (audit the rule
   first, below).
