@@ -17,6 +17,11 @@ supervisor with nested delegates**, not as one model doing everything:
 - **Delegates do the work, nested as needed.** A phase-level delegate may
   itself spawn narrower ones. Deliverables land in the tree (files, commits),
   never only in chat (loss-proof progress); the chat report is a summary.
+- **Report upward every 15 minutes or less** (owner 2026-10-28): "supervisor
+  should sanity check for correctness and progress, and report (succinctly)
+  upward every 15 minutes or less. That replaces the current restriction for
+  approved work." What it replaced was a project's rule that nothing ran over
+  15 minutes without the owner approving its time.
 
 Why this shape: the unexpected is exactly where a cheap model fails silently
 and confidently, and where an expensive one earns its price. Buying the top
