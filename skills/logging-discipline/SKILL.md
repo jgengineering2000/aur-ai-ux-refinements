@@ -7,9 +7,15 @@ description: Read BEFORE designing or adding logging, a logger, verbosity levels
 
 AUR P10 states the principle (every error path logs, with full context; types runtime-switchable; never a null sink). This skill defines the log type structure, bitmask evaluation model, centralized configuration, timestamp format, duplicate throttling, sink routing and rotation, and the instrumentation placement rules — which code points must log, at which type, and what a scope boundary must carry so that hot paths stay diagnosable without being perturbed.
 
+It applies in every language and layer — Rust, Python, shell, systemd units, C shims — matching each component's existing logging idiom rather than inventing a parallel one.
+
+## When logging is mandatory
+
+Any context requiring research or information to understand after the fact: errors, warnings, race conditions, failure to complete, unknown state/status, debugging paths, and progress ambiguity (P11 liveness). If an investigator would ask "what was happening?", the code must answer in the log.
+
 ## Design Philosophy — Log Types, Not Severity Levels
 
-MTI uses a **bitmask-based log type** model, not the traditional hierarchical severity model found in most logging frameworks. Each log type is an independent bit that can be enabled or disabled individually. This means:
+The reference implementation uses a **bitmask-based log type** model, not the traditional hierarchical severity model found in most logging frameworks. Each log type is an independent bit that can be enabled or disabled individually. This means:
 
 - Setting `LOGLEVEL=5` enables Error (1) + Debug (4) **without** enabling Info (2).
 - Setting `LOGLEVEL=3` enables Error (1) + Info (2) **without** enabling Debug (4).
@@ -24,7 +30,7 @@ Four log types are defined, each occupying one bit:
 | Type  | Bit | Value | Audience  | Aliases          | Description |
 |-------|-----|-------|-----------|------------------|-------------|
 | Error | 0   | 1     | Everyone  | Warn, Warning    | Something failed or is not working as expected. Includes warnings — a separate Warning level is differentiation without real value. |
-| Info  | 1   | 2     | User      | Status, Verbose  | Stateful/Status information. Infrequent but detailed: stats on startup/shutdown of a connection, Nautilus window status, directory opens. INFO and STATUS are interchangeable aliases for the same log type and bit. |
+| Info  | 1   | 2     | User      | Status, Verbose  | Stateful/Status information. Infrequent but detailed: stats on startup/shutdown of a connection, a file-manager window's status, directory opens. INFO and STATUS are interchangeable aliases for the same log type and bit. |
 | Debug | 2   | 4     | Developer | *(none)*         | Location-sensitive information: opening a new file, reading metadata, tracking fine-grained control flow. |
 | Trace | 3   | 8     | Developer | *(none)*         | High-verbosity fast-path details that would normally drown the system but are needed when debugging hot paths. |
 
@@ -61,7 +67,7 @@ When parsing named log levels from config or CLI, each name maps to a **cumulati
 
 A log message with type bit $T$ is printed if $(T \mathbin{\&} \text{LOGLEVEL}) \neq 0$.
 
-**Do NOT use threshold/comparison checks** like `severity <= loglevel`. Always use bitwise AND.
+**Do NOT use threshold/comparison checks** like `severity <= loglevel`. Always use bitwise AND. Gate at the emit site (the level check), never by redirecting the sink.
 
 ### Performance & Cost Gating
 
@@ -88,9 +94,9 @@ The runtime cost drops to a single fast CPU atomic bitwise check (typically 1–
 
 **Gating makes instrumentation cheap to CARRY, not cheap to ENABLE.** The 1–2 ns check is the *disabled* cost. The enabled cost of a high-frequency type is a format, a throttle lock, and a write per event, which on a latency-governed path is a first-order change to the behaviour under observation. This asymmetry is why category assignment (below) is a correctness decision, not a taste decision.
 
-## Centralized Configuration (`~/.config/mti/mti.conf`)
+## Centralized Configuration (the application's config file)
 
-Log levels are configured via a centralized INI-style config file at `~/.config/mti/mti.conf`. This avoids the need for environment variables in `.bashrc` (which don't propagate to graphical desktop applications or systemd user services).
+Log levels are configured via a centralized INI-style config file, `<app>.conf` in the application's config directory (`app` stands for the application's name throughout this skill). This avoids the need for environment variables in `.bashrc` (which don't propagate to graphical desktop applications or systemd user services).
 
 ### Format
 
@@ -98,47 +104,48 @@ Log levels are configured via a centralized INI-style config file at `~/.config/
 [global]
 LOGLEVEL=7
 
-[mtid]
+[appd]
 LOGLEVEL=7
 
-[mti-fuse]
+[app-fs]
 LOGLEVEL=3
 
-[trackmetad]
+[app-indexer]
 LOGLEVEL=3
 
-[mti-sidecar]
+[app-helper]
 LOGLEVEL=7
 
-[mti-columns]
+[app-columns]
 LOGLEVEL=3
 ```
 
 ### Resolution Order (highest priority first)
 
-1. **Environment variable** `MTI_LOGLEVEL` — overrides everything (useful for one-off debugging)
-2. **Process-specific section** in `mti.conf` (e.g., `[mtid]`) — matched against the binary name from `current_exe()` (Rust) or a hardcoded component name (Python)
-3. **`[global]` section** in `mti.conf` — fallback default
+1. **Environment variable** `<APP>_LOGLEVEL` — overrides everything (useful for one-off debugging)
+2. **Process-specific section** in `<app>.conf` (e.g., `[appd]`) — matched against the binary name from `current_exe()` (Rust) or a hardcoded component name (Python)
+3. **`[global]` section** in `<app>.conf` — fallback default
 4. **Hardcoded default** — `1` (Error only)
 
 ### Section Naming
 
 Section names must match the **executable binary name**, not the host process:
-- `[mtid]`, `[mti-fuse]`, `[trackmetad]`, `[mti-sidecar]` — Rust binaries
-- `[mti-columns]` — the Nautilus Python extension (NOT `[nautilus]`, since it is not Nautilus)
+- `[appd]`, `[app-fs]`, `[app-indexer]`, `[app-helper]` — Rust binaries
+- `[app-columns]` — a file-manager Python extension (NOT the file manager's name, since it is not the file manager)
 
 ## Field and Timestamp Contract
 
 Every log line must be self-explanatory and contain full context:
 - **Timestamp Format**: Exactly `YYYY-MM-DD_HH:MM:SS.ms` (e.g. `2026-07-14_01:28:08.123`).
-- **Context fields**: `[Level]`, `[PID:nnn]`, `[Thread:name/ThreadId(n)]`, `[component]`
-- **State**: Variable values, identifiers, sizes, and loop/iteration counters.
-- **Precedent** (P10, owner 2026-09-11): the branch taken and what selected it — the flag that implied a mode, the gate's verdict, the compared values, the caller's role — and what was *produced*, never only what was *asked for*. A receipt that names the request (`target=2560`) and not the result (`1280x960 via the standalone route, selected by --reveal without -r`) says where the code is and not how it got there, which is the half a reader cannot recover from source.
+- **Context fields**: `[Level]`, `[PID:nnn]`, `[Thread:name/ThreadId(n)]`, `[component]`, and the function — enough to place the line in a concurrent, multi-process trace without a debugger.
+- **State**: every global, thread-level, or function-level variable value relevant to the context or state — identifiers, sizes, indexes, and loop/iteration/phase counters.
+- **Context omission** (not the duplicate throttling below): omit only what is *deterministically* provided by adjacent logging (same line-cluster, guaranteed-printed neighbor) — never because another line *usually* prints it; gated or reordered neighbors break that.
+- **Precedent** (P10, owner 2026-09-11): the branch taken and what selected it — the flag that implied a mode, a decision gate's verdict, the compared values, the caller's role — and what was *produced*, never only what was *asked for*. A receipt that names the request (`target=2560`) and not the result (`1280x960 via the standalone route, selected by --reveal without -r`) says where the code is and not how it got there, which is the half a reader cannot recover from source.
 
 ### Log Line Format
 
 ```
-[2026-07-14_01:28:08.123] [Error] [PID:254656] [Thread:main/ThreadId(1)] [mtid] Something failed
+[2026-07-14_01:28:08.123] [Error] [PID:254656] [Thread:main/ThreadId(1)] [appd] Something failed
 ```
 
 ## Duplicate Throttling (Deduplication)
@@ -151,14 +158,14 @@ To prevent log-spam and write bottlenecks:
 
 ### Per-Process Log Files
 
-Each daemon/process writes to its own log file under `~/.local/share/mti/`:
-- `mtid.log`, `mti-fuse.log`, `trackmetad.log`, `mti-sidecar.log`, `mti-columns.log`
+Each daemon/process writes to its own log file under the application's data directory:
+- `appd.log`, `app-fs.log`, `app-indexer.log`, `app-helper.log`, `app-columns.log`
 
-The log filename is derived from the binary/component name, **not** the host process. The Nautilus extension log is `mti-columns.log`, not `nautilus.log`.
+The log filename is derived from the binary/component name, **not** the host process. The file-manager extension's log is `app-columns.log`, not the file manager's name.
 
 ### Routing
 
-- **File (Mandatory)**: Appended to the process-specific log file. Parent directories are auto-created.
+- **File (Mandatory)**: Appended to the process-specific log file. Parent directories are auto-created. A discarded stream is indistinguishable from silence (P11) and destroys the post-mortem.
 - **Console (stderr)**: **Error always; everything else only when verbosity was asked for** (`-v/--verbose`, or the console-force variable for a process with no CLI). A Warning — Error's alias for the file's bitmask — takes the verbose-only tier on the console WHILE a file sink is open (the ruling's literal "an error", owner 2026-09-15) and Error's always-tier when none is (the console is then its last sink; an on-by-default level never goes nowhere). A line the operator was promised regardless of verbosity is a RESPONSE, printed on the command's own output path, never a warning. Owner ruling 2026-09-11: stderr is where a person launched the process, so it carries what a person must see — a failure — and the file carries the record. Neither "on by default" nor "on when there is no file" discriminates the case that paid for this (an in-process extension printing its whole Info/Debug stream onto the terminal its host was launched from); the level does. The console-off switch keeps one narrow meaning: no duplicated errors while a file sink is open (a service unit whose journal already captures stderr).
 
 **The console switch means "do not duplicate", never "drop".** The console-off switch (the Routing bullet above) is honoured only while a file sink is open. A process with no file sink — a one-shot CLI, a test binary, a child that inherited the switch from the daemon that spawned it — writes to stderr regardless: the last rung of the ladder is never removable (P16). Paid for 2026-09-11: a daemon ran console-off, the enhancer children it spawned inherited that, had no file sink by design, and their ERROR lines went nowhere — four failures reached the parent's log as `exit status 1: Process exiting cleanly`, the crash handler's raw exit line being the only stderr left.
@@ -191,7 +198,7 @@ exe.log.9.xz  →  unlink
 **The keep window is a P16 knob**, because it is the one thing the process cannot infer: how long its operator takes to notice and report an incident. Default 7 days; `0` restores count-only eviction. (The reference implementation exposes it as a `LOG_KEEP_DAYS` environment variable under the project prefix, and as the conf key `LOGKEEPDAYS`.)
 **Compression is `xz -3 -T2`, in a detached double-forked process.** Not gzip: `-3` buys roughly 3–4× gzip's ratio on log text, and `-T2` keeps the wall time short without taking the machine. Not a thread: a double-forked, reparented process (fork → setsid → `execv`) outlives the component that spawned it, so a daemon that rotates and exits promptly still gets its predecessor compressed instead of stranding it. Startup MUST NOT block on compression — a large `.log.0` would otherwise stall initialisation for seconds on exactly the runs where something has gone wrong.
 
-**The shift is synchronous; only the compress is detached — no lock needed.** Shifting the numbered generations (a handful of `rename`/`remove` calls, microseconds) runs inline at startup before the first log line is written; only the actual compression of the one generation that needs it is forked off. This is safe without a lock because the resource this protects — one log file per component — has exactly one writer at a time: MTI runs a single instance per component, so no second process is ever racing this cascade for the same file. A shared multi-writer log target would need the serialisation an `flock`-based worker once provided; a per-component single-instance log does not, and carrying that machinery here was over-generalizing from a constraint that doesn't hold.
+**The shift is synchronous; only the compress is detached — no lock needed.** Shifting the numbered generations (a handful of `rename`/`remove` calls, microseconds) runs inline at startup before the first log line is written; only the actual compression of the one generation that needs it is forked off. This is safe without a lock because the resource this protects — one log file per component — has exactly one writer at a time: the reference implementation runs a single instance per component, so no second process is ever racing this cascade for the same file. A shared multi-writer log target would need the serialisation an `flock`-based worker once provided; a per-component single-instance log does not, and carrying that machinery here was over-generalizing from a constraint that doesn't hold.
 
 **Never lose a generation to a failed compression — for free, not by construction.** Plain `xz <file>` is fail-safe on its own: it writes `file.xz` and unlinks `file` only on success, so a killed compressor (SIGKILL, reboot, ENOSPC) simply leaves the raw file in place. No temp sibling, no rename-into-place dance, and no startup sweep for interrupted artifacts are needed — the next cascade ages a leftover raw generation exactly like a compressed one, because the shift moves `exe.log.N` and `exe.log.N.xz` alike.
 
@@ -201,9 +208,9 @@ exe.log.9.xz  →  unlink
 
 ## Level Control
 
-- **Startup**: Initialized by calling `init_from_env()` (Rust) or `load_config()` (Python) which reads `~/.config/mti/mti.conf` then checks `MTI_LOGLEVEL`.
-- **Runtime**: Level changes can be made dynamically:
-  - **Daemons**: Via the command FIFO socket (`loglevel:<val>`), AI Chat command (`/loglevel <val>`), or by sending `SIGUSR2` (toggles between Error=1 and Trace=8 verbosity).
+- **Startup**: Initialized by calling `init_from_env()` (Rust) or `load_config()` (Python) which reads the application's config file then checks `<APP>_LOGLEVEL`.
+- **Runtime**: through the component's **most robust existing input event interface** (its IPC socket, control FIFO, D-Bus surface, signal handler — whichever already exists and survives load). Do not build a new channel if a sound one exists; do not pick a fragile one because it's convenient. In the reference implementation, level changes can be made dynamically:
+  - **Daemons**: Via the command FIFO socket (`loglevel:<val>`), console command (`/loglevel <val>`), or by sending `SIGUSR2` (toggles between Error=1 and Trace=8 verbosity).
   - **Non-Daemons**: Standard command utilities keep the `-v` / `--verbose` CLI options, which map to level `7` (Error + Info + Debug).
 - **Storage**: A single atomic variable: `LOGLEVEL` (Rust `AtomicU8`) or `loglevel` (Python module global).
 
@@ -216,7 +223,7 @@ Startup and shutdown are two ends of one contract. A logger that mandates only t
 Every daemon must emit a structured startup block on launch that includes:
 - All command-line arguments
 - All parsed configuration settings
-- All `MTI_*` environment variables
+- All `<APP>_*` environment variables
 - The resolved log level value
 
 This ensures that crash investigations always have the initial state context.
@@ -231,15 +238,15 @@ Every **owned external resource** logs its release: child processes, mounts, soc
 
 Call-site logging can only report events some thread asked for. A resource that dies on its own — a child killed by the kernel, a mount yanked, a peer closing a socket, a lock broken, a device removed — is **nobody's call site**, and is therefore invisible to every rule above unless something is explicitly watching.
 
-Every owned singleton resource therefore has a **supervisor observing its liveness**, which logs the transition nobody requested, at Error:
+Every owned singleton resource therefore has a **supervisor observing its liveness** (a liveness supervisor: a watcher thread or process, not a supervising session), which logs the transition nobody requested, at Error:
 
 ```
-[Error] [sidecar] [faces] OWNED CHILD DIED UNEXPECTEDLY pid=135070 role=face-engine
+[Error] [app-helper] [faces] OWNED CHILD DIED UNEXPECTEDLY pid=135070 role=face-engine
         status=killed(SIGKILL) alive_for=0.004s since_ready=0.004s
         expected=alive-until-shutdown — engine is now cold; next request will respawn
 ```
 
-The supervisor also flips whatever readiness flag the resource backs, so state and log agree. Absence of an expected event is never observable by accident — only by design. This is AUR P11 ("silence is not success") stated at the logging layer, and P8's "own the resource lifecycle at the owner" given its observability half.
+The liveness supervisor also flips whatever readiness flag the resource backs, so state and log agree. Absence of an expected event is never observable by accident — only by design. This is AUR P11 ("silence is not success") stated at the logging layer, and P8's "own the resource lifecycle at the owner" given its observability half.
 
 ### The instrument monitors itself
 
@@ -262,9 +269,9 @@ Every user-initiated action must emit **at least one Info-level log line** summa
 **Content**: Action name, target (e.g. file path), and outcome (success, failure reason, or key result metric like elapsed time or output path).
 
 ```
-[Info] [sidecar] Enhance completed for /photos/a.jpg → /photos/a_enhance.jpg (12.3s)
-[Info] [sidecar] Enhance failed for /photos/a.jpg: fast_pass.sh exited with status 1
-[Info] [sidecar] Regen (file) completed for /photos/a.jpg
+[Info] [app-helper] Enhance completed for /data/a.jpg → /data/a_enhance.jpg (12.3s)
+[Info] [app-helper] Enhance failed for /data/a.jpg: helper.sh exited with status 1
+[Info] [app-helper] Regen (file) completed for /data/a.jpg
 ```
 
 ### Debug — Scope Boundary: Entry and EVERY Exit
@@ -274,7 +281,7 @@ A scope that encloses repeated or complex work — a queue drain, a batch, a dir
 **Entry** is the action's black-box recorder: after argument resolution, before the first side-effecting call (spawn, file write, DB update, FIFO write, D-Bus call). If a crash or hang occurs mid-scope, this is the last evidence of what was attempted. It carries every resolved variable that influences behaviour:
 - **Target**: file path, directory, hash
 - **Configuration**: mode flags, quality tier, budget, autoclean state, resolved input path (if different from the user-selected path, e.g. recovery composite)
-- **Initiator**: button click, remote `ACTION:` dispatch, FIFO command, CLI
+- **Initiator**: button click, remote action dispatch, FIFO command, CLI
 - **Computed values**: output path, resolved script path, subprocess arguments
 - **Entry state for the accumulators**: queue depth, resident memory, start time
 
@@ -286,11 +293,11 @@ A scope that encloses repeated or complex work — a queue drain, a batch, a dir
 Multiple exits mean multiple boundary lines — one per return path. A single summary line at the bottom of the function is wrong, because the paths that matter most are the ones that never reach it.
 
 ```
-[Debug] [mti-fuse] gen-queue ENTER dir="/photos/2024" depth=142 target=256px budget=90ms rss=58.1MB
-[Debug] [mti-fuse] gen-queue EXIT exit_trigger=budget-exhausted processed=120/142 tiers={1:98,2a:22}
+[Debug] [app-fs] gen-queue ENTER dir="/data/2024" depth=142 target=256px budget=90ms rss=58.1MB
+[Debug] [app-fs] gen-queue EXIT exit_trigger=budget-exhausted processed=120/142 tiers={1:98,2a:22}
         failed=0 deferred=22 elapsed=1.84s p50=9.1ms p95=14.2ms max=41.0ms bytes=3.1MB rss=61.4MB (+3.3MB)
-[Debug] [sidecar] run_manual_cleanup ENTER path="/photos/a.jpg" input="/photos/.mti/recovery/a_g5composite.jpg"
-        output="/photos/a_g5composite_enhance.jpg" script="fast_pass.sh"
+[Debug] [app-helper] run_cleanup ENTER path="/data/a.jpg" input="/data/.app/recovery/a_composite.jpg"
+        output="/data/a_composite_enhance.jpg" script="helper.sh"
 ```
 
 **This pair is the primary diagnostic surface for hot-path work.** It is not a summary of what Trace would have told you — it is what you are meant to read *instead of* enabling Trace. Design it to be sufficient on its own.
@@ -308,9 +315,9 @@ Any point where the expected (happy) path cannot proceed must emit **at least on
 **Content**: The operation that failed, the error value, and enough context to identify the specific call site (function name, target path). A runtime failure never carries usage text: usage answers a bad argument (P14), and appended to a runtime error it buries the reason under a page that any UI will show verbatim — measured 2026-09-11, when "no donor available for repair" arrived in a window's status label as the full CLI help.
 
 ```
-[Error] [sidecar] run_manual_cleanup: failed to spawn fast_pass.sh: No such file or directory (os error 2)
-[Error] [sidecar] run_manual_cleanup: fast_pass.sh exited with status 127 for /photos/a.jpg
-[Error] [sidecar] run_recover: db.clear_fuse_thumbnail failed for md5=abc123: database is locked
+[Error] [app-helper] run_cleanup: failed to spawn helper.sh: No such file or directory (os error 2)
+[Error] [app-helper] run_cleanup: helper.sh exited with status 127 for /data/a.jpg
+[Error] [app-helper] run_recover: db.clear_thumbnail failed for md5=abc123: database is locked
 ```
 
 ### Trace — Last Resort, Because It Perturbs What It Measures
@@ -335,19 +342,19 @@ Consequences:
 
 | Situation | Type | Example |
 |-----------|------|---------|
-| User clicked a button / action dispatched | Info (outcome) + Debug (context) | "Enhance completed", "run_manual_cleanup ENTER path=... input=..." |
+| User clicked a button / action dispatched | Info (outcome) + Debug (context) | "Enhance completed", "run_cleanup ENTER path=... input=..." |
 | Queue / batch / handler **entry** | Debug | "gen-queue ENTER dir=... depth=142 budget=90ms rss=58.1MB" |
 | Queue / batch / handler **exit — each return path** | Debug (+ Info if user-visible) | "gen-queue EXIT exit_trigger=budget-exhausted processed=120/142 elapsed=1.84s p95=14.2ms rss=+3.3MB" |
 | Per-item loop iteration (thumbnails, directory walk, FUSE op) | Trace (last resort — prefer the enclosing scope's accumulators) | "serve thumbnail for hash=abc123" |
-| Subprocess failed to spawn | Error | "failed to spawn fast_pass.sh: ..." |
-| Subprocess exited non-zero | Error | "fast_pass.sh exited with status 127" |
+| Subprocess failed to spawn | Error | "failed to spawn helper.sh: ..." |
+| Subprocess exited non-zero | Error | "helper.sh exited with status 127" |
 | File/DB/IPC operation failed | Error | "FIFO write failed: broken pipe" |
 | Unexpected null/missing state causing early return | Error | "path has no parent directory, aborting" |
 | Owned resource acquired / released (child, mount, socket, lock, FIFO) | Info | "face engine warm and ready elapsed=812ms", "unmounted ~/.cache/thumbnails" |
-| **Owned resource died without being asked** | **Error** (requires a supervisor — nobody's call site) | "OWNED CHILD DIED UNEXPECTEDLY pid=... role=face-engine status=killed(SIGKILL) alive_for=0.004s" |
+| **Owned resource died without being asked** | **Error** (requires a liveness supervisor — nobody's call site) | "OWNED CHILD DIED UNEXPECTEDLY pid=... role=face-engine status=killed(SIGKILL) alive_for=0.004s" |
 | Daemon startup | Info (mandatory block) | CLI args, config, env vars |
 | Daemon exit — normal, signal, or panic | Info (Error if abnormal) | "exit cause=SIGTERM uptime=4h12m owned={mount:released, children:2 reaped}" |
-| Log sink rotated / crossed size threshold / unopenable | Info / Error | "rotated mti-fuse.log → .log.0 (729MB, gzip queued)" |
+| Log sink rotated / crossed size threshold / unopenable | Info / Error | "rotated app-fs.log → .log.0 (729MB, xz queued)" |
 | Configuration change at runtime | Info | "Log level changed to 7" |
 
 ## Timing Fields — logs as a live perf sensor (P7 corollary)
