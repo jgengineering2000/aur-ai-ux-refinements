@@ -6,13 +6,15 @@ description: Read BEFORE writing any structured output document (audit, plan, re
 # Generated Documents
 
 Write structured output (audits, plans, reviews) as HTML to `aur-docs/`, post a
-one-paragraph summary + link in chat, tell the user **Alt+D**. Never paste document
-content into chat.
+one-paragraph summary in chat, tell the user **Alt+D**, and end the turn with the
+document's link: its full absolute path as the link's text and a short note of what
+they should see there (ai_common's file-to-review block, owner 2026-10-18). Never
+paste document content into chat.
 
 Nothing here is project-specific. The document system — its locations, formats,
 links, tabs, capabilities and appearance — is defined once and inherited. A project
 that needs a different *value* sets it in `aur/server.config.json`; a project that
-appears to need different *behaviour* has found a gap in AUR, not a reason to fork.
+appears to need different *behaviour* has found a gap in AUR, not a reason to fork the document system.
 
 - `aur/` — server, launcher, config, port file (infrastructure). **Never
   `.claude/`**: that is the agent's own configuration, so writes there require a
@@ -69,7 +71,7 @@ appears to need different *behaviour* has found a gap in AUR, not a reason to fo
    `open-manifest.sh`'s `BASH_SOURCE`-derived `HERE` still resolves to the
    *project's* `aur/` (hence the project's port), because bash keeps the
    invocation path, not the link target.
-   **There is no fork.** The console, the Specs and AI-Context tabs and the
+   **There is no per-project fork.** The console, the Specs and AI-Context tabs and the
    transcript viewer are canonical; the handful of things that genuinely differ
    per project — daemon directory, console registry, project name, one-shot
    prefixes, sysinfo binary, AI-context exclusions and pinned header links — live
