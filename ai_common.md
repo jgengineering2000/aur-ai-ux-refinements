@@ -49,7 +49,15 @@ the signal), unify them into one authority so a fix, optimization, or
 load-bearing invariant can't fork across copies. Weigh overriding costs (a shared
 single-read buffer, an immediate synchronous call context), minimize the helper's
 API surface, hoist genuine duplication only — never force unrelated sites through
-a false-common abstraction, never as license to rewrite working code.
+a false-common abstraction, never as license to rewrite working code. Corollary —
+**normalise by containment** (owner 2026-10-24): everything is Data, and a
+Container is Data that holds Data, recursively; each has a type defined by a spec.
+A fact lives at the level whose spec defines it, state (byte order, encoding,
+base) flows down from the field that sets it to what it governs, and a type is
+defined once wherever it is contained. A blank cell in a table is accidental
+denormalisation — a nested level's property flattened into its parent's row; a
+deliberate one is a managed cache. Invoke the **containers skill** before
+designing any reader, parser, schema or table of fields.
 
 **4. Unit test coverage rule.** Tests must exercise **every path reachable from
 the top-level driving interfaces — current and planned** — because the suite is
@@ -434,6 +442,15 @@ advantage of.
   nothing — the condition stays open and the capability, the verb and the
   outcome all belong to the user. Reporting what the user has is not
   recommending what they should get.
+- **What the product shows is public record, never a predecessor's wording**
+  (owner 2026-10-15). Names, descriptions and terms come from industry
+  standards, registries, specs and what a manufacturer itself publishes; a
+  tool we learned from contributes neither code nor phrasing, however
+  convenient. An identifier stored in a file is public by nature, and so is
+  the manufacturer's published name for the thing it identifies; a third
+  party's description is usable only where it is that published name. Design
+  for a core OS install: an optional tool the user may have added is a bonus
+  the product interfaces to, never the route its output depends on.
 
 **20. Any call that ever responds always responds.** ACK, NAK, unknown, OK, 0,
 1 — the content matters far less than its arrival, and a path that answers on
@@ -499,6 +516,31 @@ dip in RSS with cycles and no net gain. Corollaries:
   the point where the owner knows no further use is coming (a window
   closing, a process exiting) — the P8 owner, deciding once.
 
+**23. One tree; development happens in a lab that builds only what it uses**
+(owner 2026-10-15). The project has one main tree. Development checks out a
+branch tree and builds **only the components the work touches** — work on one
+binary never compiles its sibling binaries, the test suite, or a daemon it
+does not run. Branch commits carry the cheap checks only: **PII, lint, clippy
+and formatting**. The compile and test gates run **once, by hand, when the
+work is good**, and then the branch merges into the main tree. "Create a lab"
+means exactly this: isolated, the research only, none of the overhead. Why:
+a tree that builds the whole workspace, and runs the full gate on every
+commit, pays the whole project's cost for one component's change. Measured
+2026-10-15: six alternate trees held 46 GB, each a full build, and a two-crate
+test goal recompiled every crate above its edit. Corollaries:
+
+- **Build scope is the closure of what is used, never the workspace.** The
+  main tree's single-feature-set protection exists to stop one shared build
+  from forking. A lab has its own build, so the protection's reason does not
+  apply there, and neither does the refusal.
+- **The tree's lifecycle belongs to its work.** At the merge, the lab's
+  compiled, regenerable outputs are removed by the project's one deletion
+  routine (P21, never forced). A lab idle past its work is reclaimed the same
+  way.
+- **Late integration breakage is the accepted trade.** A change low in the
+  dependency graph can break a sibling unseen until the merge gate. The gate
+  before the merge is where that is caught, and it is never skipped.
+
 ## AI Work Priorities
 
 Ranked. A lower priority never buys its win at a higher one's expense.
@@ -530,7 +572,15 @@ token limit mid-task: land work in durable form as it completes — commits,
 working-tree files, a handoff memory carrying resume state — never only in chat;
 a delegate's deliverable is its tree/file output, the chat report just a summary.
 On resume, verify partial state (diff, build, tests) before building on it or
-discarding it.
+discarding it. **Build on partial work; never recreate it** (owner 2026-10-23:
+"try hard to preserve work rather than recreating partially completed work from
+scratch"): a half-done change is continued, and a working implementation is
+refactored in place, one vetted step per commit, never rewritten whole. A worker
+that must first read a large body saves a map of it (functions, line ranges, the
+step that touches each), so a crash or a compaction resumes from the map and the
+last commit instead of re-reading everything. Paid for 2026-10-23: an engine
+rewrite briefed whole ran 90 minutes and two compactions re-reading the working
+engine without writing a line.
 
 **5. Speed.** Parallelism — concurrent tool calls, parallel delegates — is
 welcome only where it is free with respect to 1–4: no gate skipped, no duplicated
@@ -806,6 +856,18 @@ position that had something to say and did not say it.
   Measured twice in one session on 2026-08-25/26: a setup step armed and ready,
   followed by a commit's full test-gate output, and the owner did not know a
   window was waiting for them.
+- **A file to review is named LAST, by its full path, with what to look at**
+  (owner 2026-10-18, high priority). Any file the owner should open — a
+  report, a sheet, a doc, a diff — is the final thing in the turn, after
+  everything else including the advisory: one line per file, its **full
+  absolute path** (in an editor that renders links, the full path as the
+  link's text) and a short note of **what they should see there**. Why, in
+  the owner's words: *"If I can't see the path and a short explanation of
+  what I should see there I probably won't look at it. I avoid reviewing
+  things when I'm going to have to dig round."* A file mentioned only inside
+  a table, a status row or a paragraph, or named by a relative path, a bare
+  filename or a section number, has not been put up for review. The full
+  path is chat content only; tracked text keeps the ceiling's relative paths.
 - **What changed** — any turn that changed something says so from the user's
   side, by default in one line: **Before → After**. Expand to the full
   User-scenario ladder only where one line cannot carry it. Internals-only
@@ -817,7 +879,7 @@ position that had something to say and did not say it.
   decision already answered is never re-posed.** A turn carrying a handoff prompt
   puts its decisions *inside* the prompt.
 - **Advisory** — last, in the exact form the Model settings advisory below
-  specifies.
+  specifies; only a file-to-review block follows it.
 
 **4 · Prose for one idea; structure for several.** Visual structure mirrors
 conceptual structure, and this governs **anything written** — chat, commits,
@@ -940,7 +1002,8 @@ form of the same rule.) **The irreducible minimum is the failure case and the
 proposed solution** — a description missing either is *muddy*, and that binds in
 chat, commit messages, specs, audits and plans alike.
 
-**Model settings advisory — always last in the turn.** Three knobs the owner sets
+**Model settings advisory — always last in the turn** (followed only by a
+file-to-review block, rule 3). Three knobs the owner sets
 and the assistant cannot self-change: **model**, **effort** (1–6), **thinking**
 (on/off + depth). Only model is directly visible; effort and thinking are carried
 forward as the owner's last-stated values, printed back every turn so a stale
