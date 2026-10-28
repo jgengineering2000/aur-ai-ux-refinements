@@ -1,6 +1,6 @@
 ---
 name: delegation-and-new-session
-description: Read BEFORE closing a session, recommending or composing a new-session kickoff, or spawning any delegate/subagent — the master-supervisor architecture (thin top-model supervisor, nested delegates), the enforced context economy (supervisor Bash guard, slim delegate agent, compaction window, reply card, token-usage measurement), the model ladder, phase-boundary-equals-session-boundary, delegate briefs, and the escalation rule for the unexpected.
+description: Read BEFORE closing a session, recommending or composing a new-session kickoff, spawning any delegate/subagent or writing its brief, or putting a decision (an A/B/C fork) to the owner — and, inside a delegation, before waiting on a job, killing a process, or acting at a timer — the master-supervisor architecture (thin top-model supervisor, nested delegates), the enforced context economy (supervisor Bash guard, slim delegate agent, compaction window, reply card, token-usage measurement), the model ladder, phase-boundary-equals-session-boundary, delegate briefs, timers that pause and report, and the escalation rule for the unexpected.
 ---
 
 # Delegation & New-Session Architecture
@@ -14,7 +14,7 @@ supervisor with nested delegates**, not as one model doing everything:
   the frame, decomposes the work, writes and dispatches delegate briefs,
   verifies deliverables, and — the reason it exists — **judges the
   unexpected**. It does not grind mechanical work itself.
-- **Delegates do the work, nested as needed.** A phase-level delegate may
+- **Delegates do the work, nested as needed.** A delegate given a whole delegated task may
   itself spawn narrower ones. Deliverables land in the tree (files, commits),
   never only in chat (loss-proof progress); the chat report is a summary.
 - **Report upward every 15 minutes or less** (owner 2026-10-28): "supervisor
@@ -32,14 +32,14 @@ workers' tokens are the bulk of the spend.
 
 ## The model ladder
 
-- **Supervisor:** heaviest model, effort 3+, thinking on. Thin by
+- **Supervisor:** heaviest model, effort 3+, extended thinking on. Thin by
   construction — if the supervisor's own context is filling with work
   product, a delegation was skipped.
 - **The default delegate is the mid model (e.g. Sonnet), effort 2–3,
-  thinking off** — locked-plan mechanical work, driving crystallised tools
+  extended thinking off** — locked-plan mechanical work, driving crystallised tools
   (PROCESS §1). Owner ruling 2026-09-05: Sonnet is the default, Opus is
   the escalation rung, not the default.
-- **The second-tier model (e.g. Opus), effort ~4, thinking on, for a step
+- **The second-tier model (e.g. Opus), effort ~4, extended thinking on, for a step
   only** — where a Sonnet result has failed verification once (the
   escalation rule below), or where the supervisor judges up front that the
   step genuinely needs thought (design, integration, re-creating a lost
@@ -102,12 +102,12 @@ card arrives twice. A project's own settings carry only what is the project's.
   prompt is emitted or folded INSIDE it as its first item — never listed
   beside it.
 - **Every kickoff names its delegation architecture**: which model
-  supervises at what effort, which delegates carry which phases, and the
+  supervises at what effort, which delegates carry which delegated tasks, and the
   escalation rule. A kickoff that assigns the work but not the architecture
   leaves the next session to run everything at whatever it woke up as —
   usually either too expensive or too weak.
 
-## Decisions inside a delegation
+## Decisions put to the owner — supervisor and delegate alike
 
 - **Strike foreclosed options before surfacing any fork.** Before putting an
   A/B/C to the owner, delete every option a standing ruling — including the
@@ -154,7 +154,7 @@ for on 2026-09-03 — two briefs carrying the ladder worktree's absolute path
 were refused by the content guard, and the delegate then presented the refusal
 as a policy fork instead of fixing the content.
 
-One brief per phase, **in the repo**, compact and self-contained — never
+One brief per delegated task, **in the repo**, compact and self-contained — never
 re-derived per spawn (PROCESS §1: the second derivation is the signal to
 crystallise). The brief states: the deliverable (files/commits), the
 verification the supervisor will run (a crystallised script where one
@@ -167,16 +167,17 @@ artifact (P9), never against the delegate's report of it.
 2026-10-06): a brief once had a delegate build a harness relaunch the owner
 had already ruled out, and the ruling sat in a commit nobody searched.
 
-**Every run brief states its cost and a hard stop** (owner 2026-10-15, after
+**Every run brief states its cost and the run's hard stop** (owner 2026-10-15, after
 425 CPU-minutes went unbudgeted): expected **CPU-hours** (threads × wall,
-never wall alone), the stop that ends a pathological run, and a report of
+never wall alone), the stop that ends a pathological run (the job's stop: it ends the job, never
+the worker, who pauses and reports, below), and a report of
 **mean / p90 / max per stage, never the median alone** — a median hid one
 626 s picture that cost 96% of a 7.2-hour run. A pathological cost is a
 defect to fix before scaling (P7), never a budget to fund with threads.
 
 **A timer pauses and reports; it never quits** (owner 2026-10-28). Every
 brief sets timers: one at each incremental checkpoint and one for the final
-closure. When a timer fires, the delegate stops at the next safe point and
+closure. When a timer fires, the delegate pauses at the next safe point and
 ends its turn with a checkpoint report: what is done (committed or not),
 what is left, the numbers so far, and what it would do next. It does not
 abandon, skip or wrap up. The supervisor then makes one of three calls,
@@ -186,8 +187,9 @@ The rules that follow from this:
 
 - **The clock is the logged one**: `date +%T` lines in the progress log,
   never the worker's estimate.
-- **A brief says "pause and report" at its stop, never "STOP" or "hard
-  stop"**, which read as permission to quit.
+- **A brief says "pause and report" at a worker's stop, never "STOP" or
+  "hard stop"**, which read as permission to quit. A run's hard stop (above)
+  ends the job; the worker still pauses and reports.
 - **A re-brief to a fresh worker is the last resort**, because it pays the
   cold start again and loses everything the first worker understood.
 
