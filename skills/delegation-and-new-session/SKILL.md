@@ -169,6 +169,27 @@ never wall alone), the stop that ends a pathological run, and a report of
 626 s picture that cost 96% of a 7.2-hour run. A pathological cost is a
 defect to fix before scaling (P7), never a budget to fund with threads.
 
+**A timer pauses and reports; it never quits** (owner 2026-10-28). Every
+brief sets timers: one at each incremental checkpoint and one for the final
+closure. When a timer fires, the delegate stops at the next safe point and
+ends its turn with a checkpoint report: what is done (committed or not),
+what is left, the numbers so far, and what it would do next. It does not
+abandon, skip or wrap up. The supervisor then makes one of three calls,
+**continuing the same agent** (SendMessage, so the agent keeps its context):
+correct course, extend with a new budget based on the report, or abort.
+The rules that follow from this:
+
+- **The clock is the logged one**: `date +%T` lines in the progress log,
+  never the worker's estimate.
+- **A brief says "pause and report" at its stop, never "STOP" or "hard
+  stop"**, which read as permission to quit.
+- **A re-brief to a fresh worker is the last resort**, because it pays the
+  cold start again and loses everything the first worker understood.
+
+Paid for 2026-10-28, when the worker that did the brief's first part claimed its
+12-minute stop at 3.8 logged minutes and skipped three parts. The parts went to
+two new workers, each starting cold.
+
 **Pictures cost transcript.** The supervisor opens only the sheet a decision
 rests on (JPEG q85, at most 2000 px a side); viewing and comparing go to a
 worker that returns a guided report. A viewer's call is a lead: the property
