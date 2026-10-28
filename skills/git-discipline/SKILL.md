@@ -1,6 +1,6 @@
 ---
 name: git-discipline
-description: Read BEFORE any git operation that writes — staging, committing, untracking, renaming, stashing, or anything touching .gitignore. Covers the shared-index hazard, the commit idioms that silently drop work, untracking that does not take, and the tooling. Also read before a first push or remote change on any project.
+description: Read BEFORE any git operation that writes — staging, committing, untracking, renaming, stashing, a first `git init` on a lived-in directory, a history rewrite, or anything touching .gitignore — and when a commit id is "not a valid object name". Covers the shared-index hazard, the commit idioms that silently drop work, untracking that does not take, and the tooling. Also read before a first push, a fetch, pull or clone, or a remote change on any project.
 ---
 
 # Git discipline
@@ -59,7 +59,7 @@ together, and **every wrong inclusion commits silently**. Run
   check where the generator resolves its input and output, which is not always
   where the name suggests.
 - **Settle the posture in the same pass.** A repo on neither the public
-  whitelist nor `git-backup-projects.txt` is the worst of both: not publishable,
+  whitelist nor the backup list is the worst of both: not publishable,
   and history nothing preserves. `git-adopt.py` reports both.
 - **Identity is not global here.** `git init` produces a repo that cannot commit
   until `user.name`/`user.email` are set *in that repo*.
@@ -162,7 +162,7 @@ commit body, and they read as two commits.
   tool, never a second mechanism.
 - **Old → live:** `commit-alias.py resolve <id>`. **Live → old:** `git show`
   prints a `formerly <old>` note (`commit-alias.py notes` attaches them;
-  `git push router refs/notes/commits` carries them to the backup — notes
+  `git push <backup-remote> refs/notes/commits` carries them to the backup — notes
   are a ref and travel only when named).
 - **Unprompted:** the PreToolUse hook `commit-alias-guard.sh` injects the
   translation whenever a command names a dead id. A cold "not a valid object
@@ -180,13 +180,13 @@ commit body, and they read as two commits.
 - **Default-deny.** Network git/gh operations are refused for any project not on
   the public whitelist; the `git-ip-guard.sh` PreToolUse hook enforces it.
 - **The backup remote is a local path, not a network host.** Each project
-  mirrors to a bare repo on the router's USB drive —
-  `/mnt/router-usb/develop/<name>.git` — and that push is the backup. It sends
+  mirrors to a bare repo on a locally mounted backup drive —
+  `<backup-mount>/<name>.git` — and that push is the backup. It sends
   deltas, so all four repos' full history occupies ~270 MB there, against 6.7 GB
-  of accumulated whole-tree tarballs in `~/git-backups`. Prefer it.
+  of accumulated whole-tree tarballs in `<tarball-dir>`. Prefer it.
 - **Know what the hook actually matches, because it does not match intent.**
   `push`, `send-email`, `request-pull` and the `gh` subcommands are caught
-  **unconditionally** — including `git push router main` to that local bare
+  **unconditionally** — including `git push <backup-remote> main` to that local bare
   repo, which is a backup, not a disclosure. Meanwhile `fetch`, `pull`, `clone`,
   `ls-remote` and `remote add` are caught **only when the command text contains
   a URL**, so `git fetch origin` against a configured remote passes straight
