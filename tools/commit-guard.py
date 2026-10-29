@@ -59,6 +59,18 @@ USER = Path.home().name
 UNCOUNTED_NEIGHBOURS = '";'
 _X = re.escape(UNCOUNTED_NEIGHBOURS)
 
+# Owner ruling 2026-10-28 (third): "We can exclude ({A}) and {{A}} for example
+# but count (x={A}) because patterns can consider the range". A number that is
+# the WHOLE content of a matching bracket pair is not counted; inside a pair
+# with anything else beside it, the neighbour rule decides. The class beyond
+# () and {} - [] - is the supervisor's reading of the ruling. (open, close).
+EXCLUDED_PAIRS = (("(", ")"), ("{", "}"), ("[", "]"))
+
+_ADDR = r"(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+"
+_NOT_PAIRED = "".join(
+    rf"(?:(?<!{re.escape(o)})|(?={_ADDR}(?![\d{re.escape(c)}])))"
+    for o, c in EXCLUDED_PAIRS)
+
 PERSONAL_DIRS = ("Pictures", "Documents", "Downloads", "Desktop", "Videos",
                  "Music", "git-backups", ".ssh", ".gnupg")
 
@@ -81,9 +93,7 @@ PII = [
     ("personal tree reference",
      re.compile(rf"[~/]\s*(?:{'|'.join(PERSONAL_DIRS)})/")),
     ("private IPv4", re.compile(
-        rf"(?<![{_X}\d])(?<!\d\.)"
-        r"(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+"
-        rf"(?![{_X}.\d])")),
+        rf"(?<![{_X}\d])(?<!\d\.){_NOT_PAIRED}{_ADDR}(?![{_X}.\d])")),
 ]
 
 # Dated records may legitimately NAME a consuming project (a checkpoint says

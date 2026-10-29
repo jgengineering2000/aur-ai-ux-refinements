@@ -88,7 +88,7 @@ CASES = [
     ("{A}}}", 1, "close brace after"),
     ("[{A}", 1, "open bracket before"),
     ("{A}]", 1, "close bracket after"),
-    ("({C})", 1, "192.168/16 in parentheses"),
+    ("({C})", 0, "192.168/16 whole content of parentheses"),
     ("v{A}", 1, "letter before"),
     ("{A}x", 1, "letter after"),
     ("a.{A}", 1, "period before (not a fifth part)"),
@@ -105,6 +105,22 @@ CASES = [
     ("{A}5", 1, "digit after is the last octet, still an address"),
     ("See clause {Q1}./{Q2}.", 0, "two clause numbers, period after each"),
     ('a quoted "clause {Q2}"', 0, "clause number in double quotes"),
+    # Third ruling: a number that is the whole content of a matching bracket
+    # pair is excluded; beside anything else inside a pair, the neighbours decide.
+    ("({A})", 0, "whole content of parentheses"),
+    ("{{{A}}}", 0, "whole content of braces"),
+    ("[{A}]", 0, "whole content of brackets"),
+    ("see ({B}) now", 0, "parenthesised in a sentence"),
+    ("({A}5)", 0, "whole content with a longer last octet"),
+    ("(x={A})", 1, "inside parentheses beside other text"),
+    ("{{x: {A}}}", 1, "inside braces beside other text"),
+    ("({A}:22)", 1, "inside parentheses with a port"),
+    ("({A} and {C})", 1, "two numbers in one pair"),
+    ("({A}", 1, "open parenthesis alone"),
+    ("{A})", 1, "close parenthesis alone"),
+    ("({A}]", 1, "mismatched pair ( ]"),
+    ("[{A})", 1, "mismatched pair [ )"),
+    ("{{{A}]", 1, "mismatched pair { ]"),
     ("{A} then (cite {Q1}.)", 1, "a real address still counts beside a citation"),
 ]
 
