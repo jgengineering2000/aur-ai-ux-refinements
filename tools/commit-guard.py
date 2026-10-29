@@ -48,14 +48,16 @@ HOME = str(Path.home())
 USER = Path.home().name
 
 # Personal tree: directories whose contents are the user's, never the project's.
-# THE NEIGHBOUR SET N of the private-IPv4 rule: a match counts only when the
-# character before it AND the character after it are the line edge, whitespace,
-# or one of NEIGHBOUR_PUNCT. Owner ruling 2026-10-28: a dotted number fused to
-# any other character (period, semicolon, comma, quote, bracket, letter, digit,
-# '@', '=') is a citation such as a standard's clause number, not an address.
-# This is the one definition; the rule, the help and the tests all read it.
-NEIGHBOUR_PUNCT = ":/"
-_NOT_N = rf"[^\s{re.escape(NEIGHBOUR_PUNCT)}]"
+# THE EXCLUDING NEIGHBOURS of the private-IPv4 rule. Owner ruling 2026-10-28
+# (second, replacing the first): "modify the rule to exclude double quotes, or
+# a terminal period or semi-colon. There can always be some corner case. We
+# just have to have a sane baseline." A four-part private dotted number is NOT
+# counted when the character before or after it is one of these (a quoted or
+# clause-style citation, not an address), when a period follows it, or when it
+# is a piece of a longer dotted number (a fifth part, or a fused digit). Every
+# other neighbour counts. This is the one definition the rule reads.
+UNCOUNTED_NEIGHBOURS = '";'
+_X = re.escape(UNCOUNTED_NEIGHBOURS)
 
 PERSONAL_DIRS = ("Pictures", "Documents", "Downloads", "Desktop", "Videos",
                  "Music", "git-backups", ".ssh", ".gnupg")
@@ -79,7 +81,9 @@ PII = [
     ("personal tree reference",
      re.compile(rf"[~/]\s*(?:{'|'.join(PERSONAL_DIRS)})/")),
     ("private IPv4", re.compile(
-        rf"(?<!{_NOT_N})(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+(?!{_NOT_N})")),
+        rf"(?<![{_X}\d])(?<!\d\.)"
+        r"(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+"
+        rf"(?![{_X}.\d])")),
 ]
 
 # Dated records may legitimately NAME a consuming project (a checkpoint says
