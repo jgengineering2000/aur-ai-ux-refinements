@@ -48,6 +48,15 @@ HOME = str(Path.home())
 USER = Path.home().name
 
 # Personal tree: directories whose contents are the user's, never the project's.
+# THE NEIGHBOUR SET N of the private-IPv4 rule: a match counts only when the
+# character before it AND the character after it are the line edge, whitespace,
+# or one of NEIGHBOUR_PUNCT. Owner ruling 2026-10-28: a dotted number fused to
+# any other character (period, semicolon, comma, quote, bracket, letter, digit,
+# '@', '=') is a citation such as a standard's clause number, not an address.
+# This is the one definition; the rule, the help and the tests all read it.
+NEIGHBOUR_PUNCT = ":/"
+_NOT_N = rf"[^\s{re.escape(NEIGHBOUR_PUNCT)}]"
+
 PERSONAL_DIRS = ("Pictures", "Documents", "Downloads", "Desktop", "Videos",
                  "Music", "git-backups", ".ssh", ".gnupg")
 
@@ -69,7 +78,8 @@ PII = [
                 r"[\w.+-]+@[\w-]+\.[\w.]{2,}")),
     ("personal tree reference",
      re.compile(rf"[~/]\s*(?:{'|'.join(PERSONAL_DIRS)})/")),
-    ("private IPv4", re.compile(r"\b(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+\b")),
+    ("private IPv4", re.compile(
+        rf"(?<!{_NOT_N})(?:192\.168|10\.\d+|172\.(?:1[6-9]|2\d|3[01]))\.\d+\.\d+(?!{_NOT_N})")),
 ]
 
 # Dated records may legitimately NAME a consuming project (a checkpoint says

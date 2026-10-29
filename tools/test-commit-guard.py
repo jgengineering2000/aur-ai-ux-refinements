@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Jonathan George
 """
-test-commit-guard - decision table for the personal-tree rule of commit-guard.py.
+test-commit-guard - decision table for the personal-tree and private-address
+rules of commit-guard.py.
 
 Drives scan(), the function the guard itself runs, on one added line at a time.
 
@@ -55,6 +56,51 @@ CASES = [
     ("the {USER}x file", 0, "username as prefix of a longer word"),
     ("the x{USER} file", 0, "username as suffix of a longer word"),
     ("see ~/.claude/settings.json", 0, "unrelated claude config path"),
+    # Private IPv4 (owner ruling 2026-10-28): counted only when the character
+    # before and after is line edge, whitespace, ':' or '/'. {A} 10/8,
+    # {B} 172.16/12, {C} 192.168/16, filled in at run time.
+    ("{A}", 1, "10/8 alone on the line (start and end)"),
+    ("{B}", 1, "172.16/12 alone on the line"),
+    ("{C}", 1, "192.168/16 alone on the line"),
+    ("host {A}", 1, "space before, line end after"),
+    ("{A} up", 1, "line start before, space after"),
+    ("x\t{A}\ty", 1, "tab on both sides"),
+    ("ssh {A}:22", 1, "colon after"),
+    ("addr:{A}", 1, "colon before"),
+    ("//{A}/share", 1, "slash on both sides"),
+    ("{A}/24", 1, "slash after"),
+    ("a {B} b {C}", 1, "two addresses on one line: one finding per line"),
+    ("v{A}", 0, "letter before"),
+    ("{A}x", 0, "letter after"),
+    ("1{A}", 0, "digit before"),
+    ("a.{A}", 0, "period before"),
+    ("{A}.", 0, "period after"),
+    ("x;{A}", 0, "semicolon before"),
+    ("{A};", 0, "semicolon after"),
+    ("x-{A}", 0, "hyphen before"),
+    ("{A}-x", 0, "hyphen after"),
+    ('"{A}', 0, "double quote before"),
+    ('{A}"', 0, "double quote after"),
+    ("'{A}", 0, "single quote before"),
+    ("{A}'", 0, "single quote after"),
+    ("`{A}", 0, "back quote before"),
+    ("{A}`", 0, "back quote after"),
+    ("({A}", 0, "open parenthesis before"),
+    ("{A})", 0, "close parenthesis after"),
+    ("{{{A}", 0, "open brace before"),
+    ("{A}}}", 0, "close brace after"),
+    ("[{A}", 0, "open bracket before"),
+    ("{A}]", 0, "close bracket after"),
+    ("x,{A}", 0, "comma before"),
+    ("{A},", 0, "comma after"),
+    (" @{A}", 0, "at sign before"),
+    ("k={A}", 0, "equals before"),
+    ("{A}=k", 0, "equals after"),
+    ("{B}.", 0, "172.16/12 with period after"),
+    ("({C})", 0, "192.168/16 in parentheses"),
+    ("See clause {Q1}./{Q2}.", 0, "two clause numbers fused by punctuation"),
+    ('a quoted "clause {Q2}"', 0, "clause number in double quotes"),
+    ("{A} then (cite {Q1}.)", 1, "a real address still counts beside a citation"),
 ]
 
 
@@ -112,6 +158,8 @@ def main():
     repo = str(HERE.parent)
     fails = 0
     folders = {d: d for d in guard.PERSONAL_DIRS}
+    folders.update(A="10.1.2.3", B="172.16.0.5", C="192.168.1.9",
+                   Q1="10.5.1.2", Q2="10.5.1.3")
     folders["USER"] = Path.home().name
     folders["USER_UPPER"] = Path.home().name.upper()
     for template, want, why in CASES:
