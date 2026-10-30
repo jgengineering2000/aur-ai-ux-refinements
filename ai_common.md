@@ -457,7 +457,13 @@ advantage of.
   width, format, conversion) may be carried, credited to the maker whose
   format they describe and to the reference's author. What it says is
   recorded only as a location in its acquired text, and what the product
-  shows is the standard's name, never the reference's wording.
+  shows is the standard's name, never the reference's wording. **Where no
+  standard names the concept, the product names it in its own words**
+  (owner 2026-10-30): one name and one description per concept, consistent
+  across every maker that records it, written by us and never copied. A
+  vendor's published files and an independent description of a format are
+  free to read as evidence of meaning; reading is not redistribution, and
+  none of their words reach the output.
 
 **20. Any call that ever responds always responds.** ACK, NAK, unknown, OK, 0,
 1 — the content matters far less than its arrival, and a path that answers on
