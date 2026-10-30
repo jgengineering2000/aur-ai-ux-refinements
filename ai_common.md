@@ -451,6 +451,13 @@ advantage of.
   party's description is usable only where it is that published name. Design
   for a core OS install: an optional tool the user may have added is a bonus
   the product interfaces to, never the route its output depends on.
+  **A reference implementation is evidence, never output** (owner
+  2026-10-29): its descriptions and value meanings may be read to find which
+  standard concept a field carries, and its parsing parameters (place,
+  width, format, conversion) may be carried, credited to the maker whose
+  format they describe and to the reference's author. What it says is
+  recorded only as a location in its acquired text, and what the product
+  shows is the standard's name, never the reference's wording.
 
 **20. Any call that ever responds always responds.** ACK, NAK, unknown, OK, 0,
 1 — the content matters far less than its arrival, and a path that answers on
