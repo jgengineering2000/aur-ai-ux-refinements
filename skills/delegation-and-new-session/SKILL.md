@@ -162,6 +162,13 @@ exists), the boundaries (what is out of scope, what must not be touched),
 and the escalation trigger. The supervisor verifies against the real
 artifact (P9), never against the delegate's report of it.
 
+**Every brief carries a `thread:` line** (its thread id in the project's ledger, `threads.py` in the shared root).
+The supervisor opens the thread when it writes the brief (`threads.py open ID --title ... --goal ... --done ...`);
+the delegate checkpoints it, and **pauses** it (`threads.py pause`) rather than writing a RESUME MAP on its own,
+so the map's location is recorded; the landing closes it with the SHA. A thread with no close is open, and
+`threads.py status` (run at SessionStart) sweeps unmerged labs, dirty lab trees, RESUME MAP/HANDOFF lines, saved
+patches and recent briefs, flagging any no thread accounts for as an orphan. Paused work is never lost silently.
+
 **Before briefing a fix, search the history for prior attempts** —
 `git log --grep=<topic>` and `git log -S<symbol>` (owner-accepted
 2026-10-06): a brief once had a delegate build a harness relaunch the owner
