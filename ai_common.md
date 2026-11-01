@@ -454,13 +454,23 @@ advantage of.
   **A reference implementation is evidence, never output** (owner
   2026-10-29): its descriptions and value meanings may be read to find which
   standard concept a field carries, and its parsing parameters (place,
-  width, format, conversion) may be carried, credited to the maker whose
-  format they describe and to the reference's author. What it says is
+  width, format, conversion) may be carried, credited as **derived from the
+  maker** whose format they describe (owner 2026-11-01). The default source
+  is a public standard; where a spec can only come from a project that itself
+  derived it from the maker's files (people's analysis of what the device
+  writes), we become that project's peer, so the citation is "derived from
+  <maker>", never the project, its files or its author. What it says is
   recorded only as a location in its acquired text, and what the product
   shows is the standard's name, never the reference's wording. **Where no
   standard names the concept, the product names it in its own words**
   (owner 2026-10-30): one name and one description per concept, consistent
-  across every maker that records it, written by us and never copied. A
+  across every maker that records it, written by us and never copied.
+  **The whole point is normalised, standardised names used consistently
+  across the corpus** (owner 2026-11-01): a term in public use independent of
+  the reference (a standard, the maker's own manuals, plain industry English
+  such as firmware or power source) is the normalised name and is never
+  paraphrased merely to differ; a reference's own coinage (a table label, a
+  numbered row name) is not public use. A
   vendor's published files and an independent description of a format are
   free to read as evidence of meaning; reading is not redistribution, and
   none of their words reach the output.
