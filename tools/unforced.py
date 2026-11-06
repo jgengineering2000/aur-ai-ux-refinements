@@ -12,8 +12,9 @@ AFTER line (deleted files and bytes, kept and vetoed counts with first paths, er
 gone). A deletion whose BEFORE line cannot be written does not proceed: OSError naming the log and the cause.
 The log is `log=` if given, else `$AUR_RECEIPT_LOG`, else `$XDG_DATA_HOME/aur/cleanup-receipts.log`.
 
-Also here: `held_open_by` / `open_holders`, which processes hold a path open (read from /proc/*/fd).
-Import it; it has no command line. Generic: a project wraps it to choose its own log.
+Also here: `held_open_by` / `open_holders`, which processes hold a path open (read from /proc/*/fd);
+`processes_under`, which processes hold, run in or run from anything at or under a directory; and `newest_touch`,
+the age floor's clock. Import it; it has no command line. Generic: a project wraps it to choose its own log.
 """
 
 from __future__ import annotations
@@ -66,6 +67,55 @@ def held_open_by(path: os.PathLike) -> List[int]:
     """Pids holding PATH open (sorted); empty when no process does. Raises
     OSError when /proc cannot be scanned (see open_holders)."""
     return open_holders([path]).get(os.path.realpath(path), [])
+
+
+def processes_under(path: os.PathLike) -> List[int]:
+    """Pids with an open fd, a working directory or an executable at or under PATH (sorted), from /proc alone:
+    no walk of PATH, so its size costs nothing. A process that cannot be read (another user's, or one that
+    exited mid-scan) is skipped, as in open_holders; an unreadable /proc raises OSError, because "nobody" is a
+    claim that needs the scan to have happened."""
+    target = os.path.realpath(path)
+    under = target.rstrip("/") + "/"
+    found: Set[int] = set()
+    for entry in os.scandir("/proc"):
+        if not entry.name.isdigit():
+            continue
+        links = [f"/proc/{entry.name}/cwd", f"/proc/{entry.name}/exe"]
+        try:
+            links += [fd.path for fd in os.scandir(f"/proc/{entry.name}/fd")]
+        except OSError:
+            pass
+        for link in links:
+            try:
+                tgt = os.readlink(link)
+            except OSError:
+                continue
+            if tgt == target or tgt.startswith(under):
+                found.add(int(entry.name))
+                break
+    return sorted(found)
+
+
+def newest_touch(path: os.PathLike) -> float:
+    """Newest of mtime and ctime over PATH and everything under it (lstat,
+    symlinks never followed). An entry that vanishes mid-walk is skipped — it
+    was being touched, which only makes the answer newer, never older."""
+    newest = 0.0
+    stack = [os.fspath(path)]
+    while stack:
+        cur = stack.pop()
+        try:
+            st = os.lstat(cur)
+        except OSError:
+            continue
+        newest = max(newest, st.st_mtime, st.st_ctime)
+        if stat_mod.S_ISDIR(st.st_mode):
+            try:
+                with os.scandir(cur) as it:
+                    stack.extend(e.path for e in it)
+            except OSError:
+                continue
+    return newest
 
 @dataclass
 class Receipt:

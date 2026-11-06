@@ -496,8 +496,12 @@ def check_authority(report):
            "agents/delegate.md frontmatter: name delegate, model sonnet, omitClaudeMd true, the five tools", str(fm))
     # Generic means it names no project this machine knows (the registry is the
     # list of them; none is spelled out here) and none of their hazards.
+    # AUR itself is recognised by its repository, not its path: a lab is a linked worktree of it.
+    common = subprocess.run(["git", "-C", str(AUR), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                            capture_output=True, text=True).stdout.strip()
+    this_repo = {AUR, Path(common).parent} if common else {AUR}
     projects = [Path(r["path"]).name.lower() for r in aurshare.registry_read()
-                if Path(r["path"]).resolve() != AUR]
+                if Path(r["path"]).resolve() not in this_repo]
     named = [w for w in projects + ["sidecar", "at-spi", "wayland"] if w and w in ag.lower()]
     report(".claude/DELEGATE_BRIEF.md" in body and "if the project has one" in body and not named,
            "…the body reads the project's delegate card if present and names nothing project-specific",

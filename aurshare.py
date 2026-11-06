@@ -68,6 +68,13 @@ SHARED_ASSETS = {
     # user's ~/.claude is tokeneconomy.py, opt-in, never part of the heal.
     "token-usage.py":   "tools/token-usage.py",
     "agents/":          "agents/",
+    # The project ledger, and the link table of run data with the one deletion
+    # routine. A session or a project's own tool runs these from inside that
+    # project, the same argument as above. scratch.py imports the other two by
+    # name from beside itself, so the three travel together.
+    "threads.py":       "tools/threads.py",
+    "unforced.py":      "tools/unforced.py",
+    "scratch.py":       "tools/scratch.py",
 }
 
 # The subset a project's aur/ directory links to. The rules files are consumed

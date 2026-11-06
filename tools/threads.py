@@ -96,6 +96,23 @@ def read(ledger):
     return out
 
 
+def read_strict(ledger):
+    """The ledger's events, for a caller that acts on them: OSError when it is missing or cannot be opened,
+    ValueError naming the line when one cannot be read. `read` skips such a line and calls a missing ledger empty,
+    which is right for a report; a line it skipped might be the one event that matters."""
+    out = []
+    with open(ledger) as f:
+        fcntl.flock(f, fcntl.LOCK_SH)
+        for n, line in enumerate(f, 1):
+            line = line.strip()
+            if line:
+                try:
+                    out.append(json.loads(line))
+                except ValueError as e:
+                    raise ValueError('%s line %d: %s' % (ledger, n, e))
+    return out
+
+
 def append(ledger, event):
     os.makedirs(os.path.dirname(ledger), exist_ok=True)
     with open(ledger, 'a') as f:
@@ -308,7 +325,7 @@ def report_scratch(mroot, ledger, verb, ident):
         return
     for l in lines:
         print('  ' + l)
-    print(summary + (' (run scratch.py clean to free what no longer has a holder)' if lines else ''))
+    print(summary)
 
 
 def run(argv):

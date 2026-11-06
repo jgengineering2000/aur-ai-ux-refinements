@@ -27,3 +27,5 @@ aur-docs/manifest.html
 aur-docs/doc.css
 gate/aur-gate
 gate/target/
+# A lab is a linked worktree of its own branch, inside the checkout that fronts the shared root.
+/labs/
