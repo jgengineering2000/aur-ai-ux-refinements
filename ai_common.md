@@ -560,19 +560,6 @@ test goal recompiled every crate above its edit. Corollaries:
   compiled, regenerable outputs are removed by the project's one deletion
   routine (P21, never forced). A lab idle past its work is reclaimed the same
   way.
-- **Layout and the link table** (owner 2026-11-05). A lab is project-shaped and named for its line of work (a branch can
-  change inside it): `<project>/labs/<lab>/<scratch|rust|research/data|...>`. `scratch` at each level (the lab, or the
-  main tree) holds a `MANIFEST`, the link table of transient dependencies and permanent files, like hard links on a
-  file system: names(i) is the entries naming item i in any level's manifest, and i exists while names(i) has a holder
-  not proven dead or a process holds i open. A link lives in the manifest of the level that depends on i. An entry is
-  `permanent`, or transient with a checkable holder (`thread:ID` open or paused in the ledger, `lab:NAME` existing);
-  free text is refused as a holder, because it never reaches zero. `tools/scratch.py` (add, link, unlink, check, clean,
-  list, adopt, release) keeps it; clean runs BEFORE every handoff, through the one deletion routine (`unforced.py`,
-  P21), because caches nothing deletes fill the disk and stop all progress. Clean frees only what is provably free: a
-  level with no `MANIFEST` is unmanaged and never touched (`adopt` creates the manifest), a tracked path or an item
-  holding one is never a candidate, only a thread closed in a ledger read whole or a lab directory gone counts as a dead
-  holder, and an unnamed item stays for 48 h while check fails on it until a handoff names or removes it. Closing a lab
-  drops its names; what another level still names moves to that level.
 - **Late integration breakage is the accepted trade.** A change low in the
   dependency graph can break a sibling unseen until the merge gate. The gate
   before the merge is where that is caught, and it is never skipped.
