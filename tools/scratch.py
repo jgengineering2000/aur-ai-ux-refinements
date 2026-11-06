@@ -38,7 +38,8 @@ clean judges a level by its frontier, not its top level. Let N be every name in 
 live or not proven dead, D the rest. keeps(p): p is a tracked path, or a name in H is at or above p. A container is a
 real directory (never a link) that keeps() does not hold and that has a name of N strictly below it or a tracked path in
 it: it is descended and is never itself removed. Everything else is an item and is judged whole: a keeper stays, a name
-in D at or above it frees it now, an unnamed one waits out the floor. So one live name deep in a tree keeps only itself,
+in D at exactly it frees it now (whole, with what is in it), an unnamed one waits out the floor, also under a dead name
+above it (that directory held something else named or tracked, so it was never wholly the dead holder's). So one live name deep in a tree keeps only itself,
 and `check` reports every unnamed sibling beside it. An emptied container is an unnamed item the next time.
 A name whose holder is dead is no link any more: clean (not a dry run) drops it wherever it removes nothing, unless the
 item is open in a process, not removable, unjudgeable, or beside a holder not proven dead; a container it emptied goes
@@ -448,7 +449,10 @@ def frontier(root, level, names, holders, tracked):
 def empty_dir(root, item):
     """A real, empty directory holds nothing a handoff could settle; clean still frees it past the floor."""
     full = os.path.join(root, item)
-    return os.path.isdir(full) and not os.path.islink(full) and not listing(full)
+    try:
+        return os.path.isdir(full) and not os.path.islink(full) and not os.listdir(full)
+    except OSError:  # unreadable is not empty: it stays an orphan to report
+        return False
 
 
 def disk_items(root, names, holders, tracked):
@@ -606,7 +610,7 @@ def verdict(root, c, names, holders, tracked):
     if unproven:
         return 'holder not proven dead: ' + unproven[0]
     full = os.path.join(root, c)
-    if not any(covers(n[1], c) for n in named):
+    if not any(n[1] == c for n in named):  # a dead name at exactly C frees it whole; one above it is no licence
         age = now() - unforced.newest_touch(full)
         if age < FLOOR_S:
             return 'unnamed, touched %.1f h ago, under the %d h floor; name or remove it' % (age / 3600, FLOOR_S // 3600)
@@ -642,6 +646,7 @@ def remove_step(root, c, rep, dry_run):
 def discharge_rows(root, item, holders):
     """Drop the rows at exactly ITEM whose holder is dead: such a name is no link any more. It can only raise the bar
     back to the floor, never free anything."""
+    dropped = []
     for d in levels(root).values():
         if not os.path.isdir(d):
             continue
@@ -650,6 +655,10 @@ def discharge_rows(root, item, holders):
             keep = [r for r in rows if not (r[0] == item and holders.state(r[1])[0] == DEAD)]
             if len(keep) != len(rows):
                 write_manifest(d, keep)
+                dropped += [(r[0], r[1]) for r in rows if r not in keep]
+    for it, h in dropped:
+        log('clean', it, 'discharge', 'dead name dropped (held by %s)' % h, 'the row is removed from its manifest')
+    return dropped
 
 
 def dischargeable(root, c, names, holders, tracked):
@@ -673,7 +682,7 @@ def clean(root, ledger, dry_run=False):
     dry run, the dead rows of what stayed are discharged (see the module text)."""
     names = all_names(root)
     holders, tracked = Holders(root, ledger), Tracked(root)
-    rep = {'freed': 0, 'kept': [], 'removed': [], 'errors': [], 'untouched': unmanaged_levels(root)}
+    rep = {'freed': 0, 'kept': [], 'removed': [], 'errors': [], 'untouched': unmanaged_levels(root), 'discharged': []}
     items, containers = disk_items(root, names, holders, tracked)
     cands = set(items) | {n[1] for n in names if os.path.lexists(os.path.join(root, n[1])) and n[1] not in containers}
     stuck = set()  # removal was tried and failed, or could not be judged: its dead rows stay
@@ -697,19 +706,22 @@ def clean(root, ledger, dry_run=False):
     if dry_run:
         return rep
     cur = all_names(root)
-    dead_at = {n[1] for n in cur if holders.state(n[2])[0] == DEAD and os.path.lexists(os.path.join(root, n[1]))}
+    dead_at = {n[1] for n in cur if holders.state(n[2])[0] == DEAD}
     for c in sorted(dead_at, key=lambda i: (-i.count('/'), i)):
         full = os.path.join(root, c)
-        if not os.path.lexists(full) or c in stuck:
+        if c in stuck:
+            continue
+        if not os.path.lexists(full):  # gone by hand: a dead name on nothing settles nothing, and loses nothing
+            rep['discharged'] += discharge_rows(root, c, holders)
             continue
         try:
-            if c in containers and not os.path.islink(full) and not listing(full):
-                if verdict(root, c, cur, holders, tracked) is None:  # emptied by this run: it leaves with its contents
+            if c in containers and empty_dir(root, c):
+                if verdict(root, c, all_names(root), holders, tracked) is None:  # emptied by this run: it leaves with its contents
                     if not remove_step(root, c, rep, dry_run):
                         stuck.add(c)
                     continue
-            if dischargeable(root, c, cur, holders, tracked):
-                discharge_rows(root, c, holders)
+            if dischargeable(root, c, all_names(root), holders, tracked):
+                rep['discharged'] += discharge_rows(root, c, holders)
         except OSError as e:
             log('clean', c, 'discharge', 'no answer on who holds it: %s' % e, 'its dead rows stay')
             rep['errors'].append(str(e))
@@ -886,6 +898,8 @@ def run(argv):
                                                   len(rep['removed']), ', '.join(rep['removed']) or '-'))
             for item, why in rep['kept']:
                 print('kept %s: %s' % (item, why))
+            for item, holder in rep['discharged']:
+                print('discharged dead name: %s held by %s' % (item, holder))
             for d in rep['untouched']:
                 print('not touched (unmanaged, no MANIFEST): %s' % d)
             return 1 if rep['errors'] else 0

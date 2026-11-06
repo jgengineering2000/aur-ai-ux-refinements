@@ -834,14 +834,22 @@ class OnlyTopLevelEntriesWereJudged(Base):
         self.assertFalse(self.exists(old))
         self.assertTrue(self.exists(tracked))
 
-    def test_a_dead_name_above_a_live_one_frees_the_siblings_without_the_floor(self):
+    def test_a_dead_name_above_a_live_one_frees_old_siblings_but_the_floor_still_holds_the_young(self):
+        # a dead name strictly above an item is evidence the directory was never wholly the dead holder's
         self.thread('t1', close=True)
         self.row('scratch', 'scratch/a', 'thread:t1')
         b, sib = self.put('scratch/a/b'), self.put('scratch/a/sib')
         self.row('scratch', b, 'permanent')
         rc, out, _ = self.sc('clean')
-        self.assertFalse(self.exists(sib), out)
-        self.assertTrue(self.exists(b), out)
+        self.assertTrue(self.exists(sib), out)
+        self.assertIn('kept ' + sib + ': unnamed', out)
+        self.assertTrue(self.exists(b))
+        self.assertEqual(self.sc('check')[0], 1)
+        with self.aged():
+            self.sc('clean')
+        self.assertFalse(self.exists(sib))
+        self.assertTrue(self.exists(b))
+        self.assertEqual([r[0] for r in S.read_manifest(os.path.join(self.root, 'scratch'))], [b])
 
     def test_a_dead_name_below_a_directory_frees_it_and_the_young_sibling_stays(self):
         self.thread('t1', close=True)
@@ -918,7 +926,8 @@ class DeadRowsAreDischarged(Base):
         self.row('scratch', 'scratch/a', 'thread:t1')
         b, sib = self.put('scratch/a/b'), self.put('scratch/a/sib')
         self.row('scratch', b, 'permanent')
-        rc, out, _ = self.sc('clean')
+        with self.aged():
+            rc, out, _ = self.sc('clean')
         self.assertFalse(self.exists(sib), out)
         self.assertTrue(self.exists(b))
         self.assertEqual(self.rows(), [b])
@@ -1026,6 +1035,36 @@ class DeadRowsAreDischarged(Base):
         self.row('scratch', x, 'thread:t1')
         rc, out, _ = self.sc('clean')  # the clock is not moved: age cannot be the reason
         self.assertFalse(self.exists(x), out)
+
+    def test_a_dead_row_on_a_path_removed_by_hand_is_dropped_and_check_is_clean_of_it(self):
+        self.thread('t1', close=True)
+        x = self.put('scratch/x')
+        self.row('scratch', x, 'thread:t1')
+        os.remove(os.path.join(self.root, x))
+        self.assertIn('DANGLING', self.sc('check')[1])
+        self.sc('clean')
+        self.assertEqual(self.rows(), [])
+        self.assertEqual(self.sc('check')[0], 0)
+
+    def test_a_dropped_row_is_reported_one_line_each(self):
+        self.thread('t1', close=True)
+        self.row('scratch', 'scratch/a', 'thread:t1')
+        b = self.put('scratch/a/b')
+        self.row('scratch', b, 'permanent')
+        rc, out, err = self.sc('clean')
+        self.assertIn('discharged dead name: scratch/a held by thread:t1', out)
+        self.assertIn('dead name dropped (held by thread:t1)', err)
+
+    def test_an_unreadable_unnamed_directory_is_an_orphan_and_check_carries_on(self):
+        self.put('scratch/orphan')
+        d = os.path.join(self.root, 'scratch', 'locked')
+        os.makedirs(d)
+        os.chmod(d, 0)
+        self.addCleanup(os.chmod, d, stat.S_IRWXU)
+        rc, out, _ = self.sc('check')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('ORPHAN (on disk, unnamed): scratch/orphan', out)
+        self.assertIn('ORPHAN (on disk, unnamed): scratch/locked', out)
 
 
 if __name__ == '__main__':
