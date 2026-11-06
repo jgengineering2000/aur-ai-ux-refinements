@@ -31,6 +31,16 @@ usage: scratch.py [--root DIR] [--ledger FILE] VERB ...
                                             that level; its own manifest is dropped; refuses (exit 1) while a
                                             permanent, thread-held or unproven item would be lost, or a tracked one moved
 
+A holder is checked when it is written: add, link and adopt refuse one that is not live (a lab with no directory, a
+thread that is unknown or closed, any thread while the ledger cannot be read), name the token and why, and write nothing.
+
+clean judges a level by its frontier, not its top level. Let N be every name in every manifest, H those whose holder is
+live or not proven dead, D the rest. keeps(p): p is a tracked path, or a name in H is at or above p. A container is a
+real directory (never a link) that keeps() does not hold and that has a name of N strictly below it or a tracked path in
+it: it is descended and is never itself removed. Everything else is an item and is judged whole: a keeper stays, a name
+in D at or above it frees it now, an unnamed one waits out the floor. So one live name deep in a tree keeps only itself,
+and `check` reports every unnamed sibling beside it. An emptied container is an unnamed item the next time.
+
 clean removes an item only if every name for it has a provably dead holder, or it has no name and was last touched 48 h
 ago or more. It never touches:
   - a level with no MANIFEST, a scratch that is a symlink, or anything outside a managed level's scratch
@@ -279,6 +289,14 @@ def holder_problem(root, ledger, holder):
     return Holders(root, ledger).state(holder)[1]
 
 
+def require_live(root, ledger, holder):
+    """A holder is checked when it is written: one not LIVE (a lab with no directory, a thread unknown, closed or
+    unreadable) would be a deletion order at the next clean, with no floor. Refused before any side effect."""
+    st, why = Holders(root, ledger).state(holder)
+    if st != LIVE:
+        raise Fail('holder %r refused: %s; nothing was written' % (holder, why))
+
+
 def check_holder_arg(holder):
     if parse_holder(holder) is None:
         raise Refuse('holder %r: free text is refused; use permanent, thread:ID or lab:NAME' % holder)
@@ -294,7 +312,7 @@ class Tracked:
 
     def __init__(self, root):
         self.root = root
-        self.held, self.problems = {}, {}
+        self.held, self.files, self.problems = {}, {}, {}
 
     def tree(self, level):
         return self.root if level == MAIN else os.path.join(self.root, 'labs', level)
@@ -314,13 +332,15 @@ class Tracked:
             self.problems[level] = 'git ls-files exit %d: %s' % (r.returncode, os.fsdecode(r.stderr).strip()[:200])
             log('tracked', level, 'git ls-files', self.problems[level], 'the level is kept whole')
             return
-        held = set()
+        held, files = set(), set()
         for raw in r.stdout.split(b'\0'):
             path = os.fsdecode(raw)
+            if path:
+                files.add(path)
             while path and path not in held:  # the path and every directory holding it
                 held.add(path)
                 path = os.path.dirname(path)
-        self.held[level] = held
+        self.held[level], self.files[level] = held, files
 
     def problem(self, level):
         self.load(level)
@@ -330,6 +350,15 @@ class Tracked:
         """ITEM (root-relative) is tracked at LEVEL's tree, or holds a tracked path."""
         self.load(level)
         return os.path.relpath(os.path.join(self.root, item), self.tree(level)) in self.held.get(level, ())
+
+    def is_path(self, level, item):
+        """ITEM (root-relative) is itself a tracked path."""
+        self.load(level)
+        return os.path.relpath(os.path.join(self.root, item), self.tree(level)) in self.files.get(level, ())
+
+    def below(self, level, item):
+        """ITEM is not itself tracked but holds a tracked path."""
+        return self.holds(level, item) and not self.is_path(level, item)
 
 
 # ---- the relation ----------------------------------------------------------------------------------
@@ -344,19 +373,84 @@ def covers(named, item):
     return named == item or item.startswith(named + '/')
 
 
-def entries(d, rel):
-    """Root-relative paths of what a level's scratch D (REL) holds on disk, its manifest aside."""
+def listing(d):
     try:
-        return [rel + '/' + n for n in sorted(os.listdir(d)) if n not in MANIFEST_FILES]
+        return sorted(os.listdir(d))
     except (FileNotFoundError, NotADirectoryError):
         return []
     except OSError as e:
         raise Fail('%s cannot be listed (%s); nothing was changed' % (d, e))
 
 
-def disk_items(root):
-    """What the managed levels hold on disk."""
-    return [i for d in levels(root).values() if managed(d) for i in entries(d, os.path.relpath(d, root))]
+def entries(d, rel):
+    """Root-relative paths of the top level of a level's scratch D (REL), its manifest aside: what `release` moves."""
+    return [rel + '/' + n for n in listing(d) if n not in MANIFEST_FILES]
+
+
+def default_ledger(root):
+    return os.path.join(root, 'threads', 'ledger.jsonl')
+
+
+def frontier(root, level, names, holders, tracked):
+    """(items, containers): root-relative paths. Walks down from LEVEL's scratch, its manifest files aside. With N every
+    name in NAMES and H those whose holder is live or unknown: keeps(p) is a tracked path, or a name in H at or above p;
+    a container is a real directory (never a link) that keeps(p) does not hold, with a name strictly below it or a
+    tracked path in it. A container is descended and is never an item; everything else is an item and is not descended.
+    The walk follows the names and tracked paths, so its size is theirs, never the tree's."""
+    d = levels(root)[level]
+    rel = os.path.relpath(d, root)
+    state = {}
+    upper = set()  # every directory with a name strictly below it
+    kept_by = []
+    for _, item, holder, _ in names:
+        if holder not in state:
+            state[holder] = holders.state(holder)[0]
+        if state[holder] != DEAD:
+            kept_by.append(item)
+        p = os.path.dirname(item)
+        while p and p not in upper:
+            upper.add(p)
+            p = os.path.dirname(p)
+    kept_by = set(kept_by)
+
+    def keeps(p):
+        if tracked.is_path(level, p):
+            return True
+        q = p
+        while q:
+            if q in kept_by:
+                return True
+            q = os.path.dirname(q)
+        return False
+
+    items, containers = [], []
+
+    def walk(dirpath, drel, top):
+        for n in listing(dirpath):
+            if top and n in MANIFEST_FILES:
+                continue
+            p = drel + '/' + n
+            full = os.path.join(dirpath, n)
+            if (not os.path.islink(full) and os.path.isdir(full) and not keeps(p)
+                    and (p in upper or tracked.below(level, p))):
+                containers.append(p)
+                walk(full, p, False)
+            else:
+                items.append(p)
+
+    walk(d, rel, True)
+    return items, containers
+
+
+def disk_items(root, names, holders, tracked):
+    """What the managed levels hold on disk, by frontier: (items, containers)."""
+    items, containers = [], []
+    for lv, d in levels(root).items():
+        if managed(d):
+            i, c = frontier(root, lv, names, holders, tracked)
+            items += i
+            containers += c
+    return items, containers
 
 
 def check(root, ledger):
@@ -369,7 +463,7 @@ def check(root, ledger):
             continue
         if tracked.problem(lv):
             git_unknown.append((lv, tracked.problem(lv)))
-        for i in entries(d, os.path.relpath(d, root)):
+        for i in frontier(root, lv, names, holders, tracked)[0]:
             if not tracked.holds(lv, i) and not any(related(n[1], i) for n in names):
                 orphans.append(i)
     dangling = [(lv, it, h) for lv, it, h, _ in names if not os.path.lexists(os.path.join(root, it))]
@@ -520,7 +614,8 @@ def clean(root, ledger, dry_run=False):
     names = all_names(root)
     holders, tracked = Holders(root, ledger), Tracked(root)
     rep = {'freed': 0, 'kept': [], 'removed': [], 'errors': [], 'untouched': unmanaged_levels(root)}
-    cands = set(disk_items(root)) | {n[1] for n in names if os.path.lexists(os.path.join(root, n[1]))}
+    items, containers = disk_items(root, names, holders, tracked)
+    cands = set(items) | {n[1] for n in names if os.path.lexists(os.path.join(root, n[1])) and n[1] not in containers}
     for c in sorted(cands, key=lambda i: (i.count('/'), i)):
         full = os.path.join(root, c)
         if not os.path.lexists(full) or any(c.startswith(r + '/') for r in rep['removed']):
@@ -555,7 +650,7 @@ def clean(root, ledger, dry_run=False):
     return rep
 
 
-def adopt(root, level, holder, what):
+def adopt(root, level, holder, what, ledger=None):
     """Bring LEVEL under management: create its MANIFEST if absent, and name each unnamed, untracked item with HOLDER.
     Deletes nothing. Returns (named [item], tracked [item])."""
     d = levels(root).get(level)
@@ -570,18 +665,19 @@ def adopt(root, level, holder, what):
     rel = os.path.relpath(d, root)
     with level_lock(d):
         names = all_names(root)
-        items = entries(d, rel)
+        items = frontier(root, level, names, Holders(root, ledger or default_ledger(root)), tracked)[0]
         held = [i for i in items if tracked.holds(level, i)]
         new = [i for i in items if i not in held and not any(related(n[1], i) for n in names)]
         write_manifest(d, read_manifest(d) + [[i, holder, what.replace('\t', ' ').replace('\n', ' ')] for i in new])
     return new, held
 
 
-def adopt_listing(root):
+def adopt_listing(root, ledger=None):
     """[(item, bytes)] unnamed in any level, managed or not, tracked paths aside."""
     names, tracked, out = all_names(root), Tracked(root), []
+    holders = Holders(root, ledger or default_ledger(root))
     for lv, d in levels(root).items():
-        for i in entries(d, os.path.relpath(d, root)):
+        for i in frontier(root, lv, names, holders, tracked)[0]:
             if not tracked.holds(lv, i) and not any(related(n[1], i) for n in names):
                 out.append((i, size_of(os.path.join(root, i))))
     return out
@@ -695,8 +791,10 @@ def run(argv):
     if '--holder' in o and verb != 'unlink':
         check_holder_arg(o['--holder'])
     root = root or project_root()
-    ledger = ledger or os.path.join(root, 'threads', 'ledger.jsonl')
+    ledger = ledger or default_ledger(root)
     try:
+        if verb in ('add', 'link') or (verb == 'adopt' and '--level' in o):
+            require_live(root, ledger, o['--holder'])
         if verb == 'add':
             add(root, pos[0], o['--what'], o['--holder'])
         elif verb == 'link':
@@ -728,16 +826,17 @@ def run(argv):
         elif verb == 'list':
             for lv, it, h, w in all_names(root):
                 print('\t'.join((lv, it, h, w)))
-            print('total on disk in managed levels: %d bytes' % sum(size_of(os.path.join(root, i)) for i in disk_items(root)))
+            listed = disk_items(root, all_names(root), Holders(root, ledger), Tracked(root))[0]
+            print('total on disk in managed levels: %d bytes' % sum(size_of(os.path.join(root, i)) for i in listed))
             for d in unmanaged_levels(root):
                 print('not counted (unmanaged, no MANIFEST): %s' % d)
         elif verb == 'adopt':
             if '--level' in o:
-                new, held = adopt(root, o['--level'], o['--holder'], o.get('--what', 'adopted'))
+                new, held = adopt(root, o['--level'], o['--holder'], o.get('--what', 'adopted'), ledger)
                 print('level %s is under management: named %d item(s) with %s, skipped %d tracked; deleted nothing'
                       % (o['--level'], len(new), o['--holder'], len(held)))
             else:
-                for item, size in adopt_listing(root):
+                for item, size in adopt_listing(root, ledger):
                     print('%s\t%d bytes\tunnamed' % (item, size))
                 for d in unmanaged_levels(root):
                     print('%s\tunmanaged\t`adopt --level LEVEL --holder HOLDER` brings it in' % d)

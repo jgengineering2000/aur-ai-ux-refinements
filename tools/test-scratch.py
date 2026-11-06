@@ -116,7 +116,7 @@ class Check(Base):
         os.remove(os.path.join(self.root, gone))
         held = self.put('scratch/held')
         self.thread('other')  # a ledger exists, and t1 is not in it
-        self.sc('add', held, '--what', 'w', '--holder', 'thread:t1')
+        self.row('scratch', held, 'thread:t1')  # `add` refuses a holder that is not live: write what it cannot
         rc, out, _ = self.sc('check')
         self.assertEqual(rc, 1)
         self.assertIn('ORPHAN (on disk, unnamed): scratch/orphan', out)
@@ -340,7 +340,7 @@ class OnlyInsideAScratch(Base):
         rc, out, _ = self.sc('clean')
         self.assertFalse(self.exists(dead))
         self.assertTrue(self.exists(other), out)
-        self.assertIn('kept scratch/d: unnamed', out)
+        self.assertIn('kept scratch/d/other: unnamed', out)  # d is a container: its entries are judged one by one
 
     def test_removing_an_inner_path_keeps_a_name_above_it(self):
         self.thread('t1', close=True)
@@ -374,14 +374,15 @@ class TrackedPaths(Base):
             self.sc('clean')
         self.assertTrue(self.exists(p))
 
-    def test_a_directory_holding_a_tracked_file_stays_whole(self):
+    def test_a_directory_holding_a_tracked_file_is_a_container_whose_tracked_path_stays(self):
         p = self.put('scratch/d/sub/tool.py')
         junk = self.put('scratch/d/junk')
         self.git('add', '-f', p)
         with self.aged():
             rc, out, _ = self.sc('clean')
-        self.assertTrue(self.exists(p) and self.exists(junk))
-        self.assertIn('kept scratch/d: tracked', out)
+        self.assertTrue(self.exists(p), out)
+        self.assertFalse(self.exists(junk), out)  # unnamed and old: judged beside the tracked path, not kept by it
+        self.assertIn('kept scratch/d/sub/tool.py: tracked', out)
 
     def worktree(self):
         tool = self.put('scratch/tool.py')
@@ -742,6 +743,170 @@ class Hoist(Base):
         log = os.path.join(self.tmp.name, 'mine.log')
         U.remove_unforced(os.path.join(self.root, p), log=log)
         self.assertIn('BEFORE', open(log).read())
+
+
+class HolderMustBeLive(Base):
+    """A holder is checked when it is written: a name that is dead at birth is a deletion order with no floor."""
+
+    def bad_holders(self):
+        self.thread('t-closed', close=True)
+        return ['lab:typo', 'thread:unknown', 'thread:t-closed']
+
+    def attempt(self, verb, holder):
+        src = self.put('labs/a/scratch/src')
+        if verb == 'add':
+            return self.sc('add', src, '--what', 'w', '--holder', holder)
+        if verb == 'link':
+            return self.sc('link', src, '--level', 'b', '--holder', holder)
+        return self.sc('adopt', '--level', 'b', '--holder', holder)
+
+    def manifests(self):
+        return [open(os.path.join(self.root, d, 'MANIFEST')).read() for d in ('labs/a/scratch', 'labs/b/scratch')]
+
+    def test_a_holder_that_is_not_live_is_refused_by_all_three_verbs(self):
+        for verb in ('add', 'link', 'adopt'):
+            for holder in self.bad_holders():
+                before = self.manifests()
+                rc, _, err = self.attempt(verb, holder)
+                self.assertNotEqual(rc, 0, (verb, holder))
+                self.assertIn(holder, err)
+                self.assertEqual(self.manifests(), before, (verb, holder))
+
+    def test_a_thread_is_refused_while_the_ledger_cannot_be_read(self):
+        os.makedirs(self.ledger)
+        for verb in ('add', 'link', 'adopt'):
+            before = self.manifests()
+            rc, _, err = self.attempt(verb, 'thread:t1')
+            self.assertNotEqual(rc, 0, verb)
+            self.assertIn('ledger', err)
+            self.assertEqual(self.manifests(), before)
+
+    def test_permanent_an_existing_lab_and_an_open_or_paused_thread_are_accepted(self):
+        self.thread('t-open')
+        self.thread('t-paused')
+        T.append(self.ledger, {'ev': 'pause', 'id': 't-paused', 'ts': '2026-01-03T00:00:00Z'})
+        for verb in ('add', 'link', 'adopt'):
+            for holder in ('permanent', 'lab:a', 'thread:t-open', 'thread:t-paused'):
+                rc, _, err = self.attempt(verb, holder)
+                self.assertEqual(rc, 0, (verb, holder, err))
+
+
+class OnlyTopLevelEntriesWereJudged(Base):
+    """A level is judged by its frontier: a directory that something below is named or tracked is only a container,
+    and everything beside the named thing is judged by itself."""
+
+    def young(self, rel):
+        soon = time.time() + 48.5 * 3600  # with aged(), 0.5 h old
+        os.utime(os.path.join(self.root, rel), (soon, soon))
+
+    def keep_old_young(self, base):
+        keep, old, young = self.put(base + '/keep'), self.put(base + '/old'), self.put(base + '/young')
+        self.sc('add', keep, '--what', 'w', '--holder', 'permanent')
+        self.young(young)
+        return keep, old, young
+
+    def check_and_clean(self, keep, old, young):
+        with self.aged():
+            rc, out, _ = self.sc('check')
+        self.assertEqual(rc, 1, out)
+        self.assertIn('ORPHAN (on disk, unnamed): ' + old, out)
+        self.assertIn('ORPHAN (on disk, unnamed): ' + young, out)
+        self.assertNotIn('ORPHAN (on disk, unnamed): ' + keep, out)
+        with self.aged():
+            rc, out, _ = self.sc('clean')
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(self.exists(old), out)
+        self.assertTrue(self.exists(keep) and self.exists(young), out)
+        self.assertIn('kept ' + young + ': unnamed', out)
+
+    def test_one_live_name_does_not_keep_its_unnamed_siblings(self):
+        self.check_and_clean(*self.keep_old_young('scratch/c'))
+
+    def test_the_same_three_levels_deep(self):
+        self.check_and_clean(*self.keep_old_young('scratch/c/d/e'))
+
+    def test_a_tracked_file_makes_a_container_and_stays(self):
+        tracked = self.put('scratch/t/tool.py')
+        self.git('add', '-f', tracked)
+        old = self.put('scratch/t/old')
+        with self.aged():
+            rc, out, _ = self.sc('check')
+            self.assertIn('ORPHAN (on disk, unnamed): ' + old, out)
+            self.assertNotIn('ORPHAN (on disk, unnamed): ' + tracked, out)
+            self.sc('clean')
+        self.assertFalse(self.exists(old))
+        self.assertTrue(self.exists(tracked))
+
+    def test_a_dead_name_above_a_live_one_frees_the_siblings_without_the_floor(self):
+        self.thread('t1', close=True)
+        self.row('scratch', 'scratch/a', 'thread:t1')
+        b, sib = self.put('scratch/a/b'), self.put('scratch/a/sib')
+        self.row('scratch', b, 'permanent')
+        rc, out, _ = self.sc('clean')
+        self.assertFalse(self.exists(sib), out)
+        self.assertTrue(self.exists(b), out)
+
+    def test_a_dead_name_below_a_directory_frees_it_and_the_young_sibling_stays(self):
+        self.thread('t1', close=True)
+        dead, sib = self.put('scratch/d/dead'), self.put('scratch/d/sib')
+        self.row('scratch', dead, 'thread:t1')
+        self.young(sib)
+        with self.aged():
+            rc, out, _ = self.sc('clean')
+        self.assertFalse(self.exists(dead), out)
+        self.assertTrue(self.exists(sib), out)
+
+    def test_a_symlink_in_a_container_is_removed_as_a_link_and_a_linked_directory_is_not_descended(self):
+        outside = os.path.join(self.tmp.name, 'outside')
+        os.makedirs(os.path.join(outside, 'sub'))
+        open(os.path.join(outside, 'sub', 'f'), 'w').close()
+        keep = self.put('scratch/c/keep')
+        self.sc('add', keep, '--what', 'w', '--holder', 'permanent')
+        link = os.path.join(self.root, 'scratch/c/lnk')
+        os.symlink(outside, link)
+        # a name below the link would make a real directory a container; a link is never one
+        self.row('scratch', 'scratch/c/lnk/sub', 'permanent')
+        with self.aged():
+            rc, out, _ = self.sc('clean')
+        self.assertTrue(os.path.exists(os.path.join(outside, 'sub', 'f')), out)
+        self.assertNotIn('kept scratch/c/lnk/sub/f', out)
+        link2 = os.path.join(self.root, 'scratch/c/lnk2')
+        os.symlink(outside, link2)
+        with self.aged():
+            self.sc('clean')
+        self.assertTrue(os.path.exists(os.path.join(outside, 'sub', 'f')))
+        self.assertFalse(os.path.lexists(link2))
+
+    def test_a_write_protected_old_directory_in_a_container_is_kept_and_the_run_carries_on(self):
+        keep = self.put('scratch/c/keep')
+        self.sc('add', keep, '--what', 'w', '--holder', 'permanent')
+        d = os.path.join(self.root, 'scratch/c/prot')
+        os.makedirs(d)
+        open(os.path.join(d, 'f'), 'w').close()
+        os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)
+        self.addCleanup(os.chmod, d, stat.S_IRWXU)
+        old = self.put('scratch/c/zold')
+        with self.aged():
+            rc, out, _ = self.sc('clean')
+        self.assertTrue(self.exists('scratch/c/prot/f'))
+        self.assertIn('kept scratch/c/prot: not removable', out)
+        self.assertFalse(self.exists(old), out)
+
+    def test_adopt_names_the_deep_siblings_never_a_tracked_path_and_deletes_nothing(self):
+        keep = self.put('scratch/c/keep')
+        self.sc('add', keep, '--what', 'w', '--holder', 'permanent')
+        sib = self.put('scratch/c/sib')
+        tracked = self.put('scratch/c/tool.py')
+        self.git('add', '-f', tracked)
+        rc, out, _ = self.sc('adopt')
+        self.assertIn(sib + '\t', out)
+        self.assertNotIn(tracked + '\t', out)
+        self.assertNotIn(keep + '\t', out)
+        self.assertEqual(self.sc('adopt', '--level', 'main', '--holder', 'permanent')[0], 0)
+        names = [r[0] for r in S.read_manifest(os.path.join(self.root, 'scratch'))]
+        self.assertIn(sib, names)
+        self.assertNotIn(tracked, names)
+        self.assertTrue(all(self.exists(p) for p in (keep, sib, tracked)))
 
 
 if __name__ == '__main__':
