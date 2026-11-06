@@ -296,6 +296,21 @@ def split(s):
     return [x for x in (s or '').split(',') if x]
 
 
+def report_scratch(mroot, ledger, verb, ident):
+    """After pause and close: the project's scratch check (scratch.py), reported in this command's output.
+    A failed check is printed, never fatal: the ledger event is already written."""
+    try:
+        import scratch
+        lines, summary = scratch.check_report(mroot, ledger)
+    except Exception as e:  # noqa: BLE001 -- reporting must not undo a recorded event
+        sys.stderr.write('threads.py: scratch check unavailable (verb=%s id=%s phase=report: %s); route=skipped\n'
+                         % (verb, ident, e))
+        return
+    for l in lines:
+        print('  ' + l)
+    print(summary + (' (run scratch.py clean to free what no longer has a holder)' if lines else ''))
+
+
 def run(argv):
     p = parse(argv)
     if isinstance(p, int):
@@ -353,6 +368,7 @@ def run(argv):
         print('thread paused: %s' % ident)
         print('resume map: %s' % (m if m else 'NONE RECORDED -- add one with `checkpoint %s --map LOGFILE`' % ident))
         print('resume when: %s' % val['--resume-when'])
+        report_scratch(mroot, ledger, verb, ident)
         return 0
     if verb == 'resume':
         if t['status'] != 'paused':
@@ -370,6 +386,7 @@ def run(argv):
         outcome = {'kind': k[2:], 'value': val[k]}
         append(ledger, {'ts': now(), 'ev': 'close', 'id': ident, 'outcome': outcome})
         print('thread closed: %s  %s %s' % (ident, outcome['kind'], outcome['value']))
+        report_scratch(mroot, ledger, verb, ident)
         return 0
     return status(mroot, th, ledger, '--table' in flg, '--fast' in flg)
 

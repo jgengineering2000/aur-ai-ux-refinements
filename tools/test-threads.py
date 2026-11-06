@@ -79,6 +79,21 @@ class Verbs(Base):
         os.environ.pop('TZ')
         time.tzset()
 
+    def test_close_and_pause_report_the_scratch_check(self):
+        self.op()
+        item = os.path.join(self.repo, 'scratch', 'run')
+        os.makedirs(os.path.dirname(item))
+        open(item, 'w').close()
+        with open(os.path.join(self.repo, 'scratch', 'MANIFEST'), 'w') as f:
+            f.write('scratch/run\tthread:t1\ta run\n')
+        rc, out, _ = call('pause', 't1', '--reason', 'r', '--by', 'w', '--resume-when', 'later', root=self.repo)
+        self.assertIn('scratch check: clean', out)
+        call('resume', 't1', root=self.repo)
+        rc, out, _ = call('close', 't1', '--landed', 'abc123', root=self.repo)
+        self.assertEqual(rc, 0)
+        self.assertIn('BAD HOLDER: main names scratch/run held by thread:t1: thread t1 is closed', out)
+        self.assertIn('scratch check: 1 problem(s)', out)
+
     def test_close_needs_exactly_one_outcome(self):
         self.op()
         for argv in (['close', 't1'], ['close', 't1', '--landed', 'x', '--dropped', 'y']):
