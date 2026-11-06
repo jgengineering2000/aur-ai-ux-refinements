@@ -39,8 +39,9 @@ live or not proven dead, D the rest. keeps(p): p is a tracked path, or a name in
 real directory (never a link) that keeps() does not hold and that has a name of N strictly below it or a tracked path in
 it: it is descended and is never itself removed. Everything else is an item and is judged whole: a keeper stays, a name
 in D at exactly it frees it now (whole, with what is in it), an unnamed one waits out the floor, also under a dead name
-above it (that directory held something else named or tracked, so it was never wholly the dead holder's). So one live name deep in a tree keeps only itself,
-and `check` reports every unnamed sibling beside it. An emptied container is an unnamed item the next time.
+above it (that directory held something else named or tracked, so it was never wholly the dead holder's). So one live
+name deep in a tree keeps only itself, and `check` reports every unnamed sibling beside it. An emptied container is an
+unnamed item the next time.
 A name whose holder is dead is no link any more: clean (not a dry run) drops it wherever it removes nothing, unless the
 item is open in a process, not removable, unjudgeable, or beside a holder not proven dead; a container it emptied goes
 with it. check does not list an empty directory.
