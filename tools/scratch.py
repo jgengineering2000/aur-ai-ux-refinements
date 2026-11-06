@@ -40,6 +40,9 @@ real directory (never a link) that keeps() does not hold and that has a name of 
 it: it is descended and is never itself removed. Everything else is an item and is judged whole: a keeper stays, a name
 in D at or above it frees it now, an unnamed one waits out the floor. So one live name deep in a tree keeps only itself,
 and `check` reports every unnamed sibling beside it. An emptied container is an unnamed item the next time.
+A name whose holder is dead is no link any more: clean (not a dry run) drops it wherever it removes nothing, unless the
+item is open in a process, not removable, unjudgeable, or beside a holder not proven dead; a container it emptied goes
+with it. check does not list an empty directory.
 
 clean removes an item only if every name for it has a provably dead holder, or it has no name and was last touched 48 h
 ago or more. It never touches:
@@ -442,6 +445,12 @@ def frontier(root, level, names, holders, tracked):
     return items, containers
 
 
+def empty_dir(root, item):
+    """A real, empty directory holds nothing a handoff could settle; clean still frees it past the floor."""
+    full = os.path.join(root, item)
+    return os.path.isdir(full) and not os.path.islink(full) and not listing(full)
+
+
 def disk_items(root, names, holders, tracked):
     """What the managed levels hold on disk, by frontier: (items, containers)."""
     items, containers = [], []
@@ -464,7 +473,7 @@ def check(root, ledger):
         if tracked.problem(lv):
             git_unknown.append((lv, tracked.problem(lv)))
         for i in frontier(root, lv, names, holders, tracked)[0]:
-            if not tracked.holds(lv, i) and not any(related(n[1], i) for n in names):
+            if not tracked.holds(lv, i) and not any(related(n[1], i) for n in names) and not empty_dir(root, i):
                 orphans.append(i)
     dangling = [(lv, it, h) for lv, it, h, _ in names if not os.path.lexists(os.path.join(root, it))]
     bad = []
@@ -607,15 +616,67 @@ def verdict(root, c, names, holders, tracked):
     return None
 
 
+def remove_step(root, c, rep, dry_run):
+    """The one removal step: remove C through unforced, record it in REP, drop its names. True when it went."""
+    full = os.path.join(root, c)
+    before = size_of(full)
+    try:
+        r = unforced.remove_unforced(full, dry_run=dry_run)
+    except OSError as e:  # the receipt could not be written, so nothing was removed
+        log('clean', c, 'remove', str(e), 'kept, names stay')
+        rep['kept'].append((c, 'not removed: %s' % e))
+        rep['errors'].append(str(e))
+        return False
+    if r.errors or r.kept or r.vetoed or not r.gone:
+        log('clean', c, 'remove', 'not removed', 'kept, names stay', errors=r.errors, kept=r.kept)
+        rep['kept'].append((c, 'not removable (write-protected or error)'))
+        rep['errors'] += r.errors
+        return False
+    rep['freed'] += before
+    rep['removed'].append(c)
+    if not dry_run:
+        drop_names(root, c)
+    return True
+
+
+def discharge_rows(root, item, holders):
+    """Drop the rows at exactly ITEM whose holder is dead: such a name is no link any more. It can only raise the bar
+    back to the floor, never free anything."""
+    for d in levels(root).values():
+        if not os.path.isdir(d):
+            continue
+        with level_lock(d):
+            rows = read_manifest(d)
+            keep = [r for r in rows if not (r[0] == item and holders.state(r[1])[0] == DEAD)]
+            if len(keep) != len(rows):
+                write_manifest(d, keep)
+
+
+def dischargeable(root, c, names, holders, tracked):
+    """The facts under which a dead row at C may be dropped when C stays: C is inside a managed level's scratch, git
+    answers for its level, no related holder is unproven, and no process holds it."""
+    level = scratch_home(root, c)
+    if level is None or tracked.problem(level):
+        return False
+    if any(holders.state(n[2])[0] == UNKNOWN for n in names if related(n[1], c)):
+        return False
+    try:
+        return not unforced.processes_under(os.path.join(root, c))
+    except OSError:
+        return False
+
+
 def clean(root, ledger, dry_run=False):
     """{'freed', 'kept': [(item, why)], 'removed': [item], 'errors': [...], 'untouched': [unmanaged scratch]}.
     Shallowest first, so a removed directory takes what is under it, and the names are read again before each judgement:
-    a name written a moment ago holds. Fail, before anything is removed, on a manifest it cannot read."""
+    a name written a moment ago holds. Fail, before anything is removed, on a manifest it cannot read. Then, outside a
+    dry run, the dead rows of what stayed are discharged (see the module text)."""
     names = all_names(root)
     holders, tracked = Holders(root, ledger), Tracked(root)
     rep = {'freed': 0, 'kept': [], 'removed': [], 'errors': [], 'untouched': unmanaged_levels(root)}
     items, containers = disk_items(root, names, holders, tracked)
     cands = set(items) | {n[1] for n in names if os.path.lexists(os.path.join(root, n[1])) and n[1] not in containers}
+    stuck = set()  # removal was tried and failed, or could not be judged: its dead rows stay
     for c in sorted(cands, key=lambda i: (i.count('/'), i)):
         full = os.path.join(root, c)
         if not os.path.lexists(full) or any(c.startswith(r + '/') for r in rep['removed']):
@@ -626,27 +687,32 @@ def clean(root, ledger, dry_run=False):
             log('clean', c, 'judge', 'no answer on who holds it: %s' % e, 'kept, names stay')
             rep['kept'].append((c, 'not removed: no answer on who holds it (%s)' % e))
             rep['errors'].append(str(e))
+            stuck.add(c)
             continue
         if why:
             rep['kept'].append((c, why))
             continue
-        before = size_of(full)
+        if not remove_step(root, c, rep, dry_run):
+            stuck.add(c)
+    if dry_run:
+        return rep
+    cur = all_names(root)
+    dead_at = {n[1] for n in cur if holders.state(n[2])[0] == DEAD and os.path.lexists(os.path.join(root, n[1]))}
+    for c in sorted(dead_at, key=lambda i: (-i.count('/'), i)):
+        full = os.path.join(root, c)
+        if not os.path.lexists(full) or c in stuck:
+            continue
         try:
-            r = unforced.remove_unforced(full, dry_run=dry_run)
-        except OSError as e:  # the receipt could not be written, so nothing was removed
-            log('clean', c, 'remove', str(e), 'kept, names stay')
-            rep['kept'].append((c, 'not removed: %s' % e))
+            if c in containers and not os.path.islink(full) and not listing(full):
+                if verdict(root, c, cur, holders, tracked) is None:  # emptied by this run: it leaves with its contents
+                    if not remove_step(root, c, rep, dry_run):
+                        stuck.add(c)
+                    continue
+            if dischargeable(root, c, cur, holders, tracked):
+                discharge_rows(root, c, holders)
+        except OSError as e:
+            log('clean', c, 'discharge', 'no answer on who holds it: %s' % e, 'its dead rows stay')
             rep['errors'].append(str(e))
-            continue
-        if r.errors or r.kept or r.vetoed or not r.gone:
-            log('clean', c, 'remove', 'not removed', 'kept, names stay', errors=r.errors, kept=r.kept)
-            rep['kept'].append((c, 'not removable (write-protected or error)'))
-            rep['errors'] += r.errors
-            continue
-        rep['freed'] += before
-        rep['removed'].append(c)
-        if not dry_run:
-            drop_names(root, c)
     return rep
 
 

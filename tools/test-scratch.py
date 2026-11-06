@@ -342,15 +342,12 @@ class OnlyInsideAScratch(Base):
         self.assertTrue(self.exists(other), out)
         self.assertIn('kept scratch/d/other: unnamed', out)  # d is a container: its entries are judged one by one
 
-    def test_removing_an_inner_path_keeps_a_name_above_it(self):
-        self.thread('t1', close=True)
-        dead = self.put('scratch/d/dead')
-        self.git('add', '-f', self.put('scratch/d/tracked'))
-        self.row('scratch', 'scratch/d', 'thread:t1')
-        self.row('scratch', dead, 'thread:t1')
-        self.sc('clean')
-        self.assertFalse(self.exists(dead))
-        self.assertIn('scratch/d', [r[0] for r in S.read_manifest(os.path.join(self.root, 'scratch'))])
+    def test_removing_an_inner_path_never_drops_a_name_above_it(self):
+        # the invariant itself, through drop_names, with a live row above
+        self.row('scratch', 'scratch/d', 'permanent')
+        self.row('scratch', 'scratch/d/dead', 'permanent')
+        S.drop_names(self.root, 'scratch/d/dead')
+        self.assertEqual([r[0] for r in S.read_manifest(os.path.join(self.root, 'scratch'))], ['scratch/d'])
 
 
 class TrackedPaths(Base):
@@ -907,6 +904,128 @@ class OnlyTopLevelEntriesWereJudged(Base):
         self.assertIn(sib, names)
         self.assertNotIn(tracked, names)
         self.assertTrue(all(self.exists(p) for p in (keep, sib, tracked)))
+
+
+class DeadRowsAreDischarged(Base):
+    """A name whose holder is dead is not a link any more: clean drops it where it removes nothing, so it can never
+    sit above later writes as a floor-free licence. Dropping a dead row only raises the bar back to the floor."""
+
+    def rows(self, d='scratch'):
+        return [r[0] for r in S.read_manifest(os.path.join(self.root, d))]
+
+    def test_a_dead_row_on_a_container_is_dropped_and_later_writes_keep_the_floor(self):
+        self.thread('t1', close=True)
+        self.row('scratch', 'scratch/a', 'thread:t1')
+        b, sib = self.put('scratch/a/b'), self.put('scratch/a/sib')
+        self.row('scratch', b, 'permanent')
+        rc, out, _ = self.sc('clean')
+        self.assertFalse(self.exists(sib), out)
+        self.assertTrue(self.exists(b))
+        self.assertEqual(self.rows(), [b])
+        new = self.put('scratch/a/new')
+        rc, out, _ = self.sc('clean')
+        self.assertTrue(self.exists(new), out)
+        self.assertIn('kept ' + new + ': unnamed', out)
+        rc, out, _ = self.sc('check')
+        self.assertNotIn('BAD HOLDER', out)
+        self.assertIn('ORPHAN (on disk, unnamed): ' + new, out)
+
+    def test_dead_rows_on_a_directory_and_its_only_content_go_together_with_the_directory(self):
+        self.thread('t1', close=True)
+        dead = self.put('scratch/d/dead')
+        self.row('scratch', 'scratch/d', 'thread:t1')
+        self.row('scratch', dead, 'thread:t1')
+        self.sc('clean')
+        self.assertFalse(self.exists('scratch/d'))
+        self.assertEqual(self.rows(), [])
+
+    def test_a_dead_row_on_a_directory_with_a_tracked_file_goes_and_the_file_stays(self):
+        self.thread('t1', close=True)
+        dead = self.put('scratch/d/dead')
+        tracked = self.put('scratch/d/tracked')
+        self.git('add', '-f', tracked)
+        self.row('scratch', 'scratch/d', 'thread:t1')
+        self.row('scratch', dead, 'thread:t1')
+        self.sc('clean')
+        self.assertFalse(self.exists(dead))
+        self.assertTrue(self.exists(tracked))
+        self.assertEqual(self.rows(), [])
+
+    def test_a_dead_and_a_live_row_on_one_item_only_the_dead_one_goes(self):
+        self.thread('t1', close=True)
+        x = self.put('scratch/x')
+        self.row('scratch', x, 'thread:t1')
+        self.row('scratch', x, 'permanent')
+        self.sc('clean')
+        self.assertTrue(self.exists(x))
+        self.assertEqual(S.read_manifest(os.path.join(self.root, 'scratch')), [[x, 'permanent', 'w']])
+        self.assertEqual(self.sc('check')[0], 0)
+
+    def test_a_dead_row_on_a_tracked_file_goes_and_the_file_stays(self):
+        self.thread('t1', close=True)
+        t = self.put('scratch/tool.py')
+        self.git('add', '-f', t)
+        self.row('scratch', t, 'thread:t1')
+        self.sc('clean')
+        self.assertTrue(self.exists(t))
+        self.assertEqual(self.rows(), [])
+
+    def test_a_dead_row_on_an_item_open_in_a_process_stays_with_the_item(self):
+        self.thread('t1', close=True)
+        d = os.path.join(self.root, 'scratch', 'busy')
+        os.makedirs(d)
+        self.row('scratch', 'scratch/busy', 'thread:t1')
+        p = subprocess.Popen(['sleep', '60'], cwd=d)
+        self.addCleanup(p.wait)
+        self.addCleanup(p.kill)
+        rc, out, _ = self.sc('clean')
+        self.assertTrue(self.exists('scratch/busy'))
+        self.assertIn('kept scratch/busy: open in pid', out)
+        self.assertEqual(self.rows(), ['scratch/busy'])
+
+    def test_a_dead_row_on_a_write_protected_item_stays_with_the_item(self):
+        self.thread('t1', close=True)
+        d = os.path.join(self.root, 'scratch', 'prot')
+        os.makedirs(d)
+        open(os.path.join(d, 'f'), 'w').close()
+        os.chmod(d, stat.S_IRUSR | stat.S_IXUSR)
+        self.addCleanup(os.chmod, d, stat.S_IRWXU)
+        self.row('scratch', 'scratch/prot', 'thread:t1')
+        rc, out, _ = self.sc('clean')
+        self.assertTrue(self.exists('scratch/prot/f'))
+        self.assertIn('kept scratch/prot: not removable', out)
+        self.assertEqual(self.rows(), ['scratch/prot'])
+
+    def test_dry_run_drops_no_row_and_removes_nothing(self):
+        self.thread('t1', close=True)
+        self.row('scratch', 'scratch/a', 'thread:t1')
+        b, sib = self.put('scratch/a/b'), self.put('scratch/a/sib')
+        self.row('scratch', b, 'permanent')
+        before = open(os.path.join(self.root, 'scratch', 'MANIFEST')).read()
+        self.sc('clean', '--dry-run')
+        self.assertTrue(self.exists(sib) and self.exists(b))
+        self.assertEqual(open(os.path.join(self.root, 'scratch', 'MANIFEST')).read(), before)
+
+    def test_an_unnamed_directory_emptied_by_its_inner_dead_item_is_no_orphan_and_goes_when_old(self):
+        self.thread('t1', close=True)
+        dead = self.put('scratch/d/dead')
+        self.row('scratch', dead, 'thread:t1')
+        self.sc('clean')
+        self.assertFalse(self.exists(dead))
+        self.assertTrue(self.exists('scratch/d'))
+        rc, out, _ = self.sc('check')
+        self.assertNotIn('scratch/d', out)
+        self.assertEqual(rc, 0, out)
+        with self.aged():
+            self.sc('clean')
+        self.assertFalse(self.exists('scratch/d'))
+
+    def test_a_dead_name_on_the_item_frees_it_now_with_no_ageing(self):
+        self.thread('t1', close=True)
+        x = self.put('scratch/x')
+        self.row('scratch', x, 'thread:t1')
+        rc, out, _ = self.sc('clean')  # the clock is not moved: age cannot be the reason
+        self.assertFalse(self.exists(x), out)
 
 
 if __name__ == '__main__':
