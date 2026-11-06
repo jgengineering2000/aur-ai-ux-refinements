@@ -173,6 +173,18 @@ class Clean(Base):
         self.assertIn('AFTER', log)
 
 
+class OldFormat(Base):
+    def test_a_manifest_of_another_format_is_refused_and_clean_removes_nothing(self):
+        self.put('scratch/precious')
+        with open(os.path.join(self.root, 'scratch', 'MANIFEST'), 'w') as f:
+            f.write('precious\twhat\t5\tproducer\tdependency\n')
+        for verb in ('check', 'clean'):
+            rc, _, err = self.sc(verb)
+            self.assertEqual(rc, 1, verb)
+            self.assertIn('not the 3 of ITEM, HOLDER, WHAT', err)
+        self.assertTrue(self.exists('scratch/precious'))
+
+
 class Adopt(Base):
     def test_adopt_lists_unnamed_content_and_deletes_nothing(self):
         self.put('scratch/old', 'zz')

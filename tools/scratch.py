@@ -93,7 +93,10 @@ def read_manifest(d):
         for line in fh:
             if line.strip():
                 f = line.rstrip('\n').split('\t')
-                rows.append((f + ['', '', ''])[:3])
+                if len(f) != 3:
+                    raise Fail('%s has a row of %d fields, not the 3 of ITEM, HOLDER, WHAT (an older manifest '
+                               'format?); nothing was changed. Migrate it by hand first' % (p, len(f)))
+                rows.append(f)
     return rows
 
 
