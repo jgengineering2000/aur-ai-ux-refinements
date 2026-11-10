@@ -453,9 +453,11 @@ advantage of.
   the product interfaces to, never the route its output depends on.
   **A reference implementation is evidence, never output** (owner
   2026-10-29): its descriptions and value meanings may be read to find which
-  standard concept a field carries, and its parsing parameters (place,
-  width, format, conversion) may be carried, credited as **derived from the
-  maker** whose format they describe (owner 2026-11-01). The default source
+  standard concept a field carries, and **anything it holds except its
+  words may be carried** (a layout, offset, key, type, conversion, value
+  meaning, formula), because it echoes what the maker's own files contain:
+  credited as **derived from the maker** whose format they describe (owner
+  2026-11-01, broadened 2026-11-10). The default source
   is a public standard; where a spec can only come from a project that itself
   derived it from the maker's files (people's analysis of what the device
   writes), we become that project's peer, so the citation is "derived from
@@ -465,6 +467,11 @@ advantage of.
   standard names the concept, the product names it in its own words**
   (owner 2026-10-30): one name and one description per concept, consistent
   across every maker that records it, written by us and never copied.
+  **Our own words are why the reference is read at all** (owner
+  2026-11-10): it supplies the concept, and the name comes from a standard
+  (one almost always exists, across photography, broadcast, print,
+  electronics and astronomical optics) or from us, because any other source
+  of names lets our own implementation disagree with itself.
   **The whole point is normalised, standardised names used consistently
   across the corpus** (owner 2026-11-01): a term in public use independent of
   the reference (a standard, the maker's own manuals, plain industry English
