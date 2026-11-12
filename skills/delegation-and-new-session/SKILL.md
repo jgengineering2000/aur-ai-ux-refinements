@@ -107,6 +107,27 @@ card arrives twice. A project's own settings carry only what is the project's.
   leaves the next session to run everything at whatever it woke up as —
   usually either too expensive or too weak.
 
+## A goal file, checked by itself (owner 2026-11-11: "NEVER diverge from this model")
+
+A supervisor under load drifts off the owner's goal, and a rule it must remember lapses. So the goal is a file, and the checks run
+without being remembered. For any project with a long-running goal:
+
+- **The goal file (`GOAL.md`).** The owner's own words, each quote with its raw source (file and line, or transcript and line) and its
+  date, taken from the raw message and never from a summary. Our commentary sits in a last section, marked as ours. Nothing else.
+- **The checks at every worker start.** The brief check (the brief states its class, site and kind, its predicted result with a time,
+  the comparison that will check it, and its landing gate; work that closes nothing names the run it unblocks; a brief that lists the
+  items to be solved is refused), the pace check (predicted against actual since the first build line), and the prediction against the
+  measurement after each landing, from the one predictor.
+- **A fresh auditor at fixed checkpoints.** A delegate with a clean context and the goal file as its whole rubric judges the checks'
+  output, the landings' diff stats, the active briefs and the supervisor's checkpoint log, and writes one verdict file (first line
+  `verdict: on task` or `verdict: off task`, then evidence per clause, quoted). Checkpoints: choosing what to build next, a worker's timer
+  report, a missed prediction, before a speed or tooling brief, before a question to the owner, a plan change from another session, and
+  the closing kickoff. Log one line per checkpoint.
+- **The block.** A `PreToolUse` hook on the spawn tool (`hooks/goal-gate.py`) refuses a goal brief when the brief check refuses it,
+  when the newest verdict says off task and no re-plan (the reason, then the plan) is newer, or when the newest verdict is older than the
+  newest commit or the last compaction. The auditor's and the checks' own cards are allowed. Every decision is logged with its route.
+  A verdict that only appears in a report is one more line nothing acts on; the block is what makes it bind.
+
 ## Decisions put to the owner — supervisor and delegate alike
 
 - **Strike foreclosed options before surfacing any fork.** Before putting an

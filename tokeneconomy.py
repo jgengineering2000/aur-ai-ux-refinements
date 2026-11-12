@@ -9,6 +9,8 @@ execute with theirs thrown away. Its parts are generic and live in AUR:
 
   hooks/supervisor-bash-guard.py   refuses build/test/run commands in the main
                                    session (PreToolUse, matcher Bash)
+  hooks/goal-gate.py               refuses to spawn a worker on a brief that has drifted
+                                   from its project's GOAL.md (PreToolUse, matcher Agent)
   hooks/reply-card.sh + .md        the owner's presentation rules, put at the end
                                    of the context (UserPromptSubmit; and after a
                                    compaction, SessionStart matcher "compact")
@@ -59,6 +61,7 @@ import aurshare
 # names are the shared root's, never a checkout path (shared-root-design.md).
 USER_LINKS = (
     ("supervisor-bash-guard.py", "hooks/supervisor-bash-guard.py"),
+    ("goal-gate.py", "hooks/goal-gate.py"),
     ("reply-card.sh", "hooks/reply-card.sh"),
     ("reply-card.md", "hooks/reply-card.md"),
     ("agents/delegate.md", "agents/delegate.md"),
@@ -78,6 +81,8 @@ HOOKS = (
     ("UserPromptSubmit", None, '"$HOME/.claude/reply-card.sh"', 5),
     ("SessionStart", "compact", '"$HOME/.claude/reply-card.sh" compact', 5),
     ("PreToolUse", "Bash", '"$HOME/.claude/supervisor-bash-guard.py"', 5),
+    # the brief checker inside it has a 8 s timeout: a hook killed by its own timeout lets the spawn through
+    ("PreToolUse", "Agent", '"$HOME/.claude/goal-gate.py"', 30),
 )
 
 SETTINGS_FILES_OF_A_PROJECT = ("settings.json", "settings.local.json")

@@ -42,6 +42,7 @@ USAGE = ("usage: test-tokeneconomy.py [-v|--verbose]\n"
 ENV_KEY = "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
 REPLY = '"$HOME/.claude/reply-card.sh"'
 GUARD = '"$HOME/.claude/supervisor-bash-guard.py"'
+GOAL_GATE = '"$HOME/.claude/goal-gate.py"'
 EXPECTED_SETTINGS = {
     "env": {ENV_KEY: "300000"},
     "hooks": {
@@ -49,7 +50,9 @@ EXPECTED_SETTINGS = {
         "SessionStart": [{"matcher": "compact",
                           "hooks": [{"type": "command", "command": REPLY + " compact", "timeout": 5}]}],
         "PreToolUse": [{"matcher": "Bash",
-                        "hooks": [{"type": "command", "command": GUARD, "timeout": 5}]}],
+                        "hooks": [{"type": "command", "command": GUARD, "timeout": 5}]},
+                       {"matcher": "Agent",
+                        "hooks": [{"type": "command", "command": GOAL_GATE, "timeout": 30}]}],
     },
 }
 
@@ -145,8 +148,8 @@ def check_check_mode(report, tmp):
     fx = Fixture(tmp / "check")
     code, out, err = fx.run("check")
     k = fx.kinds(out)
-    report(code == 1 and len(k.get("would", [])) == 11 and "changed" not in k,
-           "check on a bare account -> exit 1, 11 'would' lines (3 shared, 4 links, 4 settings)",
+    report(code == 1 and len(k.get("would", [])) == 13 and "changed" not in k,
+           "check on a bare account -> exit 1, 13 'would' lines (3 shared, 5 links, 5 settings)",
            f"code={code} would={len(k.get('would', []))} err={err[:200]!r}")
     report(fx.tree() == {} , "check writes nothing at all (home still empty)", f"{list(fx.tree())[:6]}")
 
@@ -155,8 +158,8 @@ def check_install(report, tmp):
     fx = Fixture(tmp / "install")
     code, out, err = fx.run("install")
     k = fx.kinds(out)
-    report(code == 0 and len(k.get("changed", [])) == 11 and not k.get("problem") and not err,
-           "install on a bare account -> exit 0, 11 changes, no problems",
+    report(code == 0 and len(k.get("changed", [])) == 13 and not k.get("problem") and not err,
+           "install on a bare account -> exit 0, 13 changes, no problems",
            f"code={code} changed={len(k.get('changed', []))} problems={k.get('problem')} err={err[:200]!r}")
 
     for name, key in (("token-usage.py", "token-usage.py"), ("hooks", "hooks/"), ("agents", "agents/")):
@@ -166,6 +169,7 @@ def check_install(report, tmp):
                f"shared root {name} -> this checkout's {aurshare.SHARED_ASSETS[key].rstrip('/')}",
                f"{os.readlink(link) if link.is_symlink() else 'not a link'}")
     for rel_link, rel_target in (("supervisor-bash-guard.py", "hooks/supervisor-bash-guard.py"),
+                                 ("goal-gate.py", "hooks/goal-gate.py"),
                                  ("reply-card.sh", "hooks/reply-card.sh"),
                                  ("reply-card.md", "hooks/reply-card.md"),
                                  ("agents/delegate.md", "agents/delegate.md")):
@@ -175,7 +179,7 @@ def check_install(report, tmp):
                f"{os.readlink(link) if link.is_symlink() else 'not a link'}")
 
     text = (fx.claude / "settings.json").read_text()
-    report(json.loads(text) == EXPECTED_SETTINGS, "settings.json holds exactly the env key and three hook groups",
+    report(json.loads(text) == EXPECTED_SETTINGS, "settings.json holds exactly the env key and four hook groups",
            text[:600])
     report(text == json.dumps(EXPECTED_SETTINGS, indent=2, ensure_ascii=False) + "\n",
            "settings.json is written in Claude Code's own format (2-space indent, trailing newline)")
@@ -183,7 +187,8 @@ def check_install(report, tmp):
 
     # The wired commands work when run the way Claude Code runs them.
     before = fx.tree()
-    cmds = {ev: grp["hooks"][0]["command"] for ev, groups in fx.settings()["hooks"].items() for grp in groups}
+    cmds = {ev: grp["hooks"][0]["command"] for ev, groups in fx.settings()["hooks"].items() for grp in groups
+            if grp.get("matcher") != "Agent"}      # the Bash guard is the one PreToolUse command run here
     code, out, err = shell_hook(fx, cmds["UserPromptSubmit"], json.dumps({"prompt": "hello"}))
     report(code == 0 and out.startswith("REPLY CARD") and not err,
            "UserPromptSubmit command -> prints the reply card (card found through the symlink)",
@@ -232,8 +237,8 @@ def check_settings_merge(report, tmp):
     report(code == 0 and s["permissions"] == {"allow": ["Grep", "Glob"]} and s["model"] == "opus",
            "foreign keys (permissions, model) survive the merge", f"code={code} keys={list(s)}")
     pre = s["hooks"]["PreToolUse"]
-    report(len(pre) == 2 and pre[0]["hooks"][0]["command"] == "/x/.claude/git-ip-guard.sh"
-           and pre[1] == EXPECTED_SETTINGS["hooks"]["PreToolUse"][0],
+    report(len(pre) == 3 and pre[0]["hooks"][0]["command"] == "/x/.claude/git-ip-guard.sh"
+           and pre[1:] == EXPECTED_SETTINGS["hooks"]["PreToolUse"],
            "an existing PreToolUse Bash group is kept first; ours is appended as its own group",
            json.dumps(pre)[:300])
     report(list(s)[:3] == ["permissions", "hooks", "model"], "existing key order is preserved", f"{list(s)}")
@@ -394,9 +399,9 @@ def check_links(report, tmp):
     for name, key in (("token-usage.py", "token-usage.py"), ("hooks", "hooks/"), ("agents", "agents/")):
         (fx.share / name).symlink_to(AUR / aurshare.SHARED_ASSETS[key].rstrip("/"))
     code, out, err = fx.run("install")
-    report(code == 0 and len(fx.kinds(out).get("changed", [])) == 8
+    report(code == 0 and len(fx.kinds(out).get("changed", [])) == 10
            and len([m for m in fx.kinds(out).get("ok", []) if m.startswith("shared root")]) == 3,
-           "a populated shared root is reported present and not touched: 8 changes (4 links + 4 settings)",
+           "a populated shared root is reported present and not touched: 10 changes (5 links + 5 settings)",
            f"code={code} changed={len(fx.kinds(out).get('changed', []))}")
 
 
@@ -472,7 +477,7 @@ def check_installer_menu(report, tmp):
                            capture_output=True, text=True, timeout=120)
         if part_c == "y":
             report(r.returncode == 0 and "Installing Token Economy" in r.stdout
-                   and "token-economy: 11 changed" in r.stdout and fx.settings() == EXPECTED_SETTINGS
+                   and "token-economy: 13 changed" in r.stdout and fx.settings() == EXPECTED_SETTINGS
                    and (fx.claude / "reply-card.sh").is_symlink(),
                    "install.py Part C answered yes -> component runs against the account, exit 0",
                    f"code={r.returncode} tail={r.stdout[-300:]!r} err={r.stderr[-200:]!r}")
