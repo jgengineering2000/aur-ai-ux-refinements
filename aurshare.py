@@ -75,6 +75,8 @@ SHARED_ASSETS = {
     "threads.py":       "tools/threads.py",
     "unforced.py":      "tools/unforced.py",
     "scratch.py":       "tools/scratch.py",
+    "gen-diff.sh":      "tools/gen-diff.sh",
+    "transcript-prompts.py": "tools/transcript-prompts.py",
 }
 
 # The subset a project's aur/ directory links to. The rules files are consumed
