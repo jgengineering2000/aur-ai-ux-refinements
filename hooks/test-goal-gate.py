@@ -144,6 +144,31 @@ def main():
         ok_verdict(fx)
     case("checker timeout: deny checker-fault", 2, "checker-fault", slow_checker, env={"AUR_GOAL_GATE_CHECK_TIMEOUT": "1"})
 
+    # a spawn that names a check card is a check spawn: allowed whole, its other files are inputs
+    with tempfile.TemporaryDirectory() as d:
+        fx = Fx(d)
+        pl = fx.spawn("AUDITOR.md")
+        pl["tool_input"]["prompt"] += f" Inputs: {fx.repo}/briefs/BAD.md and {fx.repo}/briefs/WORK.md."
+        rc, err = run(fx, pl)
+        lines = fx.log()
+        check(rc == 0 and "rule=check-card" in lines[-1] and sum("rule=input" in l for l in lines) == 2
+              and any("BAD.md" in l and "rule=input" in l for l in lines), "check spawn naming other briefs: allowed whole, inputs logged", f"rc={rc} {lines} {err[:200]}")
+    # a relative name resolves against the cwd only
+    with tempfile.TemporaryDirectory() as d:
+        fx = Fx(d)
+        pl = fx.spawn("WORK.md", cwd=str(fx.repo / "tools"))
+        pl["tool_input"]["prompt"] = "Your brief is briefs/WORK.md. Go."
+        rc, err = run(fx, pl)
+        lines = fx.log()
+        check(rc == 0 and any("rule=unresolved" in l and "briefs/WORK.md" in l for l in lines) and "rule=no-brief" in lines[-1],
+              "relative name not under the cwd: logged unresolved, never matched at the toplevel", f"rc={rc} {lines}")
+    with tempfile.TemporaryDirectory() as d:
+        fx = Fx(d)
+        pl = fx.spawn("WORK.md", cwd=str(fx.repo))
+        pl["tool_input"]["prompt"] = "Your brief is briefs/BAD.md. Go."
+        rc, err = run(fx, pl)
+        check(rc == 2 and "rule=brief-check" in fx.log()[-1], "relative name under the cwd resolves and is judged", f"rc={rc} {fx.log()}")
+
     with tempfile.TemporaryDirectory() as d:
         fx = Fx(d, goal=False, checker=False)
         rc, err = run(fx, "{ not json")

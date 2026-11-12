@@ -13,8 +13,8 @@ workers until the reason and a re-plan are written. This hook is the block. It i
 generic: it knows only the shapes below, nothing of any project.
 
 WHAT IT READS. From the spawn's prompt, every token that names an existing .md
-file (absolute, or relative to the working directory or its git toplevel) is a
-brief. For each, the nearest GOAL.md in its folder or above it (up to the git
+file (absolute, or relative to the working directory only) is a brief; a name that
+resolves to nothing is logged as rule=unresolved and judged by nothing. For each, the nearest GOAL.md in its folder or above it (up to the git
 toplevel) is its goal. State sits in a GOAL-audit/ directory beside the GOAL.md:
   verdict-<YYYYMMDDTHHMMSSZ>.md   the auditor's file; first line `verdict: on task`
                                   or `verdict: off task`
@@ -24,7 +24,9 @@ The newest of each is chosen by the stamp in its name.
 WHAT IT DECIDES (per goal brief, in this order; the first to apply decides).
   no-brief / no-goal   the prompt names no brief, or the brief has no GOAL.md: allow
   check-card           the brief is one a heading containing "checks" in GOAL.md names
-                       (the auditor's own card and the tracker's run card): allow
+                       (the auditor's own card and the tracker's run card): the spawn is a
+                       check spawn and is allowed WHOLE; every other file it names is an
+                       input, logged as rule=input, and is not judged
   brief-check          <toplevel>/tools/brief_check.py refuses the brief: deny
   no-verdict           no verdict file: deny
   off-task-no-replan   newest verdict says off task and no re-plan is newer: deny
@@ -108,18 +110,20 @@ def toplevel(path):
 
 
 def named_briefs(prompt, cwd):
-    seen, out = set(), []
-    top = toplevel(cwd) if cwd and os.path.isdir(cwd) else None
+    """([existing .md files the prompt names, in order], [names that resolve to nothing]).
+    An absolute name (or ~) is itself; a relative name resolves against the working directory only, never the git toplevel."""
+    seen, out, lost = set(), [], []
     for tok in MD_RE.findall(prompt or ""):
-        cands = [os.path.expanduser(tok)] if tok.startswith(("/", "~")) else [p for p in (os.path.join(cwd or "", tok), os.path.join(top or "", tok)) if cwd or top]
-        for c in cands:
-            if os.path.isfile(c) and os.path.basename(c) != "GOAL.md":
+        c = os.path.expanduser(tok) if tok.startswith(("/", "~")) else (os.path.join(cwd, tok) if cwd else "")
+        if c and os.path.isfile(c):
+            if os.path.basename(c) != "GOAL.md":
                 c = os.path.realpath(c)
                 if c not in seen:
                     seen.add(c)
                     out.append(c)
-                break
-    return out
+        elif tok not in lost:
+            lost.append(tok)
+    return out, lost
 
 
 def find_goal(brief):
@@ -253,12 +257,29 @@ def main():
         sys.stderr.write("goal-gate: WARNING unreadable input, allowed: {}\n".format(e))
         return 0
     try:
-        briefs = named_briefs(prompt, cwd)
+        briefs, lost = named_briefs(prompt, cwd)
     except Exception as e:
         log_line(session, "allow", "fault", note="reading the prompt: {}".format(e))
         return 0
+    for name in lost:
+        log_line(session, "allow", "unresolved", name=name)
     if not briefs:
         log_line(session, "allow", "no-brief")
+        return 0
+    cards = []
+    for b in briefs:
+        try:
+            g = find_goal(b)
+            if g is not None and os.path.basename(b) in card_names(g):
+                cards.append((b, g))
+        except Exception as e:
+            log_line(session, "allow", "fault", brief=b, note="{}: {}".format(type(e).__name__, e))
+    if cards:           # a check spawn: allowed whole; the other files it names are inputs
+        for b in briefs:
+            if b not in [c[0] for c in cards]:
+                log_line(session, "allow", "input", brief=b)
+        for b, g in cards:
+            log_line(session, "allow", "check-card", brief=b, goal=g)
         return 0
     decided = None
     for b in briefs:
