@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from transcript import turns  # noqa: E402
 
+
 def default_project_dir():
     """Infer the active repository's Claude transcript directory from cwd."""
     r = subprocess.run(["git", "rev-parse", "--show-toplevel"],
@@ -266,7 +267,7 @@ def analyse(files, since):
 def main(argv):
     ap = argparse.ArgumentParser(
         add_help=True, description="Measure interaction-rule compliance.")
-    ap.add_argument("--project", default=str(default_project_dir()))
+    ap.add_argument("--project", default=None)
     ap.add_argument("--since", default=None)
     ap.add_argument("--csv", action="store_true")
     # argparse already refuses an unknown option, names it, and exits non-zero.
@@ -275,9 +276,10 @@ def main(argv):
     if args.since and not re.match(r"^\d{4}-\d{2}-\d{2}$", args.since):
         ap.error(f"--since expects YYYY-MM-DD, got {args.since!r}")
 
-    files = sorted(glob.glob(os.path.join(args.project, "*.jsonl")))
+    project = args.project if args.project is not None else str(default_project_dir())
+    files = sorted(glob.glob(os.path.join(project, "*.jsonl")))
     if not files:
-        print(f"no transcripts under {args.project}", file=sys.stderr)
+        print(f"no transcripts under {project}", file=sys.stderr)
         return 1
 
     rows = analyse(files, args.since)

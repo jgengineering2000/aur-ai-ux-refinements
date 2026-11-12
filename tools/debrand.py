@@ -52,7 +52,7 @@ EDIT_SUFFIXES = {".py", ".sh", ".md", ".json", ".template", ".service", ".path",
                  ".txt", ".html", ".js", ".css"}
 
 # Extensionless files that still carry paths. `.gitignore` is the one that bites:
-# MTI's has eight `claude-docs/` rules including negations whitelisting specific
+# one project had eight `claude-docs/` rules including negations whitelisting specific
 # tracked documents, so renaming the directory without rewriting them drops those
 # files out of the index — a suffix-only filter never sees it.
 EDIT_NAMES = {".gitignore", ".gitattributes", "Makefile", "CLAUDE.md",

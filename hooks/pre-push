@@ -87,7 +87,7 @@ fi
 # job and governs patent-IP only.
 GUARD=""
 for c in "$HOME/.local/aur/commit-guard.py" \
-         "$HOME/develop/aur/tools/commit-guard.py"; do
+         "$repo_root/tools/commit-guard.py"; do
     [ -r "$c" ] && { GUARD="$c"; break; }
 done
 if [[ -z "$GUARD" ]]; then

@@ -1106,8 +1106,8 @@ says nothing about who can read it.
 above it is PII by construction.** Every git project is its own world, rooted
 at `${PROJECT_PATH}` — the directory the repository lives in — and nothing
 tracked may name anything outside that world: not the user's home, not the
-machine's layout, and **not the project's own absolute location** (`~/develop/x`
-names `$HOME` as surely as `~/Pictures` does; "it is only the project
+machine's layout, and **not the project's own absolute location** (`<home>/develop/x`
+names `$HOME` as surely as `<home>/Pictures` does; "it is only the project
 directory" is precisely the exemption that lets the home path in). Inside the
 world, three classes never reach git, with no exception: **user-supplied
 image files and their metadata contents** (EXIF, embedded previews, basenames

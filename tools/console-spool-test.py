@@ -89,7 +89,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="spool-test-") as td:
         tmp_root = Path(td) / "tasksroot"
         # The registry sits UNDER the daemon directory, as it does in
-        # production (~/.local/share/<project>/consoles). That nesting is what
+        # production ($XDG_DATA_HOME/<project>/consoles). That nesting is what
         # makes the daemon-row regression below reachable at all: with the
         # registry parked in a sibling directory, the scan that classifies
         # open descriptors never looked at the spool's files and the defect

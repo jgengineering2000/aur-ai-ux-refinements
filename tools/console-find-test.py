@@ -449,7 +449,7 @@ PAGE_PERF = r"""
   const cnt  = pane.querySelector('.find-count');
 
   pane.querySelector('[data-act="clear"]').click();
-  // A realistic line: the MTI prefix is ~70 characters before any message.
+  // A realistic line: the structured prefix is ~70 characters before any message.
   const mk = (i) =>
     `[2026-08-06 18:00:${String(i % 60).padStart(2,'0')}] [Info] [PID:4242] ` +
     `[Thread:worker-${i % 8}] [console] record ${i} served md5=` +

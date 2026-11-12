@@ -30,11 +30,11 @@ repo=$(git rev-parse --show-toplevel 2>/dev/null) || exit 1
 cd "$repo" || exit 1
 
 # ── 1 · content ─────────────────────────────────────────────────────────────
-# Ladder, most-stable location first. The shared root survives an AUR checkout
-# moving or being absent; the checkout is the developer-machine fallback.
+# Ladder, most-stable location first. The shared root serves every project;
+# inside the AUR checkout itself, fall back to its own tools directory.
 GUARD=""
 for c in "$HOME/.local/aur/commit-guard.py" \
-         "$HOME/develop/aur/tools/commit-guard.py"; do
+         "$repo/tools/commit-guard.py"; do
     [ -r "$c" ] && { GUARD="$c"; break; }
 done
 
@@ -53,7 +53,7 @@ else
     # A guard that cannot run must say so. Silence here is indistinguishable
     # from a clean scan, which is the failure this whole file exists to avoid.
     echo "[pre-commit] WARNING: commit-guard.py not found in ~/.local/aur or" \
-         "~/develop/aur/tools — content was NOT scanned." >&2
+         "$repo/tools — content was NOT scanned." >&2
 fi
 
 # ── 1b · commit ids that a history rewrite retired ──────────────────────────
@@ -64,7 +64,7 @@ fi
 # with no map under tools/history/ has nothing to check and pays nothing.
 ALIAS=""
 for c in "$HOME/.local/aur/commit-alias.py" \
-         "$HOME/develop/aur/tools/commit-alias.py"; do
+         "$repo/tools/commit-alias.py"; do
     [ -r "$c" ] && { ALIAS="$c"; break; }
 done
 if [ -n "$ALIAS" ] && ls "$repo"/tools/history/*.commit-map >/dev/null 2>&1; then

@@ -350,7 +350,7 @@ Consequences:
 | Subprocess exited non-zero | Error | "helper.sh exited with status 127" |
 | File/DB/IPC operation failed | Error | "FIFO write failed: broken pipe" |
 | Unexpected null/missing state causing early return | Error | "path has no parent directory, aborting" |
-| Owned resource acquired / released (child, mount, socket, lock, FIFO) | Info | "face engine warm and ready elapsed=812ms", "unmounted ~/.cache/thumbnails" |
+| Owned resource acquired / released (child, mount, socket, lock, FIFO) | Info | "face engine warm and ready elapsed=812ms", "unmounted $XDG_CACHE_HOME/thumbnails" |
 | **Owned resource died without being asked** | **Error** (requires a liveness supervisor — nobody's call site) | "OWNED CHILD DIED UNEXPECTEDLY pid=... role=face-engine status=killed(SIGKILL) alive_for=0.004s" |
 | Daemon startup | Info (mandatory block) | CLI args, config, env vars |
 | Daemon exit — normal, signal, or panic | Info (Error if abnormal) | "exit cause=SIGTERM uptime=4h12m owned={mount:released, children:2 reaped}" |

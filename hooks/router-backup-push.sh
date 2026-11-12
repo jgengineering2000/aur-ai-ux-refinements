@@ -10,7 +10,8 @@
 # silent and harmless on a foreign network (coffee shop, etc.).
 #
 # The one real MAC value this compares against lives outside git entirely,
-# in ~/develop/git_access.local (see aur/git_access.md for the rest of the
+# in git_access.local under XDG config, ~/.local/aur, or the repository's
+# parent workspace directory (see aur/git_access.md for the rest of the
 # router-backup setup). If that file is missing or unreadable, or nothing on
 # the current network resolves, the push is skipped — fail closed.
 
@@ -116,8 +117,18 @@ if [ "$MODE" = worker ]; then
     exit $?
 fi
 
-LOCAL_CONF="$HOME/develop/git_access.local"
-[ -r "$LOCAL_CONF" ] || exit 0
+REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_TOP=""
+LOCAL_CONF=""
+for cand in \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/aur/git_access.local" \
+    "$HOME/.local/aur/git_access.local" \
+    "${REPO_TOP:+$(dirname "$REPO_TOP")/git_access.local}"; do
+    if [ -n "$cand" ] && [ -r "$cand" ]; then
+        LOCAL_CONF="$cand"
+        break
+    fi
+done
+[ -n "$LOCAL_CONF" ] || exit 0
 
 # A repository with no `router` remote is not a backup target — a scratch
 # clone, a test fixture's throwaway repo, a project not yet adopted — and

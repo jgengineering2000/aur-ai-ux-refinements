@@ -8,7 +8,7 @@ communication style, and patent-IP whitelist live in AUR's
 `~/.claude/CLAUDE.md` symlink. This file contains only project-specific
 guidance.
 
-If `~/.claude/CLAUDE.md` is not a symlink to `~/develop/aur/ai_common.md`
+If `~/.claude/CLAUDE.md` is not a symlink to `~/.local/aur/ai_common.md`
 on this machine, `install.py` will offer to create it. Without the symlink,
 cross-project rules are not loaded and project work falls back to
 project-only context.

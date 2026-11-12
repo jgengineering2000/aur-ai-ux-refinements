@@ -2164,7 +2164,7 @@ body {
             .forEach(c => c.classList.toggle('open', panes.has(c.dataset.id)));
   }
 
-  // Every MTI log line carries ~70 characters of `[ts] [Level] [PID:n]
+  // Every structured daemon log line carries ~70 characters of `[ts] [Level] [PID:n]
   // [Thread:x] [component] ` before the message, which on a narrow pane is most
   // of the width. Hide Headers is a CSS toggle over per-line spans rather than a
   // text transform: the raw text is never destroyed, so toggling is instant,

@@ -56,6 +56,15 @@ CASES = [
     ("the {USER}x file", 0, "username as prefix of a longer word"),
     ("the x{USER} file", 0, "username as suffix of a longer word"),
     ("see ~/.claude/settings.json", 0, "unrelated claude config path"),
+    ("~/.local/aur/threads.py", 0, "AUR shared root path"),
+    ("~/.vscode/extensions/a.b-1.0/x.js", 0, "VS Code vendor extensions dir"),
+    ("~/.antigravity/extensions/a.b-1.0/x.js", 0, "Antigravity vendor extensions dir"),
+    ("~/.config/Code/User/keybindings.json", 0, "VS Code vendor user dir"),
+    ("~/.config/Antigravity/User/keybindings.json", 0, "Antigravity vendor user dir"),
+    ("~" + "/develop/x", 1, "personal workspace path stays flagged"),
+    ("user" + "@" + "1000.service", 0, "systemd template unit is not an email"),
+    ("user" + "@" + "1.scope", 0, "systemd scope template is not an email"),
+    ("alice" + "@" + "example.com", 1, "real email address stays flagged"),
     # Private IPv4 (owner ruling 2026-10-28, second): four parts exactly; not
     # counted when a neighbour is a double quote or semicolon, or a period
     # follows. Every other neighbour counts. {A} 10/8, {B} 172.16/12,

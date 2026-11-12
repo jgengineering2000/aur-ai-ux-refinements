@@ -9,7 +9,7 @@ reasoning behind each decision.
 ## The defect this fixes
 
 Every installed project's shared assets are relative symlinks into
-`~/develop/aur/` — the **source checkout**. That makes a working tree a runtime
+`<workspace>/aur/` — the **source checkout**. That makes a working tree a runtime
 dependency of every project that has ever been installed. Move it, rename it, or
 work on a machine that has no checkout, and every project breaks.
 

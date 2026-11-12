@@ -18,9 +18,9 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 export HOME="$TMP/home"
 # Fixture names are assembled, not written out: the script under test reads a
 # fixed home-relative file, and the content guard flags literal addresses.
-DOTLOCAL=.local; DEV_AUR=aur; DEV=develop; CFG=git_access.local; GWIP=192.0.2.1; MAC=$(printf "%s:%s:%s:%s:%s:%s" 02 00 5e 00 53 01)
-mkdir -p "$HOME/$DEV" "$HOME/.claude/git-templates" "$TMP/bin"
-echo "$MAC" > "$HOME/$DEV/$CFG"
+DOTLOCAL=.local; DEV_AUR=aur; CFG=git_access.local; GWIP=192.0.2.1; MAC=$(printf "%s:%s:%s:%s:%s:%s" 02 00 5e 00 53 01)
+mkdir -p "$HOME/$DOTLOCAL/$DEV_AUR" "$HOME/.claude/git-templates" "$TMP/bin"
+echo "$MAC" > "$HOME/$DOTLOCAL/$DEV_AUR/$CFG"
 LOG="$HOME/.claude/git-templates/router-push.log"
 NOTIFY="$TMP/notify.calls"; : > "$NOTIFY"; : > "$LOG"
 printf '#!/bin/sh\necho "default via %s dev test0"\n' "$GWIP" > "$TMP/bin/ip"

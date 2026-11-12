@@ -80,14 +80,16 @@ PII = [
     # a path encoder (dashes, %2F, underscores) carries the username outside every slash-form pattern
     ("username (any encoding)",
      re.compile(rf"(?<![A-Za-z0-9]){re.escape(USER)}(?![A-Za-z0-9])", re.I)),
-    # Extension ids (foo@ubuntu.com, bar@gnome.org) share the email shape and
-    # are not addresses; excluding the known suffixes beats a cleverer regex.
+    # Extension ids (foo@ubuntu.com, bar@gnome.org) and systemd template units
+    # (user@1000.service, session@1.scope) share the email shape and are not
+    # addresses; excluding those known suffixes beats a cleverer regex.
     # An scp-style git remote (git@host:org/repo.git) has the same shape too,
     # and appears legitimately in any code that talks about remotes — flagging
     # it is the cry-wolf failure that teaches people to skip the guard. The
     # trailing ':' is what distinguishes a host from a mailbox.
     ("email address",
      re.compile(r"(?![\w.+-]+@(?:ubuntu\.com|gnome\.org|localhost)\b)"
+                r"(?![\w.+-]+@[\w.-]+\.(?:service|slice|scope|socket|timer|mount|target|path)\b)"
                 r"(?<![\w.+-])(?!git@[\w.-]+:)"
                 r"[\w.+-]+@[\w-]+\.[\w.]{2,}")),
     ("personal tree reference",
@@ -200,15 +202,19 @@ def pii_patterns(repo, log=print):
     pats = list(PII)
     # Home-relative forms (a tilde-slash path, the HOME variable in either
     # brace form) name the user's home as surely as the absolute path. Allowed
-    # under it: the claude config dir (not flagged before this pattern existed)
-    # and the repository's OWN XDG dirs, <name> or <name>-<suffix>, with <name>
-    # taken from the repo directory so no project is hard-coded. The lookbehind
-    # leaves URLs, "foo" glued to a tilde, and "~5 ms" alone; a bare tilde-slash
-    # with no path after it is prose.
+    # under it: the vendor agent/editor config dirs (~/.claude, ~/.vscode,
+    # ~/.antigravity, ~/.config/Code, ~/.config/Antigravity), AUR's shared root
+    # (~/.local/aur), and the repository's OWN XDG dirs, <name> or
+    # <name>-<suffix>, with <name> taken from the repo directory so no project
+    # is hard-coded. The lookbehind leaves URLs, "foo" glued to a tilde, and
+    # "~5 ms" alone; a bare tilde-slash with no path after it is prose.
     own = re.escape(project_name(repo, log))
     pats.append(("home-relative path",
                  re.compile(rf"(?<![\w/.~$}}-])(?:~|\$HOME|\$\{{HOME\}})/"
-                            rf"(?!(?:\.claude(?![\w-])|(?:\.config|\.local/share|\.cache)"
+                            rf"(?!(?:\.(?:claude|vscode|antigravity)(?![\w-])"
+                            rf"|\.config/(?:Code|Antigravity)(?![\w-])"
+                            rf"|\.local/aur(?![\w-])"
+                            rf"|(?:\.config|\.local/share|\.local|\.cache)"
                             rf"/{own}(?!\w)))(?=[\w.])")))
     if not project.startswith(HOME + "/"):
         pats.insert(0, ("project path (above the ceiling)",

@@ -1645,7 +1645,7 @@ _RE_CRASH = re.compile(
 def _daemon_key(stem: str) -> str:
     """Grouping identity for a daemon — separator- and case-insensitive.
 
-    `mti-sidecar.log` and `mti_sidecar_err.log` are one daemon's two channels
+    `worker-sidecar.log` and `worker_sidecar_err.log` are one daemon's two channels
     even though they disagree on a separator, so both must reduce to one key.
     The same normaliser runs over a live process's name, which is how an
     evidence row and a convention row for one daemon meet on one line.
@@ -1756,7 +1756,7 @@ def _fd_writable(pid, fd) -> bool:
     """Was this descriptor opened for writing?
 
     Holding a log open is only evidence of OWNING it if the holder can write to
-    it. Without this check every reader becomes a daemon: `tail -f mti-fuse.log`
+    it. Without this check every reader becomes a daemon: `tail -f daemon.log`
     would be listed as the process producing that log, and so would this very
     server the moment a pane was opened on one. The access mode is in fdinfo's
     octal `flags`, which is the kernel's own answer rather than an inference
@@ -2492,9 +2492,8 @@ def system_stats():
     None of it appears in the job's output because none of it is the job's
     business.
 
-    Every number here — and every threshold it is judged against — comes from
-    `mti-tier sysinfo`, i.e. from `resources.rs`, i.e. from the same policy the
-    admission gates admit work on. This function only decides whether what it
+    Every number here — and every threshold it is judged against — matches the
+    host admission policy. This function only decides whether what it
     holds is still current.
     """
     with _sys_lock:
@@ -3470,7 +3469,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             "subtitle": f"{ROOT.parent.name}/{ROOT.name}",
             # Project-pinned documents, surfaced as header badges. A project
             # always has one or two docs worth reaching in one click, and
-            # hard-coding MTI's into the shared page is what made this file a
+            # hard-coding a single project's into the shared page is what made this file a
             # fork in the first place.
             "links":    CONFIG["header_links"],
         })
@@ -3505,7 +3504,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 pass
 
         # Inherited AUR specs (explicit allowlist; served via /spec-aur/). Tagged
-        # source="AUR" so the manifest can group/label them apart from MTI's own.
+        # source="AUR" so the manifest can group/label them apart from a project's own.
         for name, path in AUR_SPECS.items():
             if not path.exists():
                 continue
