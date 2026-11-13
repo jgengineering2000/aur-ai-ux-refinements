@@ -1,15 +1,21 @@
 # AUR — AI UX Refinements
 
-Quality-of-life patches and workflow tooling for
-[Claude Code](https://claude.ai/code), Anthropic's AI coding assistant.
+Engineering workflow, review document infrastructure, shared skills/hooks,
+resource admission gate, and IDE quality-of-life tooling for AI coding
+assistants.
 
-Two independent layers — use either or both:
+Core layers — use independently or together:
 
 - **A. IDE Extension Patches** — improve the chat panel UI
   (VS Code and any VS Code-based fork)
 - **B. Review Document Infrastructure** — generate, view, and
-  annotate structured HTML documents from within the IDE
-  (works with any Claude Code environment)
+  annotate structured HTML documents from within the IDE (`server/server.py`,
+  `libaur.so` native accelerator, `aur-docs/`, `Alt+D` manifest)
+- **C. Shared Root, Principles & Automation** — versioned shared assets
+  (`aurshare.py` → `~/.local/aur/`), cross-project engineering principles and
+  process (`ai_common.md`, `PROCESS.md`, `skills/`), resource admission gate
+  (`gate/aur-gate`), and commit/safety/telemetry hooks and tools (`hooks/`,
+  `tools/`)
 
 ---
 
@@ -18,7 +24,7 @@ Two independent layers — use either or both:
 ### Linux — clickable installer
 
 1. Download `aur-installer` from the
-   [latest release](https://github.com/jgengineering2000/claude-ux-refined/releases/latest)
+   [latest release](https://github.com/jgengineering2000/aur-ai-ux-refinements/releases/latest)
 2. Mark it executable:
    ```bash
    chmod +x aur-installer
@@ -30,7 +36,7 @@ A GUI window opens with checkboxes for each feature. No Python installation requ
 ### Windows / macOS — source install
 
 1. Download `aur-refined-vX.Y.Z-source.zip` from the
-   [latest release](https://github.com/jgengineering2000/claude-ux-refined/releases/latest)
+   [latest release](https://github.com/jgengineering2000/aur-ai-ux-refinements/releases/latest)
 2. Extract the zip and open a terminal in the folder
 3. Run the CLI installer:
    ```
@@ -44,8 +50,8 @@ A GUI window opens with checkboxes for each feature. No Python installation requ
 ### From source (any platform)
 
 ```bash
-git clone https://github.com/jgengineering2000/claude-ux-refined.git
-cd aur-refined
+git clone https://github.com/jgengineering2000/aur-ai-ux-refinements.git
+cd aur-ai-ux-refinements
 python3 install.py
 ```
 

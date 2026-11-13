@@ -169,4 +169,4 @@ using the same `gh release upload` step with platform-specific filenames
 - **Topics:** `claude-code`, `claude-ai`, `vscode-extension`, `developer-tools`
 - **Default branch:** `main`
 - **Releases:** all tagged with `vMAJOR.MINOR.PATCH`
-- **Remote:** `https://github.com/jgengineering2000/claude-ux-refined.git`
+- **Remote:** `https://github.com/jgengineering2000/aur-ai-ux-refinements.git`
