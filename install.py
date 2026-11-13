@@ -280,12 +280,16 @@ def main():
         section("Installing Review Infrastructure")
         print()
         log = lambda msg: print(f"    {msg}")
-        install_review_infra(project_dir, do_claude_md, log)
-        if do_task:
-            install_task(project_dir, port, log)
-        if do_keybinding:
-            for ide in ides:
-                install_keybinding(ide, port, log)
+        try:
+            install_review_infra(project_dir, do_claude_md, log)
+            if do_task:
+                install_task(project_dir, port, log)
+            if do_keybinding:
+                for ide in ides:
+                    install_keybinding(ide, port, log)
+        except (RuntimeError, OSError) as exc:
+            log(f"FAILED: {exc}")
+            failures.append(f"B review infrastructure ({exc})")
 
     if do_c:
         section("Installing Token Economy")

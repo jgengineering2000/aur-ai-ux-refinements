@@ -18,6 +18,7 @@ registry, because a layout is one person's convention and a registry is a fact.
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -81,9 +82,30 @@ SHARED_ASSETS = {
     "transcript-prompts.py": "tools/transcript-prompts.py",
 }
 
+# Shared assets built from tracked Rust sources (relative to repo root).
+# Because binaries are gitignored, `canonical` validates these tracked inputs
+# while `deploy` and `devlink` build missing or stale outputs via `make`/`rustc`.
+GENERATED_ASSETS = {
+    "libaur.so": {
+        "subdir": "server",
+        "output": "server/libaur.so",
+        "inputs": ("server/Makefile", "server/libaur.rs"),
+    },
+    "aur-gate": {
+        "subdir": "gate",
+        "output": "gate/aur-gate",
+        "inputs": (
+            "gate/Makefile",
+            "gate/src/main.rs",
+            "gate/src/resources.rs",
+            "server/libaur.rs",
+        ),
+    },
+}
+
 # The subset a project's aur/ directory links to. The rules files are consumed
 # through the vendor's own mechanism and are not linked per project.
-PROJECT_LINKS = ("aurshare.py", "server.py", "open-manifest.sh")
+PROJECT_LINKS = ("aurshare.py", "server.py", "open-manifest.sh", "gen-diff.sh")
 DOCS_LINKS = ("ann.css", "ann.js", "manifest-link.js", "manifest.html", "doc.css")
 
 
@@ -413,35 +435,102 @@ def verify_and_heal(log=print):
 
 # ── deployment ──────────────────────────────────────────────────────────────
 
+def ensure_built(aur_root, names=None, log=print):
+    """Build any requested generated assets whose outputs are missing or stale.
+
+    Raises RuntimeError with asset, reason, and missing tool or compiler
+    diagnostics so callers never silently skip or ship stale native binaries.
+    """
+    aur_root = Path(aur_root).expanduser().resolve()
+    targets = [n for n in (names or GENERATED_ASSETS) if n in GENERATED_ASSETS]
+    built = []
+    for name in targets:
+        spec = GENERATED_ASSETS[name]
+        inputs = [aur_root / rel for rel in spec["inputs"]]
+        missing_inputs = [rel for rel, p in zip(spec["inputs"], inputs)
+                          if not p.is_file()]
+        if missing_inputs:
+            raise RuntimeError(
+                f"cannot build {name} ({spec['output']}): missing source input(s) "
+                + ", ".join(missing_inputs)
+            )
+        out = aur_root / spec["output"]
+        newest_input = max(p.stat().st_mtime_ns for p in inputs)
+        if out.is_file() and out.stat().st_mtime_ns >= newest_input:
+            continue
+
+        reason = ("missing" if not out.is_file()
+                  else "stale relative to source inputs")
+        missing_tools = [t for t in ("make", "rustc") if shutil.which(t) is None]
+        if missing_tools:
+            raise RuntimeError(
+                f"cannot build {name} ({spec['output']}, {reason}): missing "
+                f"required tool(s) {', '.join(missing_tools)} in PATH; install "
+                f"rustc and make, or run `make -C {spec['subdir']}` first"
+            )
+
+        res = subprocess.run(
+            ["make", "-C", str(aur_root / spec["subdir"])],
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0 or not out.is_file():
+            detail = "\n".join(
+                p for p in (res.stderr.strip(), res.stdout.strip()) if p
+            )
+            raise RuntimeError(
+                f"failed to build {name} ({spec['output']}, {reason}) via "
+                f"`make -C {spec['subdir']}` (exit {res.returncode})"
+                + (f": {detail}" if detail else "")
+            )
+        log(f"  built {spec['output']} ({reason})")
+        built.append(name)
+    return built
+
+
 def check_canonical(aur_root, log=print):
     """Every asset the installer distributes must exist AND be tracked.
 
     The shared root is where assets are installed TO; this repository is where
     they are installed FROM. An untracked source is one that ships from a
     working tree and exists nowhere else — a release that cannot be rebuilt.
+    For generated assets (e.g. compiled binaries), the tracked build inputs
+    are checked instead of the gitignored output artifact.
     """
     aur_root = Path(aur_root).expanduser().resolve()
-    is_git = (aur_root / ".git").is_dir()
-    missing, untracked = [], []
-    for name, rel in SHARED_ASSETS.items():
-        src = aur_root / rel.rstrip("/")
+    is_git = (aur_root / ".git").exists()
+    missing, untracked, seen = [], [], set()
+
+    def check_rel(rel):
+        if rel in seen:
+            return
+        seen.add(rel)
+        src = aur_root / rel
         if not src.exists():
             missing.append(rel)
-            continue
+            return
         if is_git:
-            import subprocess
-            ok = subprocess.run(["git", "-C", str(aur_root), "ls-files",
-                                 "--error-unmatch", rel.rstrip("/")],
-                                capture_output=True).returncode == 0
+            ok = subprocess.run(
+                ["git", "-C", str(aur_root), "ls-files", "--error-unmatch", rel],
+                capture_output=True,
+            ).returncode == 0
             if not ok:
                 untracked.append(rel)
+
+    for name, rel in SHARED_ASSETS.items():
+        if name in GENERATED_ASSETS:
+            for inp in GENERATED_ASSETS[name]["inputs"]:
+                check_rel(inp)
+        else:
+            check_rel(rel.rstrip("/"))
     for m in missing:
         log(f"  [canonical] MISSING source: {m}")
     for u in untracked:
         log(f"  [canonical] UNTRACKED source: {u} — the installer would ship a "
             f"file that exists only in this working tree")
     if not missing and not untracked:
-        log(f"  [canonical] all {len(SHARED_ASSETS)} sources present and tracked")
+        log(f"  [canonical] all {len(SHARED_ASSETS)} assets "
+            f"({len(seen)} tracked paths) present and tracked")
     return missing + untracked
 
 
@@ -455,6 +544,7 @@ def deploy(aur_root, version, log=print):
     """
     aur_root = Path(aur_root).expanduser().resolve()
     want = parse_version(version)
+    ensure_built(aur_root, log=log)
     ensure_root()
     verify_and_heal(log)
 
@@ -511,6 +601,7 @@ def devlink(aur_root, names=None, log=print, share=None):
     Reversible: `deploy` overwrites these with real versioned copies.
     """
     aur_root = Path(aur_root).expanduser().resolve()
+    ensure_built(aur_root, names=names, log=log)
     root = ensure_root(share)
     n = 0
     for name in (names or SHARED_ASSETS):
@@ -664,75 +755,79 @@ def _cli(argv):
             return None, fail(f"{label} is not a directory: {raw}")
         return p, None
 
-    if cmd == "verify":
+    try:
+        if cmd == "verify":
+            if rest:
+                return fail(f"unexpected argument `{rest[0]}` for `verify`")
+            found = verify_and_heal()
+            print(f"shared root {SHARE}: {'healed ' + str(len(found)) if found else 'clean'}")
+            return 0
+        if cmd == "canonical":
+            if len(rest) > 1:
+                return fail(f"unexpected argument `{rest[1]}` for `canonical`")
+            target, err = require_dir(rest[0] if rest else ".", "<aur_root>")
+            if err is not None:
+                return err
+            return 1 if check_canonical(target) else 0
+        if cmd == "deploy":
+            if len(rest) != 2:
+                return fail("`deploy` requires <aur_root> <ver>")
+            target, err = require_dir(rest[0], "<aur_root>")
+            if err is not None:
+                return err
+            deploy(target, rest[1])
+            return 0
+        if cmd == "devlink":
+            if not rest:
+                return fail("`devlink` requires <aur_root> [names...]")
+            target, err = require_dir(rest[0], "<aur_root>")
+            if err is not None:
+                return err
+            names = rest[1:] or None
+            if names:
+                bad = [n for n in names if n not in SHARED_ASSETS]
+                if bad:
+                    return fail(f"unknown shared asset `{bad[0]}`")
+            devlink(target, names)
+            return 0
+        if cmd == "install":
+            if len(rest) != 1:
+                return fail("`install` requires <proj>")
+            target, err = require_dir(rest[0], "<proj>")
+            if err is not None:
+                return err
+            return 0 if install_project(target) else 1
+        if cmd == "link":
+            if len(rest) != 1:
+                return fail("`link` requires <proj>")
+            target, err = require_dir(rest[0], "<proj>")
+            if err is not None:
+                return err
+            link_project(target)
+            return 0
+        if cmd == "register":
+            if not (1 <= len(rest) <= 2):
+                return fail("`register` requires <proj> [ver]")
+            target, err = require_dir(rest[0], "<proj>")
+            if err is not None:
+                return err
+            return 0 if register(target, rest[1] if len(rest) > 1 else "") else 1
+        if cmd == "discover":
+            if len(rest) != 1:
+                return fail("`discover` requires <root>")
+            target, err = require_dir(rest[0], "<root>")
+            if err is not None:
+                return err
+            print(f"registered {discover(target)} project(s)")
+            return 0
         if rest:
-            return fail(f"unexpected argument `{rest[0]}` for `verify`")
-        found = verify_and_heal()
-        print(f"shared root {SHARE}: {'healed ' + str(len(found)) if found else 'clean'}")
+            return fail(f"unexpected argument `{rest[0]}` for `list`")
+        for r in registry_read():
+            print(f"{r['path']}\t{r['layout']}\t{r['version']}")
         return 0
-    if cmd == "canonical":
-        if len(rest) > 1:
-            return fail(f"unexpected argument `{rest[1]}` for `canonical`")
-        target, err = require_dir(rest[0] if rest else ".", "<aur_root>")
-        if err is not None:
-            return err
-        return 1 if check_canonical(target) else 0
-    if cmd == "deploy":
-        if len(rest) != 2:
-            return fail("`deploy` requires <aur_root> <ver>")
-        target, err = require_dir(rest[0], "<aur_root>")
-        if err is not None:
-            return err
-        deploy(target, rest[1])
-        return 0
-    if cmd == "devlink":
-        if not rest:
-            return fail("`devlink` requires <aur_root> [names...]")
-        target, err = require_dir(rest[0], "<aur_root>")
-        if err is not None:
-            return err
-        names = rest[1:] or None
-        if names:
-            bad = [n for n in names if n not in SHARED_ASSETS]
-            if bad:
-                return fail(f"unknown shared asset `{bad[0]}`")
-        devlink(target, names)
-        return 0
-    if cmd == "install":
-        if len(rest) != 1:
-            return fail("`install` requires <proj>")
-        target, err = require_dir(rest[0], "<proj>")
-        if err is not None:
-            return err
-        return 0 if install_project(target) else 1
-    if cmd == "link":
-        if len(rest) != 1:
-            return fail("`link` requires <proj>")
-        target, err = require_dir(rest[0], "<proj>")
-        if err is not None:
-            return err
-        link_project(target)
-        return 0
-    if cmd == "register":
-        if not (1 <= len(rest) <= 2):
-            return fail("`register` requires <proj> [ver]")
-        target, err = require_dir(rest[0], "<proj>")
-        if err is not None:
-            return err
-        return 0 if register(target, rest[1] if len(rest) > 1 else "") else 1
-    if cmd == "discover":
-        if len(rest) != 1:
-            return fail("`discover` requires <root>")
-        target, err = require_dir(rest[0], "<root>")
-        if err is not None:
-            return err
-        print(f"registered {discover(target)} project(s)")
-        return 0
-    if rest:
-        return fail(f"unexpected argument `{rest[0]}` for `list`")
-    for r in registry_read():
-        print(f"{r['path']}\t{r['layout']}\t{r['version']}")
-    return 0
+    except (RuntimeError, OSError) as exc:
+        print(f"{prog}: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

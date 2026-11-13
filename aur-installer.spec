@@ -17,6 +17,13 @@
 # the only complete statement of what the binary contains; a recipe that lives
 # in a gitignored file is a recipe the next release cannot reproduce.
 
+import sys
+
+if SPECPATH not in sys.path:
+    sys.path.insert(0, SPECPATH)
+import aurshare
+aurshare.ensure_built(SPECPATH, names=["libaur.so"])
+
 a = Analysis(
     ['install-gui.py'],
     pathex=[],

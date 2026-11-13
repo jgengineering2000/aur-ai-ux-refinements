@@ -37,6 +37,11 @@ import os
 import re
 import sys
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from transcript import owner_items  # noqa: E402
+
 CATEGORIES = {
     "context": r"(more context|context for|explain why|background|rationale|"
                r"the why\b|reasoning|justif|so i (can|know) )",
@@ -55,14 +60,22 @@ CATEGORIES = {
 }
 COMPILED = {k: re.compile(v, re.I) for k, v in CATEGORIES.items()}
 
-# Boilerplate that is not the owner talking.
-NOISE = re.compile(r"^\s*(<|\{|\[|command-name|local-command|caveat:)", re.I)
+def positive_int(value):
+    """Argparse type requiring an integer >= 1."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected integer, got {value!r}")
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"expected >= 1, got {n}")
+    return n
 
 
 def owner_messages(paths):
-    """Every message the OWNER actually typed, oldest first."""
+    """Every message the OWNER actually typed or queued, oldest first."""
     out = []
     for f in paths:
+        sid = os.path.basename(f)[:8]
         try:
             fh = open(f, errors="replace")
         except OSError:
@@ -73,37 +86,19 @@ def owner_messages(paths):
                     rec = json.loads(line)
                 except ValueError:
                     continue
-                if rec.get("type") != "user":
-                    continue
-                content = (rec.get("message") or {}).get("content")
-                if isinstance(content, str):
-                    blocks = [{"type": "text", "text": content}]
-                elif isinstance(content, list):
-                    blocks = content
-                else:
-                    continue
-                # A record carrying any tool_result is the TOOL answering, not
-                # the owner — the same attribution rule the transcript view uses.
-                if any(isinstance(b, dict) and b.get("type") == "tool_result"
-                       for b in blocks):
-                    continue
-                for b in blocks:
-                    if not (isinstance(b, dict) and b.get("type") == "text"):
+                for t, ts_raw, _queued in owner_items(rec):
+                    if len(t) < 40:
                         continue
-                    t = (b.get("text") or "").strip()
-                    if len(t) < 40 or NOISE.match(t):
-                        continue
-                    out.append((rec.get("timestamp", "")[:10],
-                                os.path.basename(f)[:8], t))
+                    out.append(((ts_raw or "")[:10], sid, t))
     out.sort()
     return out
 
 
-def main(argv):
+def main(argv=None):
     ap = argparse.ArgumentParser(description="Mine owner interaction guidance.")
     ap.add_argument("--projects",
                     default=os.path.expanduser("~/.claude/projects/*"))
-    ap.add_argument("--min-score", type=int, default=2)
+    ap.add_argument("--min-score", type=positive_int, default=2)
     ap.add_argument("--category", choices=sorted(CATEGORIES))
     ap.add_argument("--full", action="store_true")
     args = ap.parse_args(argv)

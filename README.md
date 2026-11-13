@@ -169,11 +169,14 @@ The interactive installer handles all of this. For manual setup:
 python3 aurshare.py deploy . "$(cat VERSION)"
 ```
 
-This populates `~/.local/aur/` — the **shared root**. Assets are stored
-version-suffixed (`server.py.2.4.1`) with a stable symlink beside them
-(`server.py`), so a later upgrade repoints one link and every installed project
-follows without being touched. Downgrades are refused per asset, comparing
-versions as integer tuples so `2.10.0` correctly outranks `2.9.0`.
+This builds any missing or stale native binaries (`server/libaur.so` and
+`gate/aur-gate` via `make` and `rustc`, failing loudly if either tool is
+unavailable or a build fails — `install.py` and `aurshare.py devlink` do the
+same when installing from source) and populates `~/.local/aur/` — the **shared
+root**. Assets are stored version-suffixed (`server.py.2.4.1`) with a stable
+symlink beside them (`server.py`), so a later upgrade repoints one link and every
+installed project follows without being touched. Downgrades are refused per
+asset, comparing versions as integer tuples so `2.10.0` correctly outranks `2.9.0`.
 
 **2. Install into your project:**
 

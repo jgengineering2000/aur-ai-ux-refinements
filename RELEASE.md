@@ -60,15 +60,18 @@ so `2.10.0` correctly outranks `2.9.0`. Never compare version strings.
 
 ```bash
 cd <aur-checkout>
+make -C server && make -C gate
 pyinstaller aur-installer.spec
 # Output: dist/aur-installer
 ```
 
-Always the tracked spec, never `pyinstaller install-gui.py` with flags: the
-binary must carry `server/`, `templates/`, `patches/` and `systemd/` as bundled
-data and the patch scripts' hidden imports, and the spec is the one place that
-list is stated. `dist/` and `build/` are in `.gitignore` — do not commit the
-binary.
+Requires `rustc` and `make`. `aur-installer.spec` also runs
+`aurshare.ensure_built(..., names=["libaur.so"])` so `server/libaur.so` is built
+or updated automatically before bundling if missing or stale. Always the tracked
+spec, never `pyinstaller install-gui.py` with flags: the binary must carry
+`server/`, `templates/`, `patches/` and `systemd/` as bundled data and the
+patch scripts' hidden imports, and the spec is the one place that list is
+stated. `dist/` and `build/` are in `.gitignore` — do not commit the binary.
 
 Smoke-test the artefact before uploading it — it is the front door for every
 Linux user and it runs in an environment (no Python, no checkout) that a source
@@ -85,11 +88,14 @@ dist/aur-installer --run-patch no-such-patch; echo $?       # exit 2, names the 
 ```bash
 VERSION=vX.Y.Z   # e.g. v2.1.0
 zip -r /tmp/aur-refined-${VERSION}-source.zip \
-  patches/ server/ templates/ keybindings/ systemd/ \
-  install.py install-gui.py docinfra.py README.md LICENSE \
+  patches/ server/ gate/ templates/ keybindings/ systemd/ \
+  install.py install-gui.py docinfra.py aurshare.py VERSION README.md LICENSE \
   PROJECT.md PROMPTS.md PATCHES.md WORKFLOW.md RELEASE.md \
   -x "*.bak" -x "__pycache__/*" -x "*.pyc"
 ```
+
+Include `server/Makefile`, `server/libaur.rs`, `gate/`, and `aurshare.py` so
+source installs can build `libaur.so` (and `aur-gate`) with `make` + `rustc`.
 
 ### 3. Tag and push
 
@@ -120,6 +126,7 @@ Download `aur-refined-vX.Y.Z-source.zip`, extract, run `python3 install.py`
 
 ## Requirements
 - Python 3.8+ (source install only)
+- Rust (`rustc`) and `make` (source install / `aurshare.py deploy` / `aurshare.py devlink`, when `server/libaur.so` or `gate/aur-gate` is missing or stale)
 - Claude Code VS Code extension
 - VS Code or any VS Code fork
 EOF

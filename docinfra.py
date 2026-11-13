@@ -335,6 +335,12 @@ def install_task(project_dir, port, log=print):
 def install_review_infra(project_dir, do_claude_md, log=print):
     project_dir = Path(project_dir)
     here = resource_root()
+    if (here / "aurshare.py").is_file() and (here / "server" / "libaur.rs").is_file():
+        import sys
+        if str(here) not in sys.path:
+            sys.path.insert(0, str(here))
+        import aurshare
+        aurshare.ensure_built(here, names=["libaur.so"], log=log)
     # NOT `.claude/`. That directory is the agent's own configuration — its
     # settings, hooks and permission allow-lists — and writes there require a
     # human confirmation that no configuration can waive, by design: an agent
@@ -348,12 +354,20 @@ def install_review_infra(project_dir, do_claude_md, log=print):
 
     files = [
         (here / "server" / "server.py",         aur_dir / "server.py"),
+        (here / "server" / "libaur.so",         aur_dir / "libaur.so"),
         (here / "server" / "open-manifest.sh",  aur_dir / "open-manifest.sh"),
         (here / "server" / "manifest-link.js",  docs_dir / "manifest-link.js"),
         (here / "server" / "ann.css",           docs_dir / "ann.css"),
         (here / "server" / "ann.js",            docs_dir / "ann.js"),
+        (here / "server" / "doc.css",           docs_dir / "doc.css"),
         (here / "templates" / "manifest.html",  docs_dir / "manifest.html"),
     ]
+    missing = [str(src) for src, _ in files if not src.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "cannot install review infrastructure; missing asset(s): "
+            + ", ".join(missing)
+        )
     for src, dst in files:
         shutil.copy2(src, dst)
         log(f"{src.name} → {dst}")
