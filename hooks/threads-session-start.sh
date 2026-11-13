@@ -3,20 +3,11 @@
 # Output on stdout becomes session context. Never fails the session: a missing tool prints one line.
 
 USAGE="usage: threads-session-start.sh [-h|--help]"
-case "${1:-}" in
-  "") ;;
-  -h|--help)
-    printf '%s\n' "$USAGE"
-    exit 0
-    ;;
-  *)
-    printf 'threads-session-start.sh: unknown argument `%s`\n%s\n' "$1" "$USAGE" >&2
-    exit 2
-    ;;
-esac
-
-if [ "$#" -gt 1 ]; then
-  printf 'threads-session-start.sh: unexpected arguments\n%s\n' "$USAGE" >&2
+if [ "$#" -eq 1 ] && { [ "$1" = "-h" ] || [ "$1" = "--help" ]; }; then
+  printf '%s\n' "$USAGE"
+  exit 0
+elif [ "$#" -ne 0 ]; then
+  printf 'threads-session-start.sh: unknown or unexpected argument `%s`\n%s\n' "$1" "$USAGE" >&2
   exit 2
 fi
 

@@ -110,8 +110,9 @@ flock "$R/.git/router-push.lock" sleep 6 &
 HOLDER=$!; sleep 0.3
 AUR_ROUTER_PUSH_LOCK_WAIT=2 commit "$R" c2
 wait_log "lock wait exceeded" 1 10; check "lock timeout: line logged" $?
+quiet "$R"
 [ -s "$NOTIFY" ]; check "lock timeout: popup raised" $?
-wait "$HOLDER" 2>/dev/null; quiet "$R"
+wait "$HOLDER" 2>/dev/null
 
 # 7. rebase-resync with the real pre-push installed: the scan refuses the resync
 # push (the rewritten tip holds flagged content). One refusal line naming the

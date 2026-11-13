@@ -88,8 +88,8 @@ PII = [
     # it is the cry-wolf failure that teaches people to skip the guard. The
     # trailing ':' is what distinguishes a host from a mailbox.
     ("email address",
-     re.compile(r"(?![\w.+-]+@(?:ubuntu\.com|gnome\.org|localhost)\b)"
-                r"(?![\w.+-]+@[\w.-]+\.(?:service|slice|scope|socket|timer|mount|target|path)\b)"
+     re.compile(r"(?![\w.+-]+@(?:ubuntu\.com|gnome\.org|localhost)(?![\w-]|\.\w))"
+                r"(?![\w.+-]+@[\w.-]+\.(?:service|slice|scope|socket|timer|mount|target|path)(?![\w-]|\.\w))"
                 r"(?<![\w.+-])(?!git@[\w.-]+:)"
                 r"[\w.+-]+@[\w-]+\.[\w.]{2,}")),
     ("personal tree reference",
@@ -148,7 +148,7 @@ def added_lines(repo, mode):
     legacy content is one you learn to skip. Only what the change introduces is
     actionable; what was already there is a separate, deliberate cleanup.
     """
-    args = ["git", "-C", repo, "diff", "--unified=0"]
+    args = ["git", "-C", repo, "-c", "core.quotePath=false", "diff", "--unified=0"]
     if mode == "staged":
         args += ["--cached"]
     elif mode.startswith("range:"):

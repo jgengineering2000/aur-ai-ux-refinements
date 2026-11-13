@@ -30,9 +30,22 @@ import re
 # code — which is why the draw is read and not merely counted.
 NOISE = re.compile(
     r"<(system-reminder|ide_opened_file|ide_selection|command-name"
-    r"|command-message|command-args|local-command-stdout|task-notification)>"
+    r"|command-message|command-args|local-command-stdout|task-notification"
+    r"|cross-session-message)(?:\s[^>]*)?>"
     r".*?</\1>",
     re.S)
+
+# Plain-text or unclosed scaffolding that can arrive inside an owner envelope
+# without paired XML tags; checked only after stripping NOISE wrappers so a real
+# prompt alongside an IDE/hook tag survives intact.
+SCAFFOLDING_PREFIXES = (
+    "[Request interrupted",
+    "Caveat: The messages below",
+    "<cross-session-message",
+    "<task-notification",
+    "<local-command-stdout",
+    "<system-reminder",
+)
 
 # Rule 1's exemption is the message's FORM, not its difficulty, so the test has
 # to be decidable without reading intent: the whole message is assent and
@@ -43,27 +56,71 @@ CONFIRMATION = re.compile(
     r"([\s.,!]+(please|now|thanks|then))*[\s.,!]*", re.I)
 
 
-def owner_text(rec):
-    """The owner's own prose from one record, or None if it is not a request.
+def _origin_is_non_human(rec):
+    origin = rec.get("origin")
+    return (isinstance(origin, dict) and origin.get("kind") is not None
+            and origin.get("kind") != "human")
 
-    None covers three distinct things that all arrive typed as `"user"`: a tool
-    result, a harness or IDE injection, and a record whose entire content was
-    scaffolding once the injections are stripped.
-    """
-    if rec.get("type") != "user" or rec.get("isMeta"):
-        return None
-    content = (rec.get("message") or {}).get("content")
+
+def _content_texts(content):
+    """Clean owner text parts from a string or block-list content field."""
     if isinstance(content, str):
-        parts = [content]
+        raw = [content]
     elif isinstance(content, list):
         if any(isinstance(b, dict) and b.get("type") == "tool_result"
                for b in content):
-            return None
-        parts = [b.get("text") or "" for b in content
-                 if isinstance(b, dict) and b.get("type") == "text"]
+            return []
+        raw = [b.get("text") or "" for b in content
+               if isinstance(b, dict) and b.get("type") == "text"]
     else:
+        return []
+    out = []
+    for part in raw:
+        cleaned = NOISE.sub("", part).strip()
+        if not cleaned or cleaned.startswith(SCAFFOLDING_PREFIXES):
+            continue
+        out.append(cleaned)
+    return out
+
+
+def owner_items(rec):
+    """Return `(text, timestamp, queued)` tuples for owner prose in one record.
+
+    Includes typed `user` turns (`isMeta`, `isCompactSummary`, non-human origin,
+    `tool_result`, and harness scaffolding excluded) as well as `queued_command`
+    attachments queued while the assistant was busy.
+    """
+    kind = rec.get("type")
+    if kind == "attachment":
+        att = rec.get("attachment")
+        if not isinstance(att, dict) or att.get("type") != "queued_command":
+            return []
+        origin = att.get("origin")
+        if isinstance(origin, dict) and origin.get("kind") != "human":
+            return []
+        if origin is None and att.get("commandMode") != "prompt":
+            return []
+        ts = att.get("timestamp") or rec.get("timestamp")
+        return [(t, ts, True) for t in _content_texts(att.get("prompt"))]
+    if kind != "user":
+        return []
+    if rec.get("isMeta") or rec.get("isCompactSummary") or _origin_is_non_human(rec):
+        return []
+    content = (rec.get("message") or {}).get("content")
+    return [(t, rec.get("timestamp"), False) for t in _content_texts(content)]
+
+
+def owner_text(rec):
+    """The owner's own prose from one record, or None if it is not a request.
+
+    None covers distinct non-request traffic arriving typed as `"user"`: tool
+    results, harness or IDE injections, compaction summaries, peer subagent
+    hand-backs, and scaffolding-only messages. This is the single definition.
+    """
+    if rec.get("type") != "user":
         return None
-    return NOISE.sub("", "\n".join(parts)).strip() or None
+    parts = [t for t, _ts, _queued in owner_items(rec)]
+    return "\n".join(parts).strip() or None
 
 
 def is_confirmation(text):

@@ -11,7 +11,7 @@
 #     A file may appear in MORE THAN ONE --group; it is shown WHOLE under each.
 #   - Any changed file NOT named in a --group falls through to an
 #     "Uncategorized (by type)" section bucketed by file type (Specs / Rust /
-#     Python / Project config / Memory / Docs / Other).
+#     Python / C/C++ / JS/TS / Shell / Config / Memory / Docs / Other).
 #
 # Scope of "changed": all tracked changes (staged + unstaged combined) relative
 # to --base (default HEAD).
@@ -76,19 +76,33 @@ while [ "$#" -gt 0 ]; do
         ;;
     esac
   fi
+  if [ -z "$cur_title" ]; then
+    printf 'gen-diff.sh: unexpected argument `%s` (use --group <title> before file names)\n%s\n' "$1" "$USAGE" >&2
+    exit 2
+  fi
   cur_files+="${1}"$'\n'
   shift
 done
 flush_group
 
-cd "$(git rev-parse --show-toplevel)"
+TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$TOP" ]; then
+  printf 'gen-diff.sh: not inside a git repository\n%s\n' "$USAGE" >&2
+  exit 2
+fi
+cd "$TOP"
+
+if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null; then
+  printf 'gen-diff.sh: unknown revision `%s`\n%s\n' "$BASE" "$USAGE" >&2
+  exit 2
+fi
 
 TS="$(date +%Y-%m-%d-%H%M%S)"
 OUT="aur-docs/diff-${TS}.html"
 mkdir -p aur-docs
 
 # All changed tracked files relative to BASE (covers both staged and unstaged).
-mapfile -t ALL_CHANGED < <(git diff --name-only "$BASE" | awk 'NF' | sort -u)
+mapfile -t ALL_CHANGED < <(git -c core.quotePath=false diff --name-only "$BASE" | awk 'NF' | sort -u)
 
 # Set of files that ARE named in some group (for fallback exclusion).
 labeled_set=$'\n'
@@ -101,26 +115,34 @@ is_labeled() { printf '%s' "$labeled_set" | grep -qxF "$1"; }
 categorize() {
   local f="$1" base; base="$(basename "$f")"
   case "$f" in
-    *.rs|rust/*) echo "Rust" ;;
-    *.py) echo "Python" ;;
     .claude/memory/*) echo "Memory" ;;
-    aur-docs/*) echo "Docs" ;;
-    .claude/CLAUDE.md|Makefile|*/Makefile|Cargo.toml|*/Cargo.toml|*.service|*.sh|*.json|.gitignore) echo "Project config" ;;
-    *) if [[ "$base" =~ ^[A-Z0-9_]+\.md$ ]]; then echo "Specs"; else echo "Other"; fi ;;
+    aur-docs/*|claude-docs/*) echo "Docs" ;;
+    *.rs) echo "Rust" ;;
+    *.py) echo "Python" ;;
+    *.c|*.cc|*.cpp|*.cxx|*.h|*.hh|*.hpp) echo "C/C++" ;;
+    *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs) echo "JS/TS" ;;
+    *.sh|*.bash|*.zsh) echo "Shell" ;;
+    .claude/*|Makefile|*/Makefile|Cargo.toml|*/Cargo.toml|pyproject.toml|*.toml|*.yaml|*.yml|*.json|*.service|.gitignore) echo "Config" ;;
+    *) if [[ "$base" =~ ^[A-Z0-9_.-]+\.md$ ]]; then echo "Specs"; else echo "Other"; fi ;;
   esac
 }
 
-esc() { sed -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
+esc() { sed -e 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'; }
 
 # Emit one <details> block with the full diff of a file against BASE.
 emit_file() {
-  local f="$1"
-  read -r ADD DEL _ < <(git diff "$BASE" --numstat -- "$f" | head -1)
+  local f="$1" stat_html
+  read -r ADD DEL _ < <(git -c core.quotePath=false diff "$BASE" --numstat -- "$f" | head -1)
   ADD="${ADD:-0}"; DEL="${DEL:-0}"
-  printf '<details class="file"><summary><span class="fname">%s</span><span class="stat"><span class="p">+%s</span> <span class="m">-%s</span></span></summary>' \
-    "$(printf '%s' "$f" | esc)" "$ADD" "$DEL"
+  if [ "$ADD" = "-" ] && [ "$DEL" = "-" ]; then
+    stat_html='<span class="mut">binary</span>'
+  else
+    stat_html="<span class=\"p\">+${ADD}</span> <span class=\"m\">-${DEL}</span>"
+  fi
+  printf '<details class="file"><summary><span class="fname">%s</span><span class="stat">%s</span></summary>' \
+    "$(printf '%s' "$f" | esc)" "$stat_html"
   printf '<pre class="diff">'
-  git diff "$BASE" -- "$f" | while IFS= read -r line; do
+  git -c core.quotePath=false diff "$BASE" -- "$f" | while IFS= read -r line || [ -n "$line" ]; do
     cls="ctx"
     case "$line" in
       '+++ '*|'--- '*) cls="meta" ;;
@@ -141,12 +163,8 @@ cat <<'HEAD_HTML'
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Working-tree diff (by body of work)</title>
 <link rel="stylesheet" href="/ann.css">
+<link rel="stylesheet" href="/doc.css">
 <style>
-:root{--bg:#0e1116;--panel:#161b22;--panel2:#1c232d;--ink:#e6edf3;--mut:#9aa7b4;--line:#2a323d;
-  --add:#2ea043;--addbg:rgba(46,160,67,.15);--del:#f85149;--delbg:rgba(248,81,73,.15);
-  --hunk:#7aa2f7;--accent:#7aa2f7}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
 .wrap{max-width:1200px;margin:0 auto;padding:24px 22px 120px}
 h1{font-size:22px;margin:0 0 2px}
 .sub{color:var(--mut);font-size:13px;margin:0 0 16px}
@@ -161,18 +179,18 @@ h1{font-size:22px;margin:0 0 2px}
 .group .gmeta{color:var(--mut);font-size:12px;margin:2px 0 8px}
 .subcat{font-size:13px;color:var(--mut);margin:12px 0 4px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
 details.file{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin:8px 0;overflow:hidden}
-details.file>summary{cursor:pointer;padding:9px 13px;font:13px/1.4 "SF Mono",ui-monospace,Menlo,monospace;
+details.file>summary{cursor:pointer;padding:9px 13px;font-size:13px;line-height:1.4;
   list-style:none;display:flex;justify-content:space-between;align-items:center;gap:12px}
 details.file>summary::-webkit-details-marker{display:none}
 details.file>summary:hover{background:var(--panel2)}
-.fname{color:#cdd9e5;word-break:break-all}
-.stat{white-space:nowrap;font-size:12px}.stat .p{color:var(--add)}.stat .m{color:var(--del)}
+.fname{color:var(--ink);word-break:break-all;font-weight:500}
+.stat{white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums}.stat .p{color:var(--ok)}.stat .m{color:var(--bad)}.stat .mut{color:var(--mut)}
 pre.diff{margin:0;overflow-x:auto;font:12px/1.45 "SF Mono",ui-monospace,Menlo,Consolas,monospace;border-top:1px solid var(--line)}
 pre.diff .ln{display:block;padding:0 13px;white-space:pre}
-.ln.add{background:var(--addbg);color:#aff5b4}.ln.add::before{content:"+ ";color:var(--add)}
-.ln.del{background:var(--delbg);color:#ffc1bd}.ln.del::before{content:"- ";color:var(--del)}
-.ln.hunk{color:var(--hunk);background:#10151f}.ln.meta{color:var(--mut)}
-.ln.ctx{color:#9aa7b4}.ln.ctx::before{content:"  "}
+.ln.add{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ink)}.ln.add::before{content:"+ ";color:var(--ok)}
+.ln.del{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--ink)}.ln.del::before{content:"- ";color:var(--bad)}
+.ln.hunk{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}.ln.meta{color:var(--mut)}
+.ln.ctx{color:var(--mut)}.ln.ctx::before{content:"  "}
 .empty{color:var(--mut);font-style:italic}
 .dup{color:var(--mut);font-size:11px;font-style:italic}
 </style></head><body><div class="wrap">
@@ -183,7 +201,7 @@ echo "<div class=\"sub\">${TS} · ${#ALL_CHANGED[@]} changed file(s) · base: <c
 echo '<div class="controls"><button onclick="document.querySelectorAll('\''details.file'\'').forEach(d=>d.open=true)">Expand all</button><button onclick="document.querySelectorAll('\''details.file'\'').forEach(d=>d.open=false)">Collapse all</button></div>'
 
 if [ "${#ALL_CHANGED[@]}" -eq 0 ]; then
-  echo '<p class="empty">No changes.</p></div></body></html>'
+  echo '<p class="empty">No changes.</p>'
 else
   # TOC: groups then fallback
   echo '<div class="toc"><b>Bodies of work:</b> '
@@ -223,7 +241,7 @@ else
   # Fallback: unlabeled files, bucketed by type
   if [ "$unl" -gt 0 ]; then
     echo '<div class="group fallback" id="gfallback"><h2>Uncategorized — by type</h2><div class="gmeta">best-effort fallback: changed files not assigned to a labeled body of work, bucketed by file type</div></div>'
-    for cat in Specs Rust Python "Project config" Memory Docs Other; do
+    for cat in Specs Rust Python C/C++ JS/TS Shell Config Memory Docs Other; do
       catfiles=()
       for f in "${ALL_CHANGED[@]}"; do
         is_labeled "$f" && continue
@@ -234,9 +252,9 @@ else
       for f in "${catfiles[@]}"; do emit_file "$f"; done
     done
   fi
-
-  echo '</div></body></html>'
 fi
+
+echo '</div><script src="/manifest-link.js"></script><script src="/ann.js"></script></body></html>'
 } > "$OUT"
 
 echo "$OUT"

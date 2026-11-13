@@ -63,8 +63,11 @@ CASES = [
     ("~/.config/Antigravity/User/keybindings.json", 0, "Antigravity vendor user dir"),
     ("~" + "/develop/x", 1, "personal workspace path stays flagged"),
     ("user" + "@" + "1000.service", 0, "systemd template unit is not an email"),
+    ("user" + "@" + "1000.service.", 0, "systemd unit ending a sentence is not an email"),
     ("user" + "@" + "1.scope", 0, "systemd scope template is not an email"),
     ("alice" + "@" + "example.com", 1, "real email address stays flagged"),
+    ("alice" + "@" + "mail.service.com", 1, "subdomain after .service stays flagged"),
+    ("bob" + "@" + "ubuntu.com.example.org", 1, "subdomain after ubuntu.com stays flagged"),
     # Private IPv4 (owner ruling 2026-10-28, second): four parts exactly; not
     # counted when a neighbour is a double quote or semicolon, or a period
     # follows. Every other neighbour counts. {A} 10/8, {B} 172.16/12,
@@ -159,6 +162,7 @@ def worktree_cases(proj="projx", branch="lab"):
         (tilde + f".local/share/{proj}-extra/y.log", 0, "own suffixed dir"),
         (tilde + "Pictures/a.jpg", 1, "personal folder stays flagged"),
         (tilde + ".config/other/x", 1, "another project's config stays flagged"),
+        (tilde + ".local/other/x", 1, "another .local subdir stays flagged"),
         (home + "x", 1, "bare home variable stays flagged"),
     ]
     out = []

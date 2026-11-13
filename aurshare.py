@@ -76,6 +76,8 @@ SHARED_ASSETS = {
     "unforced.py":      "tools/unforced.py",
     "scratch.py":       "tools/scratch.py",
     "gen-diff.sh":      "tools/gen-diff.sh",
+    # transcript-prompts imports owner_items from beside itself, so both travel together.
+    "transcript.py":    "tools/transcript.py",
     "transcript-prompts.py": "tools/transcript-prompts.py",
 }
 
@@ -620,30 +622,118 @@ def install_project(project_dir, version="", log=print):
                                       if VERSION_FILE.exists() else ""), log=log)
 
 
-if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "verify"
-    if cmd == "canonical":
-        sys.exit(1 if check_canonical(sys.argv[2] if len(sys.argv) > 2 else ".") else 0)
-    elif cmd == "verify":
+def _usage(prog):
+    return (f"usage: {prog} {{verify|canonical [aur_root]|deploy <aur_root> <ver>|"
+            "devlink <aur_root> [names...]|install <proj>|link <proj>|"
+            "register <proj> [ver]|discover <root>|list|-h|--help}")
+
+
+def _cli(argv):
+    prog = argv[0] if argv else "aurshare.py"
+    args = argv[1:]
+    usage = _usage(prog)
+    subcmds = ("verify", "canonical", "deploy", "devlink",
+               "install", "link", "register", "discover", "list")
+
+    def fail(msg):
+        print(f"{prog}: {msg}\n{usage}", file=sys.stderr)
+        return 2
+
+    if args and args[0] in ("-h", "--help"):
+        if len(args) > 1:
+            return fail(f"unexpected argument `{args[1]}`")
+        print(usage)
+        return 0
+
+    cmd = args[0] if args else "verify"
+    rest = args[1:]
+    if cmd not in subcmds:
+        return fail(f"unknown option `{cmd}`" if cmd.startswith("-")
+                    else f"unknown command `{cmd}`")
+
+    if rest in (["-h"], ["--help"]):
+        print(usage)
+        return 0
+    for tok in rest:
+        if tok.startswith("-"):
+            return fail(f"unknown option `{tok}`")
+
+    def require_dir(raw, label):
+        p = Path(raw).expanduser().resolve()
+        if not p.is_dir():
+            return None, fail(f"{label} is not a directory: {raw}")
+        return p, None
+
+    if cmd == "verify":
+        if rest:
+            return fail(f"unexpected argument `{rest[0]}` for `verify`")
         found = verify_and_heal()
         print(f"shared root {SHARE}: {'healed ' + str(len(found)) if found else 'clean'}")
-    elif cmd == "deploy":
-        deploy(sys.argv[2], sys.argv[3])
-    elif cmd == "devlink":
-        devlink(sys.argv[2], sys.argv[3:] or None)
-    elif cmd == "install":
-        install_project(sys.argv[2])
-    elif cmd == "link":
-        link_project(sys.argv[2])
-    elif cmd == "register":
-        register(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "")
-    elif cmd == "discover":
-        print(f"registered {discover(sys.argv[2])} project(s)")
-    elif cmd == "list":
-        for r in registry_read():
-            print(f"{r['path']}\t{r['layout']}\t{r['version']}")
-    else:
-        print(f"usage: {sys.argv[0]} "
-              "{verify|canonical <aur_root>|deploy <aur_root> <ver>|devlink <aur_root> [names]|install <proj>|link <proj>|"
-              "register <proj> [ver]|discover <root>|list}", file=sys.stderr)
-        sys.exit(2)
+        return 0
+    if cmd == "canonical":
+        if len(rest) > 1:
+            return fail(f"unexpected argument `{rest[1]}` for `canonical`")
+        target, err = require_dir(rest[0] if rest else ".", "<aur_root>")
+        if err is not None:
+            return err
+        return 1 if check_canonical(target) else 0
+    if cmd == "deploy":
+        if len(rest) != 2:
+            return fail("`deploy` requires <aur_root> <ver>")
+        target, err = require_dir(rest[0], "<aur_root>")
+        if err is not None:
+            return err
+        deploy(target, rest[1])
+        return 0
+    if cmd == "devlink":
+        if not rest:
+            return fail("`devlink` requires <aur_root> [names...]")
+        target, err = require_dir(rest[0], "<aur_root>")
+        if err is not None:
+            return err
+        names = rest[1:] or None
+        if names:
+            bad = [n for n in names if n not in SHARED_ASSETS]
+            if bad:
+                return fail(f"unknown shared asset `{bad[0]}`")
+        devlink(target, names)
+        return 0
+    if cmd == "install":
+        if len(rest) != 1:
+            return fail("`install` requires <proj>")
+        target, err = require_dir(rest[0], "<proj>")
+        if err is not None:
+            return err
+        return 0 if install_project(target) else 1
+    if cmd == "link":
+        if len(rest) != 1:
+            return fail("`link` requires <proj>")
+        target, err = require_dir(rest[0], "<proj>")
+        if err is not None:
+            return err
+        link_project(target)
+        return 0
+    if cmd == "register":
+        if not (1 <= len(rest) <= 2):
+            return fail("`register` requires <proj> [ver]")
+        target, err = require_dir(rest[0], "<proj>")
+        if err is not None:
+            return err
+        return 0 if register(target, rest[1] if len(rest) > 1 else "") else 1
+    if cmd == "discover":
+        if len(rest) != 1:
+            return fail("`discover` requires <root>")
+        target, err = require_dir(rest[0], "<root>")
+        if err is not None:
+            return err
+        print(f"registered {discover(target)} project(s)")
+        return 0
+    if rest:
+        return fail(f"unexpected argument `{rest[0]}` for `list`")
+    for r in registry_read():
+        print(f"{r['path']}\t{r['layout']}\t{r['version']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_cli(sys.argv))

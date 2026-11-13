@@ -7,13 +7,8 @@ Reconstructing what the owner actually asked across a chain of sessions is a
 recurring need -- it was done by hand once for a washout investigation and
 crystallised so transcripts are not mined manually (PROCESS §1).
 
-What counts as an owner prompt:
-- A `type: "user"` record whose origin is the owner (`origin.kind == "human"`,
-  or no origin field), excluding `isMeta`, `isCompactSummary`, `tool_result`
-  blocks, and harness scaffolding (`SKIP_MARKERS`), OR
-- Text queued while the assistant was busy: `type: "attachment"` with
-  `attachment.type == "queued_command"` and `origin.kind == "human"` (or
-  absent origin with `commandMode == "prompt"`), marked `queued`.
+Delegates owner attribution and harness-scaffolding stripping to `transcript`
+(`transcript.owner_items`) so every transcript reader applies one definition.
 
 Usage:
     transcript-prompts.py <session.jsonl> [...] [--grep WORD] [--max CHARS]
@@ -21,56 +16,11 @@ Usage:
 
 import argparse
 import json
+import os
 import sys
 
-SKIP_MARKERS = (
-    "<system-reminder>", "<command-name>", "<command-message>",
-    "<local-command-stdout>", "[Request interrupted",
-    "Caveat: The messages below", "<task-notification>",
-    "<cross-session-message",
-)
-
-
-def texts(content):
-    """Extract text strings from a string or block-list content field."""
-    if isinstance(content, str):
-        return [content]
-    out = []
-    if isinstance(content, list):
-        for b in content:
-            if isinstance(b, dict) and b.get("type") == "text":
-                out.append(b.get("text", ""))
-    return out
-
-
-def _origin_is_non_human(rec):
-    o = rec.get("origin")
-    return isinstance(o, dict) and o.get("kind") is not None and o.get("kind") != "human"
-
-
-def owner_items(rec):
-    """Return `(text, timestamp, queued)` tuples for owner text in one record."""
-    kind = rec.get("type")
-    if kind == "attachment":
-        a = rec.get("attachment")
-        if not isinstance(a, dict) or a.get("type") != "queued_command":
-            return []
-        o = a.get("origin")
-        if isinstance(o, dict) and o.get("kind") != "human":
-            return []
-        if o is None and a.get("commandMode") != "prompt":
-            return []
-        ts = a.get("timestamp") or rec.get("timestamp")
-        return [(t, ts, True) for t in texts(a.get("prompt"))]
-    if kind != "user":
-        return []
-    if rec.get("isMeta") or rec.get("isCompactSummary") or _origin_is_non_human(rec):
-        return []
-    msg = rec.get("message") or {}
-    if any(isinstance(b, dict) and b.get("type") == "tool_result"
-           for b in (msg.get("content") or []) if isinstance(b, dict)):
-        return []
-    return [(t, rec.get("timestamp"), False) for t in texts(msg.get("content"))]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from transcript import owner_items  # noqa: E402
 
 
 def positive_int(value):
@@ -101,19 +51,23 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     grep = args.grep.lower() if args.grep else None
 
+    rc = 0
     for p in args.paths:
         n = 0
-        sid = p.rsplit("/", 1)[-1][:8]
-        with open(p, errors="replace") as fh:
+        sid = os.path.basename(p)[:8]
+        try:
+            fh = open(p, errors="replace")
+        except OSError as e:
+            print(f"transcript-prompts: cannot read {p}: {e}", file=sys.stderr)
+            rc = 1
+            continue
+        with fh:
             for line in fh:
                 try:
                     rec = json.loads(line)
                 except ValueError:
                     continue
                 for t, ts_raw, queued in owner_items(rec):
-                    t = t.strip()
-                    if not t or any(m in t for m in SKIP_MARKERS):
-                        continue
                     if grep and grep not in t.lower():
                         continue
                     n += 1
@@ -124,7 +78,7 @@ def main(argv=None):
                     mark = " queued" if queued else ""
                     print(f"[{sid} #{n:03d} {ts}{mark}] {body}")
         print(f"--- {sid}: {n} owner prompt(s) ---", file=sys.stderr)
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

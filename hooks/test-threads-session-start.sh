@@ -17,6 +17,10 @@ trap 'rm -rf "$TMP"' EXIT
 "$HOOK" -h >/dev/null; check "-h exits 0" $?
 if "$HOOK" --bogus >/dev/null 2>&1; then rc=1; else rc=0; fi
 check "unknown arg rejected non-zero" $rc
+if "$HOOK" "" >/dev/null 2>&1; then rc=1; else rc=0; fi
+check "empty string arg rejected non-zero" $rc
+if "$HOOK" --help extra >/dev/null 2>&1; then rc=1; else rc=0; fi
+check "extra arg after --help rejected non-zero" $rc
 
 # Missing shared-root threads.py emits one clear notice and exits 0.
 HOME="$TMP/empty_home" "$HOOK" | grep -q "threads: threads.py is absent"
